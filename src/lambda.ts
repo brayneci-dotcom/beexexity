@@ -1,36 +1,20 @@
 /**
  * AWS Lambda handler — wraps the Express app for Lambda execution.
- * Uses @vendia/serverless-express to translate API Gateway / Function URL events
- * into Express requests and responses.
- *
- * Supports:
- * - API Gateway HTTP API (v2 payload format)
- * - Lambda Function URL (RESPONSE_STREAM for SSE)
- *
- * The handler is a standard Lambda handler function that receives
- * (event, context) and returns a response.
+ * Uses @vendia/serverless-express to translate Lambda Function URL / API Gateway
+ * events into Express requests and responses.
  */
 import serverlessExpress from '@vendia/serverless-express';
 import app from './app.js';
 
+// The default export of @vendia/serverless-express is a callable that accepts { app }
+// and returns a handler function. We pass binaryMimeTypes so that binary content
+// (images, fonts) is base64-encoded in the response, while text (HTML, CSS, JS) is not.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const serverlessApp = (serverlessExpress as any).configure({
+export const handler = (serverlessExpress as any)({
   app,
-  binarySettings: {
-    // Treat these as text (not base64 encoded)
-    contentTypes: [
-      'application/octet-stream',
-      'font/*',
-      'image/*',
-    ],
-  },
+  binaryMimeTypes: [
+    'image/*',
+    'font/*',
+    'application/octet-stream',
+  ],
 });
-
-/**
- * Lambda entry point.
- * Dockerfile.lambda CMD points to "dist/lambda.handler"
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const handler = (event: any, context: any) => {
-  return serverlessApp(event, context);
-};
