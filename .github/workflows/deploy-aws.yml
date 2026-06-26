@@ -54,3 +54,4 @@ jobs:
             --function-name $LAMBDA_FUNCTION_NAME \
             --region $AWS_REGION
           echo "Lambda function updated successfully"
+# test
