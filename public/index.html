@@ -1,0 +1,2034 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>beexexity</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg-primary: #0f0f0f;
+      --bg-secondary: #1a1a1a;
+      --bg-tertiary: #262626;
+      --text-primary: #ffffff;
+      --text-secondary: #a0a0a0;
+      --text-tertiary: #666666;
+      --accent: #b5e4f7;
+      --accent-hover: #9bd0e6;
+      --border: #2a2a2a;
+      --shadow: 0 4px 24px rgba(0,0,0,0.4);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      line-height: 1.6;
+    }
+
+    /* Login */
+    #login-screen {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      background: linear-gradient(135deg, #0f0f0f 0%, #1a1a2e 100%);
+    }
+
+    .login-box {
+      background: var(--bg-secondary);
+      padding: 3rem;
+      border-radius: 16px;
+      width: 400px;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border);
+    }
+
+    .login-box h1 {
+      font-size: 1.5rem;
+      margin-bottom: 2rem;
+      color: var(--text-primary);
+      font-weight: 600;
+      text-align: center;
+    }
+
+    .login-box input {
+      width: 100%;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-size: 1rem;
+      transition: all 0.2s;
+    }
+
+    .login-box input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(181, 228, 247, 0.1);
+    }
+
+    .login-box button {
+      width: 100%;
+      padding: 1rem;
+      background: var(--accent);
+      color: var(--bg-primary);
+      border: none;
+      border-radius: 12px;
+      font-size: 1rem;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .login-box button:hover {
+      background: var(--accent-hover);
+      transform: translateY(-1px);
+    }
+
+    .login-error {
+      color: #ef4444;
+      font-size: 0.875rem;
+      margin-bottom: 1rem;
+      text-align: center;
+    }
+
+    /* Password Reset Screen */
+    #password-reset-screen {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      background: linear-gradient(135deg, #0f0f0f 0%, #1a1a2e 100%);
+    }
+
+    .password-reset-box {
+      background: var(--bg-secondary);
+      padding: 3rem;
+      border-radius: 16px;
+      width: 400px;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border);
+    }
+
+    .password-reset-box h1 {
+      font-size: 1.5rem;
+      margin-bottom: 0.5rem;
+      color: var(--text-primary);
+      font-weight: 600;
+      text-align: center;
+    }
+
+    .password-reset-box .subtitle {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+
+    .password-reset-box input {
+      width: 100%;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-size: 1rem;
+      transition: all 0.2s;
+    }
+
+    .password-reset-box input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(181, 228, 247, 0.1);
+    }
+
+    .password-reset-box button {
+      width: 100%;
+      padding: 1rem;
+      background: var(--accent);
+      color: var(--bg-primary);
+      border: none;
+      border-radius: 12px;
+      font-size: 1rem;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .password-reset-box button:hover {
+      background: var(--accent-hover);
+      transform: translateY(-1px);
+    }
+
+    .password-reset-error {
+      color: #ef4444;
+      font-size: 0.875rem;
+      margin-bottom: 1rem;
+      text-align: center;
+    }
+
+    /* Chat Screen */
+    #chat-screen {
+      display: none;
+      flex-direction: column;
+      height: 100vh;
+      position: relative;
+    }
+
+    /* Header */
+    .header {
+      background: rgba(15, 15, 15, 0.8);
+      backdrop-filter: blur(12px);
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .logo {
+      font-size: 1.25rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--accent) 0%, #7cbfe0 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.5rem 1rem;
+      background: var(--bg-secondary);
+      border-radius: 20px;
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+    }
+
+    .user-avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent) 0%, #7cbfe0 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      font-size: 0.75rem;
+      color: var(--bg-primary);
+    }
+
+    .logout-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.875rem;
+      transition: all 0.2s;
+    }
+
+    .logout-btn:hover {
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+    }
+
+    /* Cost bar */
+    .cost-bar {
+      background: var(--bg-secondary);
+      padding: 0.75rem 2rem;
+      display: flex;
+      justify-content: center;
+      gap: 3rem;
+      font-size: 0.8125rem;
+      color: var(--text-secondary);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .cost-bar span {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .cost-value {
+      color: var(--accent);
+      font-weight: 600;
+      font-family: 'SF Mono', Monaco, monospace;
+    }
+
+    /* Messages */
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 2rem;
+      max-width: 800px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    .message {
+      max-width: 100%;
+      line-height: 1.7;
+      font-size: 1rem;
+      animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .message.user {
+      align-self: flex-end;
+      max-width: 85%;
+    }
+
+    .user-content {
+      background: var(--bg-secondary);
+      padding: 1.25rem 1.5rem;
+      border-radius: 16px;
+      border-bottom-right-radius: 4px;
+      color: var(--text-primary);
+      font-size: 1rem;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+
+    .message.assistant {
+      align-self: flex-start;
+      width: 100%;
+      max-width: 100%;
+      position: relative;
+    }
+
+    .assistant-content {
+      color: var(--text-primary);
+      font-size: 1.0625rem;
+      line-height: 1.8;
+      word-wrap: break-word;
+    }
+
+    .copy-btn {
+      position: absolute;
+      right: 0.25rem;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 0.3rem 0.6rem;
+      border-radius: 6px;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.2s, background 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.75rem;
+      font-family: inherit;
+    }
+
+    .copy-btn-top {
+      top: 0.25rem;
+    }
+
+    .copy-btn-bottom {
+      bottom: 0.25rem;
+    }
+
+    .message.assistant:hover .copy-btn {
+      opacity: 1;
+    }
+
+    .copy-btn:hover {
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+    }
+
+    .copy-btn.copied {
+      color: #22c55e;
+      opacity: 1;
+    }
+
+    .assistant-content p {
+      margin-bottom: 1rem;
+    }
+
+    .assistant-content p:last-child {
+      margin-bottom: 0;
+    }
+
+    .assistant-content strong {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    .assistant-content code {
+      background: var(--bg-tertiary);
+      padding: 0.2rem 0.4rem;
+      border-radius: 4px;
+      font-family: 'SF Mono', Monaco, monospace;
+      font-size: 0.9em;
+    }
+
+    .assistant-content pre {
+      background: var(--bg-tertiary);
+      padding: 1rem;
+      border-radius: 8px;
+      overflow-x: auto;
+      margin: 1rem 0;
+    }
+
+    .assistant-content pre code {
+      background: none;
+      padding: 0;
+      font-size: 0.875rem;
+      line-height: 1.5;
+    }
+
+    .assistant-content ul, .assistant-content ol {
+      margin: 0.5rem 0;
+      padding-left: 1.5rem;
+    }
+
+    .assistant-content li {
+      margin: 0.25rem 0;
+    }
+
+    .assistant-content h1, .assistant-content h2, .assistant-content h3,
+    .assistant-content h4, .assistant-content h5, .assistant-content h6 {
+      margin: 1rem 0 0.5rem;
+      font-weight: 600;
+    }
+
+    .assistant-content a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .assistant-content a:hover {
+      text-decoration: underline;
+    }
+
+    .assistant-content blockquote {
+      border-left: 3px solid var(--accent);
+      padding-left: 1rem;
+      margin: 0.5rem 0;
+      color: var(--text-secondary);
+    }
+
+    .assistant-content table {
+      border-collapse: collapse;
+      margin: 0.75rem 0;
+      font-size: 0.9rem;
+      width: 100%;
+    }
+
+    .assistant-content th, .assistant-content td {
+      border: 1px solid var(--border);
+      padding: 0.5rem 0.75rem;
+      text-align: left;
+    }
+
+    .assistant-content th {
+      background: var(--bg-tertiary);
+      font-weight: 600;
+    }
+
+    .assistant-content .math-display {
+      display: block;
+      overflow-x: auto;
+      padding: 1rem 0;
+      text-align: center;
+    }
+
+    .assistant-content .math-inline {
+      display: inline;
+    }
+
+    .assistant-content .katex { font-size: 1.1em; }
+    .assistant-content .katex-display { margin: 0.75rem 0; }
+
+    .message.error {
+      align-self: center;
+      background: rgba(239, 68, 68, 0.1);
+      color: #ef4444;
+      padding: 1rem 1.5rem;
+      border-radius: 12px;
+      border: 1px solid rgba(239, 68, 68, 0.2);
+      font-size: 0.9375rem;
+    }
+
+    .message.system {
+      align-self: center;
+      color: var(--text-tertiary);
+      font-size: 0.9375rem;
+      font-style: italic;
+      text-align: center;
+      padding: 2rem;
+    }
+
+    /* Empty state */
+    .empty-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 4rem 2rem;
+    }
+
+    .empty-state h2 {
+      font-size: 2rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
+      background: linear-gradient(135deg, var(--text-primary) 0%, var(--text-secondary) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .empty-state p {
+      color: var(--text-secondary);
+      font-size: 1.125rem;
+      max-width: 600px;
+      line-height: 1.6;
+    }
+
+    /* Input area */
+    .input-wrapper {
+      background: linear-gradient(to top, var(--bg-primary) 0%, transparent 100%);
+      padding: 2rem;
+      position: sticky;
+      bottom: 0;
+    }
+
+    .input-container {
+      max-width: 800px;
+      margin: 0 auto;
+      position: relative;
+    }
+
+    .input-area {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1rem;
+      display: flex;
+      gap: 1rem;
+      align-items: flex-end;
+      box-shadow: var(--shadow);
+      transition: all 0.2s;
+    }
+
+    .input-area:focus-within {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(181, 228, 247, 0.1), var(--shadow);
+    }
+
+    .attach-btn {
+      background: transparent;
+      border: none;
+      color: var(--accent);
+      cursor: pointer;
+      padding: 0.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      margin-bottom: 0.25rem;
+    }
+
+    .attach-btn:hover {
+      color: var(--accent-hover);
+      transform: scale(1.1);
+    }
+
+    .attach-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+
+    .attach-btn svg { width: 20px; height: 20px; }
+
+    .input-area textarea {
+      flex: 1;
+      padding: 0.75rem;
+      border: none;
+      background: transparent;
+      color: var(--text-primary);
+      font-size: 1rem;
+      resize: none;
+      font-family: inherit;
+      min-height: 24px;
+      max-height: 200px;
+      line-height: 1.5;
+    }
+
+    .input-area textarea:focus {
+      outline: none;
+    }
+
+    .input-area textarea::placeholder {
+      color: var(--text-tertiary);
+    }
+
+    .input-area textarea:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .input-controls {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .model-select-wrapper {
+      position: relative;
+    }
+
+    .model-select-wrapper::after {
+      content: '▼';
+      position: absolute;
+      right: 0.75rem;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 0.625rem;
+      color: var(--text-secondary);
+      pointer-events: none;
+    }
+
+    .input-controls select {
+      padding: 0.6rem 2rem 0.6rem 0.75rem;
+      border-radius: 8px;
+      background: var(--bg-primary);
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+      font-size: 0.8125rem;
+      cursor: pointer;
+      appearance: none;
+      max-width: 160px;
+      text-overflow: ellipsis;
+    }
+
+    .input-controls select:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    #send-btn {
+      padding: 0.5rem;
+      background: transparent;
+      color: var(--accent);
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #send-btn:hover:not(:disabled) {
+      color: var(--accent-hover);
+      transform: scale(1.1);
+    }
+
+    #send-btn:disabled {
+      background: transparent;
+      color: var(--text-tertiary);
+      cursor: not-allowed;
+    }
+
+    /* Drop zone */
+    .drop-zone-overlay {
+      display: none;
+      position: absolute;
+      inset: 0;
+      background: rgba(181, 228, 247, 0.05);
+      border: 2px dashed var(--accent);
+      border-radius: 16px;
+      z-index: 10;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+
+    .drop-zone-overlay.active { display: flex; }
+
+    .drop-zone-overlay span {
+      color: var(--accent);
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+
+    /* File preview */
+    .file-preview-area {
+      width: 100%;
+      display: none;
+      padding: 0.75rem 0 0;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .file-preview-area.has-files { display: flex; }
+
+    .file-preview-area.disabled { opacity: 0.5; pointer-events: none; }
+
+    .file-preview-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.4rem 0.6rem;
+      font-size: 0.75rem;
+      color: var(--text-primary);
+      max-width: 260px;
+    }
+
+    .file-preview-item .file-thumb {
+      width: 32px;
+      height: 32px;
+      border-radius: 4px;
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+
+    .file-preview-item .file-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 4px;
+      background: var(--bg-tertiary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.6rem;
+      color: var(--text-secondary);
+      flex-shrink: 0;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    .file-preview-item .file-info {
+      display: flex;
+      flex-direction: column;
+      gap: 0.1rem;
+      overflow: hidden;
+    }
+
+    .file-preview-item .file-name {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-weight: 500;
+    }
+
+    .file-preview-item .file-size {
+      color: var(--text-tertiary);
+      font-size: 0.7rem;
+    }
+
+    .file-preview-item .file-remove {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: 1rem;
+      line-height: 1;
+      padding: 0 0.25rem;
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+
+    .file-preview-item .file-remove:hover { color: #ef4444; }
+
+    /* File error */
+    .file-error-area {
+      width: 100%;
+      display: none;
+      padding: 0.4rem 0.6rem;
+      font-size: 0.75rem;
+      color: #ef4444;
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+      border-radius: 6px;
+      margin-top: 0.5rem;
+    }
+
+    .file-error-area.visible { display: block; }
+
+    /* Model compatibility warning */
+    .model-compat-warning {
+      display: none;
+      width: 100%;
+      font-size: 0.75rem;
+      color: #fbbf24;
+      padding: 0.4rem 0;
+    }
+
+    .model-compat-warning.visible { display: block; }
+
+    /* Routing indicator */
+    .routing-indicator {
+      font-size: 0.75rem;
+      color: var(--text-tertiary);
+      padding: 0.25rem 0;
+      margin-bottom: 0.25rem;
+      letter-spacing: 0.01em;
+    }
+
+    /* Routing details (expandable) */
+    .routing-details {
+      font-size: 0.7rem;
+      color: var(--text-tertiary);
+      padding: 0.5rem 0.75rem;
+      margin-top: 0.25rem;
+      background: var(--bg-tertiary);
+      border-radius: 6px;
+      line-height: 1.6;
+      display: none;
+    }
+
+    .routing-details.visible {
+      display: block;
+    }
+
+    .routing-indicator .toggle-details {
+      cursor: pointer;
+      margin-left: 0.5rem;
+      opacity: 0.6;
+      font-size: 0.7rem;
+    }
+
+    .routing-indicator .toggle-details:hover {
+      opacity: 1;
+    }
+
+    /* Streaming indicator */
+    .streaming-dot {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      background: var(--accent);
+      border-radius: 50%;
+      animation: pulse 1s infinite;
+      margin-left: 4px;
+    }
+
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: var(--bg-primary); }
+    ::-webkit-scrollbar-thumb { background: var(--bg-tertiary); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #404040; }
+
+    /* Degraded banner */
+    .degraded-banner {
+      display: none;
+      background: #d97706;
+      color: #fff;
+      text-align: center;
+      padding: 0.625rem 1rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      z-index: 99;
+    }
+
+    .degraded-banner.visible {
+      display: block;
+    }
+
+    /* Toast notification */
+    .toast-notification {
+      position: fixed;
+      bottom: 2rem;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 0.875rem 1.5rem;
+      font-size: 0.875rem;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      z-index: 1000;
+      opacity: 0;
+      transition: transform 0.3s ease, opacity 0.3s ease;
+      pointer-events: none;
+    }
+
+    .toast-notification.visible {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .header { padding: 1rem; }
+      .cost-bar { padding: 0.75rem 1rem; gap: 1rem; font-size: 0.75rem; overflow-x: auto; }
+      .messages { padding: 1rem; }
+      .input-wrapper { padding: 1rem; }
+      .login-box { width: 90%; padding: 2rem; }
+      .password-reset-box { width: 90%; padding: 2rem; }
+    }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous"></script>
+</head>
+<body>
+
+<!-- Login Screen -->
+<div id="login-screen">
+  <div class="login-box">
+    <h1>beexexity</h1>
+    <div id="login-error" class="login-error" style="display:none"></div>
+    <input type="text" id="username" placeholder="Username" autocomplete="username">
+    <input type="password" id="password" placeholder="Password" autocomplete="current-password">
+    <button onclick="handleLogin()">Continue</button>
+  </div>
+</div>
+
+<!-- Password Reset Screen -->
+<div id="password-reset-screen">
+  <div class="password-reset-box">
+    <h1>Change Your Password</h1>
+    <p class="subtitle">Your account requires a password change before continuing.</p>
+    <div id="password-reset-error" class="password-reset-error" style="display:none"></div>
+    <input type="password" id="current-password" placeholder="Current Password" autocomplete="current-password">
+    <input type="password" id="new-password" placeholder="New Password" autocomplete="new-password">
+    <button onclick="handlePasswordChange()">Change Password</button>
+  </div>
+</div>
+
+<!-- Chat Screen -->
+<div id="chat-screen">
+  <div class="header">
+    <div class="header-left">
+      <div class="logo">beexexity</div>
+    </div>
+    <div class="header-right">
+      <button class="logout-btn" onclick="handleNewChat()">New Chat</button>
+      <div class="user-info">
+        <div class="user-avatar" id="user-avatar"></div>
+        <span id="user-badge"></span>
+      </div>
+      <button class="logout-btn" onclick="handleLogout()">Logout</button>
+    </div>
+  </div>
+
+  <div class="cost-bar">
+    <span>Session: <span class="cost-value" id="session-cost">Rp 0.00</span></span>
+    <span>Current: <span class="cost-value" id="current-cost">Rp 0.00</span></span>
+    <span>Tokens: <span class="cost-value" id="tokens-in">0</span> / <span class="cost-value" id="tokens-out">0</span></span>
+    <span>Requests: <span class="cost-value" id="request-count">0</span></span>
+  </div>
+
+  <div class="degraded-banner" id="degraded-banner">Chat history save failed. Future context may be lost.</div>
+
+  <div class="messages" id="messages">
+    <div class="empty-state">
+      <h2>How can I help you today?</h2>
+      <p>Ask anything. Your data is automatically masked for compliance before processing.</p>
+    </div>
+  </div>
+
+  <div class="input-wrapper">
+    <div class="input-container">
+      <div class="input-area" id="input-area">
+        <div class="drop-zone-overlay" id="drop-zone"><span>Drop files here</span></div>
+        <input type="file" id="file-input" multiple accept=".pdf,.docx,.png,.jpg,.jpeg,.webp" style="display:none" onchange="handleFilePicker(event)">
+        <button class="attach-btn" id="attach-btn" onclick="document.getElementById('file-input').click()" title="Attach files">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+        </button>
+
+        <textarea id="prompt-input" placeholder="Ask anything..." rows="1" onkeydown="handleKeyDown(event)"></textarea>
+
+        <div class="input-controls">
+          <div class="model-select-wrapper">
+            <select id="model-select" onchange="checkModelCompatibility()"></select>
+          </div>
+          <button id="send-btn" onclick="handleSend()" title="Send">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="file-preview-area" id="file-preview-area"></div>
+      <div class="model-compat-warning" id="model-compat-warning">⚠ Selected model does not support image inputs</div>
+      <div class="file-error-area" id="file-error-area"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// --- State ---
+let token = null;
+let resetToken = null;
+let user = null;
+let pricingConfig = null;
+let sessionCosts = [];
+let sessionTotal = 0;
+let isStreaming = false;
+let currentSessionId = null;
+let idrRate = null; // Cached USD → IDR conversion rate
+
+// --- File Upload State ---
+let attachedFiles = [];
+let modelCapabilities = {}; // modelId → capability string ('text-only' | 'text-and-image')
+const ALLOWED_MIME_TYPES = [
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'image/png',
+  'image/jpeg',
+  'image/webp'
+];
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+const MAX_FILE_COUNT = 5;
+
+const API_BASE = window.location.origin + '/api/v1';
+
+// --- Login ---
+async function handleLogin() {
+  const username = document.getElementById('username').value.trim();
+  const password = document.getElementById('password').value;
+  const errorEl = document.getElementById('login-error');
+  errorEl.style.display = 'none';
+
+  if (!username || !password) {
+    errorEl.textContent = 'Username and password required';
+    errorEl.style.display = 'block';
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      errorEl.textContent = data.message || 'Login failed';
+      errorEl.style.display = 'block';
+      return;
+    }
+
+    if (data.requiresPasswordReset) {
+      resetToken = data.resetToken;
+      user = data.user;
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('password-reset-screen').style.display = 'flex';
+    } else {
+      token = data.token;
+      user = data.user;
+      showChatScreen();
+    }
+  } catch (e) {
+    errorEl.textContent = 'Cannot reach server';
+    errorEl.style.display = 'block';
+  }
+}
+
+// --- Password Change ---
+async function handlePasswordChange() {
+  const currentPassword = document.getElementById('current-password').value;
+  const newPassword = document.getElementById('new-password').value;
+  const errorEl = document.getElementById('password-reset-error');
+  errorEl.style.display = 'none';
+
+  if (!currentPassword || !newPassword) {
+    errorEl.textContent = 'Both fields are required';
+    errorEl.style.display = 'block';
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/auth/change-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${resetToken}`,
+      },
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      errorEl.textContent = data.message || 'Password change failed';
+      errorEl.style.display = 'block';
+      return;
+    }
+
+    token = data.token;
+    resetToken = null;
+    document.getElementById('password-reset-screen').style.display = 'none';
+    showChatScreen();
+  } catch (e) {
+    errorEl.textContent = 'Cannot reach server';
+    errorEl.style.display = 'block';
+  }
+}
+
+// --- Chat Screen Setup ---
+async function showChatScreen() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('password-reset-screen').style.display = 'none';
+  document.getElementById('chat-screen').style.display = 'flex';
+
+  const userInitial = user.displayName.charAt(0).toUpperCase();
+  document.getElementById('user-avatar').textContent = userInitial;
+  document.getElementById('user-badge').textContent = user.displayName;
+
+  // Load models from API
+  try {
+    const res = await fetch(`${API_BASE}/models`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    const data = await res.json();
+    const select = document.getElementById('model-select');
+    select.innerHTML = '';
+
+    // Add "Auto (recommended)" as the first/default option
+    const autoOpt = document.createElement('option');
+    autoOpt.value = '';
+    autoOpt.textContent = 'Auto';
+    autoOpt.selected = true;
+    select.appendChild(autoOpt);
+
+    data.models.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.modelId;
+      opt.textContent = m.displayName;
+      select.appendChild(opt);
+    });
+
+    pricingConfig = { models: {} };
+    data.models.forEach(m => {
+      if (m.pricing) {
+        pricingConfig.models[m.modelId] = m.pricing;
+      }
+      if (m.capability) {
+        modelCapabilities[m.modelId] = m.capability;
+      }
+    });
+  } catch (e) {
+    addMessage('error', 'Failed to load models');
+  }
+
+  // Load active session history
+  await loadSessionHistory();
+
+  // Fetch USD → IDR conversion rate (once per session)
+  fetchIdrRate();
+
+  document.getElementById('prompt-input').focus();
+}
+
+// --- Load Active Session History ---
+async function loadSessionHistory() {
+  try {
+    const res = await fetch(`${API_BASE}/inference/sessions/active`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+
+    if (!res.ok) {
+      // If 404 or 410, clear session state and start fresh
+      if (res.status === 404 || res.status === 410) {
+        currentSessionId = null;
+        return;
+      }
+      return;
+    }
+
+    const data = await res.json();
+
+    if (data.session && data.session.id) {
+      currentSessionId = data.session.id;
+    } else {
+      currentSessionId = null;
+    }
+
+    // Render history messages if any exist
+    if (data.messages && data.messages.length > 0) {
+      // Remove empty state if exists
+      const emptyState = document.querySelector('.empty-state');
+      if (emptyState) emptyState.remove();
+
+      for (const msg of data.messages) {
+        addMessage(msg.role, msg.content);
+      }
+    }
+  } catch (e) {
+    // Graceful degradation: no history loaded, fresh start
+    console.warn('Failed to load session history:', e.message);
+    currentSessionId = null;
+  }
+}
+
+// --- Model Display Name Mapping ---
+function getModelDisplayName(modelId) {
+  const MODEL_DISPLAY_NAMES = {
+    'qwen.qwen3-32b-v1:0': 'Qwen3 32B',
+    'qwen.qwen3-235b-a22b-2507-v1:0': 'Qwen3 235B',
+    'openai.gpt-oss-120b-1:0': 'GPT OSS 120B',
+  };
+  return MODEL_DISPLAY_NAMES[modelId] || modelId;
+}
+
+// --- Send Message ---
+async function handleSend() {
+  if (isStreaming) return;
+  const input = document.getElementById('prompt-input');
+  const prompt = input.value.trim();
+  if (!prompt && attachedFiles.length === 0) return;
+
+  const modelId = document.getElementById('model-select').value;
+  input.value = '';
+  input.style.height = 'auto';
+
+  // Remove empty state if exists
+  const emptyState = document.querySelector('.empty-state');
+  if (emptyState) emptyState.remove();
+
+  addMessage('user', prompt || '(files attached)');
+  setStreaming(true);
+
+  // Create assistant message placeholder with thinking indicator
+  const assistantEl = addMessage('assistant', '');
+  const modelLabel = modelId ? getModelDisplayName(modelId) : 'Auto';
+  assistantEl.querySelector('.assistant-content').innerHTML = `<span style="color: var(--text-tertiary); font-size: 0.875rem;">⏳ ${modelId ? 'Sending to ' + modelLabel + '...' : 'Routing & refining prompt...'}</span>`;
+  let fullText = '';
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let executedModelId = modelId; // track which model actually ran
+
+  try {
+    let res;
+
+    if (attachedFiles.length > 0) {
+      // Multipart/form-data request with files
+      const formData = new FormData();
+      formData.append('prompt', prompt);
+      if (modelId) {
+        formData.append('modelId', modelId);
+      }
+      if (currentSessionId) {
+        formData.append('sessionId', currentSessionId);
+      }
+      attachedFiles.forEach(file => {
+        formData.append('files', file);
+      });
+
+      res = await fetch(`${API_BASE}/inference/generate`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      // Clear attached files after sending
+      attachedFiles = [];
+      renderFilePreviews();
+      checkModelCompatibility();
+    } else {
+      // JSON request (no files)
+      const body = { prompt };
+      if (modelId) {
+        body.modelId = modelId;
+      }
+      if (currentSessionId) {
+        body.sessionId = currentSessionId;
+      }
+
+      res = await fetch(`${API_BASE}/inference/generate`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+    }
+
+    if (!res.ok) {
+      const err = await res.json();
+      // Handle invalid/expired session errors by clearing state
+      if (res.status === 404 || res.status === 410 || err.error === 'SESSION_EXPIRED' || err.error === 'SESSION_NOT_FOUND') {
+        currentSessionId = null;
+        assistantEl.remove();
+        document.getElementById('messages').innerHTML = `
+          <div class="empty-state">
+            <h2>How can I help you today?</h2>
+            <p>Ask anything. Your data is automatically masked for compliance before processing.</p>
+          </div>
+        `;
+        showToast('Previous session expired. Started new session.');
+        setStreaming(false);
+        return;
+      }
+      assistantEl.remove();
+      addMessage('error', `${err.error}: ${err.message}`);
+      setStreaming(false);
+      return;
+    }
+
+    // Parse SSE stream
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // keep incomplete line in buffer
+
+      let eventType = '';
+      for (const line of lines) {
+        if (line.startsWith('event: ')) {
+          eventType = line.slice(7);
+        } else if (line.startsWith('data: ')) {
+          const data = JSON.parse(line.slice(6));
+
+          if (eventType === 'delta') {
+            fullText += data.content;
+            assistantEl.querySelector('.assistant-content').innerHTML = formatMessage(fullText);
+            scrollToBottom();
+          } else if (eventType === 'session') {
+            // Store the session ID from the server
+            if (data.sessionId) {
+              currentSessionId = data.sessionId;
+            }
+          } else if (eventType === 'session_status') {
+            // Handle degraded session notification
+            if (data.is_degraded) {
+              showDegradedBanner();
+            }
+          } else if (eventType === 'metadata') {
+            inputTokens = data.inputTokens;
+            outputTokens = data.outputTokens;
+            if (data.modelId) executedModelId = data.modelId;
+            updateCurrentCost(executedModelId, inputTokens, outputTokens);
+          } else if (eventType === 'routing') {
+            // Routing metadata event — capture executed model and display indicator
+            if (data.executedModelId) executedModelId = data.executedModelId;
+            const displayName = getModelDisplayName(data.executedModelId || executedModelId);
+            const scoreBand = data.scoreBand || (data.routingState === 'manual' ? 'manual-override' : '');
+            const indicatorText = scoreBand
+              ? `⚡ ${displayName} • ${scoreBand}`
+              : `⚡ ${displayName}`;
+            // Insert routing indicator above the assistant content
+            let routingEl = assistantEl.querySelector('.routing-indicator');
+            if (!routingEl) {
+              routingEl = document.createElement('div');
+              routingEl.className = 'routing-indicator';
+              assistantEl.insertBefore(routingEl, assistantEl.firstChild);
+            }
+            routingEl.innerHTML = `${indicatorText} <span class="toggle-details" onclick="this.parentElement.nextElementSibling.classList.toggle('visible')">▶ details</span>`;
+
+            // Add routing details panel
+            let detailsEl = assistantEl.querySelector('.routing-details');
+            if (!detailsEl) {
+              detailsEl = document.createElement('div');
+              detailsEl.className = 'routing-details';
+              routingEl.after(detailsEl);
+            }
+            const details = [];
+            details.push(`<b>Routing State:</b> ${data.routingState || 'auto'}`);
+            details.push(`<b>Executed Model:</b> ${data.executedModelId || 'unknown'}`);
+            if (data.complexityScore) details.push(`<b>Complexity Score:</b> ${data.complexityScore}/5 (${data.scoreBand})`);
+            if (data.routingReasonCode) details.push(`<b>Reason:</b> ${data.routingReasonCode}`);
+            if (data.reasoningSummary) details.push(`<b>Summary:</b> ${data.reasoningSummary}`);
+            if (data.modalityFlags) {
+              const mf = data.modalityFlags;
+              const modality = mf.mixed ? 'mixed' : mf.image ? 'image' : mf.documentText ? 'document+text' : 'text-only';
+              details.push(`<b>Modality:</b> ${modality}`);
+            }
+            if (data.refinedPrompt && data.refinedPrompt !== data.originalPrompt) {
+              details.push(`<b>Refined Prompt:</b> ${escapeHtml(data.refinedPrompt.substring(0, 200))}${data.refinedPrompt.length > 200 ? '...' : ''}`);
+            }
+            detailsEl.innerHTML = details.join('<br>');
+          } else if (eventType === 'error') {
+            if (data.error === 'SESSION_EXPIRED' || data.error === 'SESSION_NOT_FOUND') {
+              // Clear chat UI and reset session
+              assistantEl.remove();
+              currentSessionId = null;
+              document.getElementById('messages').innerHTML = `
+                <div class="empty-state">
+                  <h2>How can I help you today?</h2>
+                  <p>Ask anything. Your data is automatically masked for compliance before processing.</p>
+                </div>
+              `;
+              showToast('Previous session expired. Started new session.');
+            } else {
+              assistantEl.remove();
+              addMessage('error', `${data.error}: ${data.message}`);
+            }
+          }
+          eventType = '';
+        }
+      }
+    }
+
+    // Finalize cost tracking
+    if (inputTokens > 0 || outputTokens > 0) {
+      const cost = calculateCost(executedModelId, inputTokens, outputTokens);
+      sessionCosts.push({ modelId: executedModelId, inputTokens, outputTokens, cost });
+      sessionTotal += cost;
+      updateSessionDisplay();
+    }
+
+  } catch (e) {
+    assistantEl.remove();
+    addMessage('error', `Network error: ${e.message}`);
+  }
+
+  setStreaming(false);
+}
+
+// --- Message Formatting (Markdown to HTML) ---
+function renderLatex(latex, displayMode) {
+  try {
+    return katex.renderToString(latex, { displayMode, throwOnError: false, trust: true });
+  } catch (e) {
+    // If KaTeX fails, return escaped original text
+    return displayMode
+      ? `<pre class="math-display">${escapeHtml(latex)}</pre>`
+      : `<code>${escapeHtml(latex)}</code>`;
+  }
+}
+
+function formatMessage(text) {
+  if (!text) return '';
+
+  // Step 1: Extract and protect display math blocks ($$...$$ and \[...\])
+  // before markdown processing so they don't get mangled
+  const mathBlocks = [];
+  let processed = text;
+
+  // Display math: $$...$$ (multiline)
+  processed = processed.replace(/\$\$([\s\S]*?)\$\$/g, (_, latex) => {
+    const idx = mathBlocks.length;
+    mathBlocks.push({ latex: latex.trim(), display: true });
+    return `\x00MATH_BLOCK_${idx}\x00`;
+  });
+
+  // Display math: \[...\] (multiline)
+  processed = processed.replace(/\\\[([\s\S]*?)\\\]/g, (_, latex) => {
+    const idx = mathBlocks.length;
+    mathBlocks.push({ latex: latex.trim(), display: true });
+    return `\x00MATH_BLOCK_${idx}\x00`;
+  });
+
+  // Inline math: \(...\)
+  processed = processed.replace(/\\\(([\s\S]*?)\\\)/g, (_, latex) => {
+    const idx = mathBlocks.length;
+    mathBlocks.push({ latex: latex.trim(), display: false });
+    return `\x00MATH_BLOCK_${idx}\x00`;
+  });
+
+  // Inline math: $...$ (single line, not preceded/followed by space+digit pattern that looks like currency)
+  processed = processed.replace(/(?<!\$)\$(?!\$)([^\n$]+?)\$(?!\$)/g, (_, latex) => {
+    const idx = mathBlocks.length;
+    mathBlocks.push({ latex: latex.trim(), display: false });
+    return `\x00MATH_BLOCK_${idx}\x00`;
+  });
+
+  // Step 2: Run markdown formatting on the processed text
+  const html = formatMarkdown(processed);
+
+  // Step 3: Replace math placeholders with rendered KaTeX
+  return html.replace(/\x00MATH_BLOCK_(\d+)\x00/g, (_, idx) => {
+    const block = mathBlocks[parseInt(idx)];
+    if (typeof katex !== 'undefined') {
+      return block.display
+        ? `<div class="math-display">${renderLatex(block.latex, true)}</div>`
+        : `<span class="math-inline">${renderLatex(block.latex, false)}</span>`;
+    }
+    // KaTeX not loaded yet — show raw
+    return block.display
+      ? `<pre class="math-display">${escapeHtml(block.latex)}</pre>`
+      : `<code>${escapeHtml(block.latex)}</code>`;
+  });
+}
+
+function formatMarkdown(text) {
+  if (!text) return '';
+  
+  // Split into lines for block-level processing
+  const lines = text.split('\n');
+  let html = '';
+  let inCodeBlock = false;
+  let codeBlockLang = '';
+  let codeBlockContent = '';
+  let inList = false;
+  let listType = ''; // 'ul' or 'ol'
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    
+    // Code blocks
+    if (line.startsWith('```')) {
+      if (!inCodeBlock) {
+        inCodeBlock = true;
+        codeBlockLang = line.slice(3).trim();
+        codeBlockContent = '';
+      } else {
+        html += `<pre><code${codeBlockLang ? ` class="language-${codeBlockLang}"` : ''}>${escapeHtml(codeBlockContent.trimEnd())}</code></pre>`;
+        inCodeBlock = false;
+        codeBlockLang = '';
+      }
+      continue;
+    }
+    
+    if (inCodeBlock) {
+      codeBlockContent += (codeBlockContent ? '\n' : '') + line;
+      continue;
+    }
+    
+    // Close list if line is not a list item
+    const isUnorderedItem = /^[\-\*]\s+/.test(line);
+    const isOrderedItem = /^\d+\.\s+/.test(line);
+    
+    if (inList && !isUnorderedItem && !isOrderedItem && line.trim() !== '') {
+      html += listType === 'ul' ? '</ul>' : '</ol>';
+      inList = false;
+      listType = '';
+    }
+    
+    // Headers
+    if (/^#{1,6}\s/.test(line)) {
+      const level = line.match(/^(#{1,6})\s/)[1].length;
+      const content = line.replace(/^#{1,6}\s+/, '');
+      html += `<h${level} style="margin: 1rem 0 0.5rem; font-size: ${1.4 - level * 0.1}rem;">${inlineFormat(content)}</h${level}>`;
+      continue;
+    }
+    
+    // Horizontal rule
+    if (/^(---|\*\*\*|___)\s*$/.test(line)) {
+      html += '<hr style="border: none; border-top: 1px solid var(--border); margin: 1rem 0;">';
+      continue;
+    }
+    
+    // Unordered list items
+    if (isUnorderedItem) {
+      if (!inList || listType !== 'ul') {
+        if (inList) html += listType === 'ul' ? '</ul>' : '</ol>';
+        html += '<ul style="margin: 0.5rem 0; padding-left: 1.5rem;">';
+        inList = true;
+        listType = 'ul';
+      }
+      const content = line.replace(/^[\-\*]\s+/, '');
+      html += `<li style="margin: 0.25rem 0;">${inlineFormat(content)}</li>`;
+      continue;
+    }
+    
+    // Ordered list items
+    if (isOrderedItem) {
+      if (!inList || listType !== 'ol') {
+        if (inList) html += listType === 'ul' ? '</ul>' : '</ol>';
+        html += '<ol style="margin: 0.5rem 0; padding-left: 1.5rem;">';
+        inList = true;
+        listType = 'ol';
+      }
+      const content = line.replace(/^\d+\.\s+/, '');
+      html += `<li style="margin: 0.25rem 0;">${inlineFormat(content)}</li>`;
+      continue;
+    }
+    
+    // Blockquotes
+    if (line.startsWith('> ')) {
+      const content = line.slice(2);
+      html += `<blockquote style="border-left: 3px solid var(--accent); padding-left: 1rem; margin: 0.5rem 0; color: var(--text-secondary);">${inlineFormat(content)}</blockquote>`;
+      continue;
+    }
+    
+    // Empty line = paragraph break
+    if (line.trim() === '') {
+      html += '<br>';
+      continue;
+    }
+    
+    // Regular paragraph
+    html += `<p style="margin: 0.25rem 0;">${inlineFormat(line)}</p>`;
+  }
+  
+  // Close any open list
+  if (inList) {
+    html += listType === 'ul' ? '</ul>' : '</ol>';
+  }
+  
+  // Close any unclosed code block
+  if (inCodeBlock) {
+    html += `<pre><code>${escapeHtml(codeBlockContent)}</code></pre>`;
+  }
+  
+  return html;
+}
+
+// Inline markdown formatting
+function inlineFormat(text) {
+  return text
+    // Bold + italic
+    .replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>')
+    // Bold
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    // Italic
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    // Inline code
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    // Links
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" style="color: var(--accent);">$1</a>')
+    // Strikethrough
+    .replace(/~~(.*?)~~/g, '<del>$1</del>');
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// --- Cost Calculation ---
+function calculateCost(modelId, inputTokens, outputTokens) {
+  if (!pricingConfig || !pricingConfig.models[modelId]) return 0;
+  const p = pricingConfig.models[modelId];
+  return (inputTokens * p.inputPricePer1MTokens + outputTokens * p.outputPricePer1MTokens) / 1_000_000;
+}
+
+function formatCost(usdAmount) {
+  if (idrRate !== null) {
+    const idrAmount = usdAmount * idrRate;
+    return `Rp ${idrAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+  return `$${usdAmount.toFixed(6)}`;
+}
+
+function updateCurrentCost(modelId, inputTokens, outputTokens) {
+  const cost = calculateCost(modelId, inputTokens, outputTokens);
+  document.getElementById('current-cost').textContent = formatCost(cost);
+  document.getElementById('tokens-in').textContent = inputTokens.toLocaleString();
+  document.getElementById('tokens-out').textContent = outputTokens.toLocaleString();
+}
+
+function updateSessionDisplay() {
+  document.getElementById('session-cost').textContent = formatCost(sessionTotal);
+  document.getElementById('request-count').textContent = sessionCosts.length;
+}
+
+async function fetchIdrRate() {
+  try {
+    const res = await fetch('https://api.budjet.org/fiat/USD/IDR');
+    if (!res.ok) {
+      console.warn('[cost] IDR rate API returned', res.status, '— using USD');
+      return;
+    }
+    const data = await res.json();
+    if (data && typeof data.conversion_rate === 'number') {
+      idrRate = data.conversion_rate;
+      // Re-render current cost displays with IDR
+      document.getElementById('session-cost').textContent = formatCost(sessionTotal);
+      document.getElementById('current-cost').textContent = formatCost(0);
+    }
+  } catch (e) {
+    console.warn('[cost] Failed to fetch IDR rate:', e.message);
+  }
+}
+
+// --- UI Helpers ---
+function addMessage(type, text) {
+  const messagesContainer = document.getElementById('messages');
+  const el = document.createElement('div');
+  el.className = `message ${type}`;
+
+  if (type === 'user') {
+    el.innerHTML = `<div class="user-content">${escapeHtml(text)}</div>`;
+  } else if (type === 'assistant') {
+    el.innerHTML = `<div class="assistant-content">${formatMessage(text)}</div>`;
+    // Add top-right copy button
+    const copyBtnTop = createCopyButton(el);
+    copyBtnTop.classList.add('copy-btn-top');
+    el.appendChild(copyBtnTop);
+    // Add bottom-right copy button
+    const copyBtnBottom = createCopyButton(el);
+    copyBtnBottom.classList.add('copy-btn-bottom');
+    el.appendChild(copyBtnBottom);
+  } else {
+    el.textContent = text;
+  }
+
+  messagesContainer.appendChild(el);
+  scrollToBottom();
+  return el;
+}
+
+function createCopyButton(messageEl) {
+  const btn = document.createElement('button');
+  btn.className = 'copy-btn';
+  btn.title = 'Copy response';
+  btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><span>Copy</span>`;
+  btn.onclick = () => copyAssistantMessage(btn, messageEl);
+  return btn;
+}
+
+function scrollToBottom() {
+  const msgs = document.getElementById('messages');
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function copyAssistantMessage(btn, messageEl) {
+  const content = messageEl.querySelector('.assistant-content');
+  if (!content) return;
+  const text = content.innerText || content.textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    btn.classList.add('copied');
+    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg><span>Copied</span>`;
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><span>Copy</span>`;
+    }, 2000);
+  }).catch(() => {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textarea);
+    btn.classList.add('copied');
+    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg><span>Copied</span>`;
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><span>Copy</span>`;
+    }, 2000);
+  });
+}
+
+function setStreaming(val) {
+  isStreaming = val;
+  const btn = document.getElementById('send-btn');
+  const input = document.getElementById('prompt-input');
+  btn.disabled = val;
+  input.disabled = val;
+
+  if (val) {
+    btn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="12"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1s" repeatCount="indefinite"/></circle></svg>`;
+  } else {
+    btn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>`;
+    input.focus();
+  }
+
+  // Disable/enable file attachment controls during streaming
+  const attachBtn = document.getElementById('attach-btn');
+  const fileInput = document.getElementById('file-input');
+  const previewArea = document.getElementById('file-preview-area');
+
+  attachBtn.disabled = val;
+  fileInput.disabled = val;
+
+  if (val) {
+    previewArea.classList.add('disabled');
+  } else {
+    previewArea.classList.remove('disabled');
+  }
+}
+
+function handleKeyDown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    handleSend();
+  }
+}
+
+function handleLogout() {
+  token = null;
+  resetToken = null;
+  user = null;
+  currentSessionId = null;
+  sessionCosts = [];
+  sessionTotal = 0;
+  document.getElementById('chat-screen').style.display = 'none';
+  document.getElementById('password-reset-screen').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('messages').innerHTML = `
+    <div class="empty-state">
+      <h2>How can I help you today?</h2>
+      <p>Ask anything. Your data is automatically masked for compliance before processing.</p>
+    </div>
+  `;
+  document.getElementById('password').value = '';
+  document.getElementById('prompt-input').value = '';
+  document.getElementById('session-cost').textContent = formatCost(0);
+  document.getElementById('current-cost').textContent = formatCost(0);
+  document.getElementById('tokens-in').textContent = '0';
+  document.getElementById('tokens-out').textContent = '0';
+  document.getElementById('request-count').textContent = '0';
+}
+
+// --- New Chat ---
+async function handleNewChat() {
+  if (isStreaming) return;
+
+  try {
+    await fetch(`${API_BASE}/inference/sessions/reset`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+  } catch (e) {
+    // Best-effort reset — continue clearing UI even if request fails
+  }
+
+  currentSessionId = null;
+  hideDegradedBanner();
+  document.getElementById('messages').innerHTML = `
+    <div class="empty-state">
+      <h2>How can I help you today?</h2>
+      <p>Ask anything. Your data is automatically masked for compliance before processing.</p>
+    </div>
+  `;
+  document.getElementById('prompt-input').value = '';
+  document.getElementById('prompt-input').focus();
+}
+
+// --- Auto-resize textarea + Drag and Drop Setup ---
+document.addEventListener('DOMContentLoaded', () => {
+  const ta = document.getElementById('prompt-input');
+  ta.addEventListener('input', () => {
+    ta.style.height = 'auto';
+    ta.style.height = Math.min(ta.scrollHeight, 200) + 'px';
+  });
+
+  // --- Drag and Drop Setup ---
+  const inputArea = document.getElementById('input-area');
+  const dropZone = document.getElementById('drop-zone');
+
+  inputArea.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isStreaming) dropZone.classList.add('active');
+  });
+
+  inputArea.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isStreaming) dropZone.classList.add('active');
+  });
+
+  inputArea.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!inputArea.contains(e.relatedTarget)) {
+      dropZone.classList.remove('active');
+    }
+  });
+
+  inputArea.addEventListener('drop', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dropZone.classList.remove('active');
+    if (isStreaming) return;
+    const files = Array.from(e.dataTransfer.files);
+    handleFileSelection(files);
+  });
+});
+
+// --- File Upload Functions ---
+function handleFilePicker(event) {
+  const files = Array.from(event.target.files);
+  handleFileSelection(files);
+  event.target.value = '';
+}
+
+function handleFileSelection(files) {
+  clearFileError();
+
+  for (const file of files) {
+    if (!ALLOWED_MIME_TYPES.includes(file.type)) {
+      showFileError(`"${file.name}" has an unsupported file type. Allowed: PDF, DOCX, PNG, JPG, WEBP.`);
+      return;
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      showFileError(`"${file.name}" exceeds the 10 MB size limit (${formatFileSize(file.size)}).`);
+      return;
+    }
+  }
+
+  if (attachedFiles.length + files.length > MAX_FILE_COUNT) {
+    showFileError(`Cannot attach more than ${MAX_FILE_COUNT} files. Currently attached: ${attachedFiles.length}.`);
+    return;
+  }
+
+  for (const file of files) {
+    attachedFiles.push(file);
+  }
+
+  renderFilePreviews();
+  checkModelCompatibility();
+}
+
+function removeFile(index) {
+  attachedFiles.splice(index, 1);
+  clearFileError();
+  renderFilePreviews();
+  checkModelCompatibility();
+}
+
+function renderFilePreviews() {
+  const previewArea = document.getElementById('file-preview-area');
+  previewArea.innerHTML = '';
+
+  if (attachedFiles.length === 0) {
+    previewArea.classList.remove('has-files');
+    return;
+  }
+
+  previewArea.classList.add('has-files');
+
+  attachedFiles.forEach((file, index) => {
+    const item = document.createElement('div');
+    item.className = 'file-preview-item';
+
+    if (file.type.startsWith('image/')) {
+      const thumb = document.createElement('img');
+      thumb.className = 'file-thumb';
+      thumb.src = URL.createObjectURL(file);
+      thumb.onload = () => URL.revokeObjectURL(thumb.src);
+      item.appendChild(thumb);
+    } else {
+      const icon = document.createElement('div');
+      icon.className = 'file-icon';
+      icon.textContent = file.name.split('.').pop();
+      item.appendChild(icon);
+    }
+
+    const info = document.createElement('div');
+    info.className = 'file-info';
+    const name = document.createElement('span');
+    name.className = 'file-name';
+    name.textContent = file.name;
+    name.title = file.name;
+    const size = document.createElement('span');
+    size.className = 'file-size';
+    size.textContent = formatFileSize(file.size);
+    info.appendChild(name);
+    info.appendChild(size);
+    item.appendChild(info);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'file-remove';
+    removeBtn.textContent = '×';
+    removeBtn.title = 'Remove file';
+    removeBtn.onclick = () => removeFile(index);
+    item.appendChild(removeBtn);
+
+    previewArea.appendChild(item);
+  });
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function showFileError(message) {
+  const errorArea = document.getElementById('file-error-area');
+  errorArea.textContent = message;
+  errorArea.classList.add('visible');
+}
+
+function clearFileError() {
+  const errorArea = document.getElementById('file-error-area');
+  errorArea.textContent = '';
+  errorArea.classList.remove('visible');
+}
+
+// --- Model Compatibility Check ---
+function checkModelCompatibility() {
+  const warningEl = document.getElementById('model-compat-warning');
+  const modelId = document.getElementById('model-select').value;
+  const capability = modelCapabilities[modelId];
+
+  // Check if any attached files are images
+  const hasImages = attachedFiles.some(f => f.type.startsWith('image/'));
+
+  // If auto mode (empty value) or no images, no warning needed
+  if (!modelId || !hasImages || capability !== 'text-only') {
+    warningEl.classList.remove('visible');
+  } else {
+    warningEl.classList.add('visible');
+  }
+}
+
+// --- Degraded Banner & Toast Helpers ---
+function showDegradedBanner() {
+  const banner = document.getElementById('degraded-banner');
+  banner.classList.add('visible');
+}
+
+function hideDegradedBanner() {
+  const banner = document.getElementById('degraded-banner');
+  banner.classList.remove('visible');
+}
+
+function showToast(message) {
+  const toast = document.getElementById('toast-notification');
+  toast.textContent = message;
+  toast.classList.add('visible');
+  setTimeout(() => {
+    toast.classList.remove('visible');
+  }, 5000);
+}
+</script>
+
+<div class="toast-notification" id="toast-notification"></div>
+
+</body>
+</html>

@@ -1,0 +1,31 @@
+{
+  "currency": "USD",
+  "lastUpdated": "2026-06-23",
+  "models": {
+    "nvidia.nemotron-super-3-120b": {
+      "displayName": "NVIDIA Nemotron Super 3 120B",
+      "inputPricePer1MTokens": 0.18,
+      "outputPricePer1MTokens": 0.78
+    },
+    "openai.gpt-oss-120b-1:0": {
+      "displayName": "OpenAI GPT OSS 120B",
+      "inputPricePer1MTokens": 0.16,
+      "outputPricePer1MTokens": 0.62
+    },
+    "qwen.qwen3-235b-a22b-2507-v1:0": {
+      "displayName": "Qwen3 235B A22B",
+      "inputPricePer1MTokens": 0.23,
+      "outputPricePer1MTokens": 0.91
+    },
+    "qwen.qwen3-32b-v1:0": {
+      "displayName": "Qwen3 32B (Default)",
+      "inputPricePer1MTokens": 0.16,
+      "outputPricePer1MTokens": 0.62
+    },
+    "deepseek.v3-v1:0": {
+      "displayName": "DeepSeek V3",
+      "inputPricePer1MTokens": 0.60,
+      "outputPricePer1MTokens": 1.74
+    }
+  }
+}

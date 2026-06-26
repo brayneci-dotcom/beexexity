@@ -1,0 +1,73 @@
+import { query } from '../config/database.js';
+import { AuditEntry } from '../types/audit.types.js';
+
+/**
+ * Audit Logger Service.
+ * Persists request metadata to the audit_logs table asynchronously.
+ * Fire-and-forget pattern — never blocks the inference response.
+ *
+ * @see Requirements 8.1, 8.2, 8.3, 8.4
+ */
+class AuditService {
+  /**
+   * Log an audit entry to the database.
+   * This method is designed for fire-and-forget usage — callers should
+   * invoke it without awaiting (or catch any rejection silently).
+   *
+   * Graceful degradation: if the DB insert fails, the error is logged
+   * to console but never thrown to the caller.
+   */
+  async log(entry: AuditEntry): Promise<void> {
+    try {
+      await query(
+        `INSERT INTO audit_logs (
+          timestamp,
+          user_id,
+          username,
+          model_id,
+          input_tokens,
+          output_tokens,
+          status,
+          error_category,
+          duration_ms,
+          file_count,
+          file_mime_types,
+          total_file_size,
+          is_multimodal,
+          session_id,
+          replayed_message_count,
+          context_truncated,
+          context_summarized,
+          session_state,
+          turn_count
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+        [
+          entry.timestamp,
+          entry.userId,
+          entry.username,
+          entry.modelId,
+          entry.inputTokens,
+          entry.outputTokens,
+          entry.status,
+          entry.errorCategory ?? null,
+          entry.durationMs,
+          entry.fileCount ?? null,
+          entry.fileMimeTypes ?? null,
+          entry.totalFileSize ?? null,
+          entry.isMultimodal ?? false,
+          entry.sessionId ?? null,
+          entry.replayedMessageCount ?? null,
+          entry.contextTruncated ?? false,
+          entry.contextSummarized ?? false,
+          entry.sessionState ?? null,
+          entry.turnCount ?? null,
+        ],
+      );
+    } catch (error) {
+      // Graceful degradation: log to console but never crash
+      console.error('[AuditService] Failed to persist audit log entry:', error);
+    }
+  }
+}
+
+export const auditService = new AuditService();

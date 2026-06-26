@@ -1,0 +1,59 @@
+import express, { Request, Response, NextFunction } from 'express';
+import cors from 'cors';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+import authRoutes from './routes/auth.routes.js';
+import adminRoutes from './routes/admin.routes.js';
+import modelsRoutes from './routes/models.routes.js';
+import { inferenceRouter } from './routes/inference.routes.js';
+import { ErrorResponse } from './types/error.types.js';
+import { securityHeaders, apiRateLimit } from './middleware/security.middleware.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * Express application setup with middleware stack and route mounting.
+ * @see Requirements 6.5, 7.5
+ */
+const app = express();
+
+// --- Security ---
+app.disable('x-powered-by');
+app.set('trust proxy', 1); // trust first proxy for correct IP in rate limiting
+
+// --- Middleware Stack ---
+app.use(securityHeaders);
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || 'https://bedrock-inference-gateway.fly.dev',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  maxAge: 86400,
+}));
+app.use(express.json({ limit: '10kb' })); // limit body size to prevent abuse
+app.use(apiRateLimit);
+
+// --- Static Frontend ---
+app.use(express.static(join(__dirname, '..', 'public')));
+
+// --- Route Mounting ---
+app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/admin', adminRoutes);
+app.use('/api/v1/models', modelsRoutes);
+app.use('/api/v1/inference', inferenceRouter);
+
+// --- Global Error Handler ---
+// Catches unhandled errors and returns a sanitized response.
+// Internal details are logged server-side but never exposed to the client.
+app.use((err: Error, _req: Request, res: Response, _next: NextFunction): void => {
+  // Log the actual error internally for debugging
+  console.error('[Unhandled Error]', err);
+
+  const errorResponse: ErrorResponse = {
+    error: 'INTERNAL_ERROR',
+    message: 'An unexpected error occurred',
+  };
+
+  res.status(500).json(errorResponse);
+});
+
+export default app;
