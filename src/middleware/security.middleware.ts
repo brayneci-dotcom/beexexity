@@ -7,14 +7,10 @@ import { Request, Response, NextFunction } from 'express';
 export function securityHeaders(_req: Request, res: Response, next: NextFunction): void {
   // Prevent clickjacking
   res.setHeader('X-Frame-Options', 'DENY');
-  // Prevent MIME type sniffing
-  res.setHeader('X-Content-Type-Options', 'nosniff');
   // Disable browser XSS filter (modern CSP is better)
   res.setHeader('X-XSS-Protection', '0');
   // Referrer policy
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  // Content Security Policy
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data:; connect-src 'self' https://api.budjet.org; font-src 'self' https://cdn.jsdelivr.net");
   // Strict Transport Security (enable when behind HTTPS)
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   // Remove Express fingerprint
