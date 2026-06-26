@@ -24,7 +24,7 @@ app.set('trust proxy', 1); // trust first proxy for correct IP in rate limiting
 // --- Middleware Stack ---
 app.use(securityHeaders);
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'https://bedrock-inference-gateway.fly.dev',
+  origin: process.env.CORS_ORIGIN || '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   maxAge: 86400,
@@ -33,7 +33,19 @@ app.use(express.json({ limit: '10kb' })); // limit body size to prevent abuse
 app.use(apiRateLimit);
 
 // --- Static Frontend ---
-app.use(express.static(join(__dirname, '..', 'public')));
+app.use(express.static(join(__dirname, '..', 'public'), {
+  setHeaders: (res, path) => {
+    if (path.endsWith('.html')) {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    } else if (path.endsWith('.css')) {
+      res.setHeader('Content-Type', 'text/css; charset=utf-8');
+    } else if (path.endsWith('.js')) {
+      res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    } else if (path.endsWith('.json')) {
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    }
+  },
+}));
 
 // --- Route Mounting ---
 app.use('/api/v1/auth', authRoutes);

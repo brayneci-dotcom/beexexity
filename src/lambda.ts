@@ -13,9 +13,18 @@
 import serverlessExpress from '@vendia/serverless-express';
 import app from './app.js';
 
-// Configure returns a handler function: (event, context) => Promise<response>
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const serverlessApp = (serverlessExpress as any).configure({ app });
+const serverlessApp = (serverlessExpress as any).configure({
+  app,
+  binarySettings: {
+    // Treat these as text (not base64 encoded)
+    contentTypes: [
+      'application/octet-stream',
+      'font/*',
+      'image/*',
+    ],
+  },
+});
 
 /**
  * Lambda entry point.
