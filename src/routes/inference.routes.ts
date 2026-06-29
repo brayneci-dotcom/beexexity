@@ -888,14 +888,14 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
 
         console.log(`[inference] Stage 2: enhancing OCR output with ${ENHANCE_MODEL}, enhanced prompt ${enhancedPrompt.length} chars`);
       } else {
-        // OCR returned empty — fall through to original single-stage flow
-        console.warn('[inference] OCR returned empty text, falling back to single-stage inference');
-        finalExecutedModelId = executedModelId;
+        // OCR returned empty — fall back to Qwen3-235b (native image support)
+        console.warn('[inference] OCR returned empty text, falling back to direct vision model');
+        finalExecutedModelId = ENHANCE_MODEL;
       }
     } catch (ocrError: unknown) {
-      // OCR failed — fall through to original single-stage flow
-      console.warn('[inference] OCR stage failed, falling back to single-stage inference:', (ocrError as Error).message);
-      finalExecutedModelId = executedModelId;
+      // OCR failed — fall back to Qwen3-235b which supports images natively
+      console.warn('[inference] OCR stage failed, falling back to direct vision model:', (ocrError as Error).message);
+      finalExecutedModelId = ENHANCE_MODEL;
     }
   }
 
