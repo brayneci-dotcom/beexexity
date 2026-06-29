@@ -47,7 +47,16 @@ import type { ConversationInferenceRequest, ConversationInferenceResult, Bedrock
  */
 export const activeTurns: Map<string, boolean> = new Map();
 
-
+/**
+ * Map user-facing model IDs to actual Bedrock invocation IDs.
+ * Amazon Nova models require an inference profile for on-demand access,
+ * not a raw model ID. The regional profile keeps data in ap-southeast-3.
+ */
+const OCR_INFERENCE_PROFILE = 'ap-southeast-3.amazon.nova-2-lite-v1:0';
+function resolveModelForInvocation(modelId: string): string {
+  if (modelId === 'amazon.nova-2-lite-v1:0') return OCR_INFERENCE_PROFILE;
+  return modelId;
+}
 
 export const inferenceRouter = Router();
 
@@ -355,7 +364,7 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
 
     const conversationRequest: ConversationInferenceRequest = {
       messages: conversationMessages,
-      modelId: executedModelId,
+      modelId: resolveModelForInvocation(executedModelId),
       userId: user.sub,
       ...(inferenceConfig && {
         inferenceConfig: {
@@ -367,7 +376,7 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
     };
 
     try {
-      console.log(`[inference] Calling generate() with model=${executedModelId}, prompt length=${effectivePrompt.length}, history messages=${contextOutput.historyMessageCount}`);
+      console.log(`[inference] Calling generate() with model=${resolveModelForInvocation(executedModelId)}, prompt length=${effectivePrompt.length}, history messages=${contextOutput.historyMessageCount}`);
       const result = await generate(conversationRequest, res) as ConversationInferenceResult;
 
       // 12. After streaming: store assistant message
@@ -395,7 +404,7 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
         timestamp: new Date().toISOString(),
         userId: user.sub,
         username: user.username,
-        modelId: executedModelId,
+        modelId: resolveModelForInvocation(executedModelId),
         inputTokens: result.inputTokens,
         outputTokens: result.outputTokens,
         status: 'success',
@@ -438,7 +447,7 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
         timestamp: new Date().toISOString(),
         userId: user.sub,
         username: user.username,
-        modelId: executedModelId,
+        modelId: resolveModelForInvocation(executedModelId),
         inputTokens: 0,
         outputTokens: 0,
         status: 'failed',
@@ -827,10 +836,10 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
 
   // ── Two-stage OCR pipeline ──────────────────────────────────────────
   // When images or unparseable documents are present:
-  //   Stage 1: Nova 2 Lite extracts/OCR the visual content
-  //   Stage 2: Qwen3-235b enhances the extracted text with reasoning
-  const OCR_MODEL = 'amazon.nova-2-lite-v1:0';
-  const ENHANCE_MODEL = 'qwen.qwen3-235b-a22b-2507-v1:0';
+  //   Stage 1: Nova 2 Lite extracts/OCR the visual content (via inference profile)
+  //   Stage 2: GPT-OSS 120B enhances the extracted text with reasoning
+  // Falls back to GPT-OSS 120B if Nova OCR fails (it supports images natively).
+  const ENHANCE_MODEL = 'openai.gpt-oss-120b-1:0';
 
   let ocrText: string | undefined;
   let finalExecutedModelId = executedModelId;
@@ -861,11 +870,11 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
 
   if (needsOCR) {
     try {
-      console.log(`[inference] Two-stage OCR pipeline: ${OCR_MODEL} → ${ENHANCE_MODEL}`);
+      console.log(`[inference] Two-stage OCR pipeline: ${OCR_INFERENCE_PROFILE} → ${ENHANCE_MODEL}`);
 
       // Stage 1: Nova 2 Lite extracts image/document content (non-streaming)
       const ocrStart = Date.now();
-      ocrText = await generateNonStreaming(OCR_MODEL, conversationMessages, 4096);
+      ocrText = await generateNonStreaming(OCR_INFERENCE_PROFILE, conversationMessages, 4096);
       const ocrDuration = Date.now() - ocrStart;
       console.log(`[inference] OCR stage complete in ${ocrDuration}ms, output ${ocrText.length} chars`);
 
@@ -919,7 +928,7 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
       executedModelId: finalExecutedModelId,
       routingReasonCode: needsOCR ? 'ocr-two-stage' : routingDecision.routingReasonCode,
       reasoningSummary: needsOCR
-        ? `Two-stage OCR: ${OCR_MODEL} extracted content, ${ENHANCE_MODEL} enhanced response`
+        ? `Two-stage OCR: ${OCR_INFERENCE_PROFILE} extracted content, ${ENHANCE_MODEL} enhanced response`
         : routingDecision.reasoningSummary,
       modalityFlags: routingDecision.modalityFlags,
       manualOverrideApplied: routingDecision.manualOverrideApplied,
@@ -927,10 +936,10 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
     res.write(`event: routing\ndata: ${JSON.stringify(routingMetadata)}\n\n`);
   }
 
-  // Step 15: Call generate (streams Qwen3-235b or original model)
+  // Step 15: Call generate (streams enhance model or original model)
   const conversationRequest: ConversationInferenceRequest = {
     messages: conversationMessages,
-    modelId: finalExecutedModelId,
+    modelId: resolveModelForInvocation(finalExecutedModelId),
     userId: user.sub,
     ...(inferenceConfig && {
       inferenceConfig: {
