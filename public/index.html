@@ -129,7 +129,16 @@
       font-size: 0.875rem;
       color: var(--text-secondary);
       text-align: center;
-      margin-bottom: 2rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .password-reset-box label {
+      display: block;
+      font-size: 0.8125rem;
+      color: var(--text-secondary);
+      margin-bottom: 0.35rem;
+      margin-top: 0.25rem;
+      font-weight: 500;
     }
 
     .password-reset-box input {
@@ -928,8 +937,12 @@
     <h1>Change Your Password</h1>
     <p class="subtitle">Your account requires a password change before continuing.</p>
     <div id="password-reset-error" class="password-reset-error" style="display:none"></div>
-    <input type="password" id="current-password" placeholder="Current Password" autocomplete="current-password">
-    <input type="password" id="new-password" placeholder="New Password" autocomplete="new-password">
+    <label for="current-password">Current Password</label>
+    <input type="password" id="current-password" placeholder="Enter your existing password" autocomplete="current-password">
+    <label for="new-password">New Password</label>
+    <input type="password" id="new-password" placeholder="Choose a new password" autocomplete="new-password">
+    <label for="confirm-password">Confirm New Password</label>
+    <input type="password" id="confirm-password" placeholder="Re-enter your new password" autocomplete="new-password">
     <button onclick="handlePasswordChange()">Change Password</button>
   </div>
 </div>
@@ -1073,11 +1086,18 @@ async function handleLogin() {
 async function handlePasswordChange() {
   const currentPassword = document.getElementById('current-password').value;
   const newPassword = document.getElementById('new-password').value;
+  const confirmPassword = document.getElementById('confirm-password').value;
   const errorEl = document.getElementById('password-reset-error');
   errorEl.style.display = 'none';
 
-  if (!currentPassword || !newPassword) {
-    errorEl.textContent = 'Both fields are required';
+  if (!currentPassword || !newPassword || !confirmPassword) {
+    errorEl.textContent = 'All three fields are required';
+    errorEl.style.display = 'block';
+    return;
+  }
+
+  if (newPassword !== confirmPassword) {
+    errorEl.textContent = 'New passwords do not match';
     errorEl.style.display = 'block';
     return;
   }
