@@ -32,6 +32,26 @@ app.use(cors({
 app.use(express.json({ limit: '10kb' })); // limit body size to prevent abuse
 app.use(apiRateLimit);
 
+// --- Health Check (database connectivity test) ---
+app.get('/api/v1/health', async (_req, res) => {
+  try {
+    const { pool } = await import('./config/database.js');
+    const dbResult = await pool.query('SELECT 1 AS ok');
+    res.json({
+      status: 'healthy',
+      database: dbResult.rows[0]?.ok === 1 ? 'connected' : 'unexpected',
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err: unknown) {
+    res.status(503).json({
+      status: 'unhealthy',
+      database: 'disconnected',
+      error: (err as Error).message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
 // --- Static Frontend ---
 app.use(express.static(join(__dirname, '..', 'public'), {
   setHeaders: (res, path) => {

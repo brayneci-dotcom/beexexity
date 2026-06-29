@@ -18,31 +18,47 @@ const BCRYPT_SALT_ROUNDS = 12;
  */
 export async function login(username: string, password: string): Promise<LoginResult> {
   // Query user by username — use the same error for both "user not found" and "wrong password"
-  const result = await query<{
-    id: string;
-    username: string;
-    password: string;
-    role: 'admin' | 'user';
-    display_name: string;
-    force_password_reset?: boolean;
-    created_at: string;
-    updated_at: string;
-  }>(
-    'SELECT id, username, password, role, display_name, force_password_reset, created_at, updated_at FROM users WHERE username = $1',
-    [username],
-  );
+  // to avoid revealing which credential was incorrect. Log diagnostics server-side instead.
+  let result;
+  try {
+    result = await query<{
+      id: string;
+      username: string;
+      password: string;
+      role: 'admin' | 'user';
+      display_name: string;
+      force_password_reset?: boolean;
+      created_at: string;
+      updated_at: string;
+    }>(
+      'SELECT id, username, password, role, display_name, force_password_reset, created_at, updated_at FROM users WHERE username = $1',
+      [username],
+    );
+  } catch (dbError: unknown) {
+    // Database connection / query failure — log full details for CloudWatch
+    console.error('[auth] Database query failed during login:', {
+      username,
+      error: (dbError as Error).message,
+      code: (dbError as any).code,
+    });
+    throw new Error('Authentication failed');
+  }
 
   const user = result.rows[0];
 
   if (!user) {
+    console.warn('[auth] Login failed: user not found', { username });
     throw new Error('Authentication failed');
   }
 
   const isPasswordValid = await bcrypt.compare(password, user.password);
 
   if (!isPasswordValid) {
+    console.warn('[auth] Login failed: password mismatch', { username });
     throw new Error('Authentication failed');
   }
+
+  console.log('[auth] Login succeeded', { username });
 
   const userProfile: UserProfile = {
     id: user.id,
