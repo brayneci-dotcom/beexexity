@@ -2,15 +2,20 @@ import { ImageContentBlock, ContentBuildInput, ContentBlock } from '../types/upl
 
 /**
  * Build ordered content blocks for Bedrock Converse API.
- * Order: user prompt text → labeled document texts → image blocks.
+ * Order: user prompt text → labeled document texts → document blocks → image blocks.
+ *
+ * When a document's text extraction returns empty (image-only PDF, etc.),
+ * the raw document block is included so the two-stage OCR pipeline
+ * can send it to Nova for extraction.
  *
  * Throws if no prompt and no files are provided (empty request).
  */
 export function buildContentBlocks(input: ContentBuildInput): ContentBlock[] {
-  const { maskedPrompt, documentExtractions, imageBlocks } = input;
+  const { maskedPrompt, documentExtractions, imageBlocks, documentBlocks } = input;
 
   // Reject empty requests (no prompt + no files)
-  if (!maskedPrompt && documentExtractions.length === 0 && imageBlocks.length === 0) {
+  const hasDocBlocks = documentBlocks && documentBlocks.length > 0;
+  if (!maskedPrompt && documentExtractions.length === 0 && imageBlocks.length === 0 && !hasDocBlocks) {
     throw new Error('At least one input is required: text prompt or file attachment');
   }
 
@@ -30,7 +35,12 @@ export function buildContentBlocks(input: ContentBuildInput): ContentBlock[] {
     }
   }
 
-  // 3. Image content blocks are appended after all text blocks, in upload order
+  // 3. Raw document blocks for OCR fallback (when text extraction was empty)
+  if (documentBlocks && documentBlocks.length > 0) {
+    blocks.push(...documentBlocks);
+  }
+
+  // 4. Image content blocks are appended after all text blocks, in upload order
   blocks.push(...imageBlocks);
 
   return blocks;

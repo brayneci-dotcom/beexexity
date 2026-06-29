@@ -40,11 +40,23 @@ export interface ImageContentBlock {
   };
 }
 
+export interface DocumentContentBlock {
+  document: {
+    format: 'pdf' | 'docx';
+    name: string;
+    source: {
+      bytes: string; // base64-encoded
+    };
+  };
+}
+
 export type TextContentBlock = { text: string };
-export type ContentBlock = TextContentBlock | ImageContentBlock;
+export type ContentBlock = TextContentBlock | ImageContentBlock | DocumentContentBlock;
 
 export interface ContentBuildInput {
   maskedPrompt?: string;
   documentExtractions: Array<{ text: string; filename: string }>;
   imageBlocks: ImageContentBlock[];
+  /** Document buffers for OCR fallback when text extraction returns empty */
+  documentBlocks?: DocumentContentBlock[];
 }

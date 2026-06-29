@@ -4,7 +4,7 @@ import { forcePasswordResetMiddleware } from '../middleware/password-reset.middl
 import { inferenceRateLimit } from '../middleware/security.middleware.js';
 import { uploadMiddleware, multerErrorHandler } from '../middleware/upload.middleware.js';
 import { mask } from '../services/pii-masker.service.js';
-import { validateModelId, generate, InferenceError } from '../services/inference.service.js';
+import { validateModelId, generate, generateNonStreaming, InferenceError } from '../services/inference.service.js';
 import { validateAndClassifyFiles } from '../services/upload-validator.service.js';
 import { supportsImages, getVisionModels } from '../config/model-capabilities.js';
 import { extractDocumentText } from '../services/document-extractor.service.js';
@@ -29,7 +29,7 @@ import { config } from '../config/index.js';
 import type { RoutingMetadataEvent } from '../types/inference.types.js';
 import { DEFAULT_MODEL } from '../types/inference.types.js';
 import type { RoutingInput, RoutingDecision } from '../types/routing.types.js';
-import type { ContentBlock } from '../types/upload.types.js';
+import type { ContentBlock, DocumentContentBlock } from '../types/upload.types.js';
 import type { ConversationInferenceRequest, ConversationInferenceResult, BedrockMessage } from '../types/session.types.js';
 
 /**
@@ -788,6 +788,26 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
   // Step 7: Process images into content blocks
   const imageBlocks = processImages(images);
 
+  // Build document blocks for OCR fallback when text extraction returned empty
+  const documentBlocks: DocumentContentBlock[] = [];
+  for (const doc of documents) {
+    const extraction = documentExtractions.find(e => e.filename === doc.originalname);
+    if (extraction && extraction.text.length === 0) {
+      // Text extraction returned empty — include raw document for Nova OCR
+      const format = doc.mimetype === 'application/pdf' ? 'pdf' as const : 'docx' as const;
+      documentBlocks.push({
+        document: {
+          format,
+          name: doc.originalname,
+          source: { bytes: doc.buffer.toString('base64') },
+        },
+      });
+    }
+  }
+
+  // Determine if OCR pipeline is needed
+  const needsOCR = images.length > 0 || documentBlocks.length > 0;
+
   // Step 8: Build content blocks (use refined prompt from routing if available)
   let contentBlocks: ContentBlock[];
   try {
@@ -795,6 +815,7 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
       maskedPrompt: routingEffectivePrompt,
       documentExtractions: maskedDocumentExtractions,
       imageBlocks,
+      documentBlocks,
     });
   } catch (error: unknown) {
     res.status(400).json({
@@ -802,6 +823,80 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
       message: (error as Error).message,
     });
     return;
+  }
+
+  // ── Two-stage OCR pipeline ──────────────────────────────────────────
+  // When images or unparseable documents are present:
+  //   Stage 1: Nova 2 Lite extracts/OCR the visual content
+  //   Stage 2: Qwen3-235b enhances the extracted text with reasoning
+  const OCR_MODEL = 'amazon.nova-2-lite-v1:0';
+  const ENHANCE_MODEL = 'qwen.qwen3-235b-a22b-2507-v1:0';
+
+  let ocrText: string | undefined;
+  let finalExecutedModelId = executedModelId;
+
+  // Use inference_payload from buildContext() for history, exclude the last message
+  const inferenceMessages: BedrockMessage[] = contextOutput.inference_payload.slice(0, -1);
+
+  // The current user message includes text + documents + images as content blocks
+  let currentUserContent: Array<{ text: string } | { image: any } | { document: any }> = contentBlocks.map(block => {
+    if ('text' in block) {
+      return { text: block.text };
+    }
+    if ('image' in block) {
+      return { image: (block as any).image };
+    }
+    return { document: (block as any).document };
+  });
+
+  let currentUserMessage: BedrockMessage = {
+    role: 'user',
+    content: currentUserContent as Array<{ text: string }>,
+  };
+
+  let conversationMessages: BedrockMessage[] = [
+    ...inferenceMessages,
+    currentUserMessage,
+  ];
+
+  if (needsOCR) {
+    try {
+      console.log(`[inference] Two-stage OCR pipeline: ${OCR_MODEL} → ${ENHANCE_MODEL}`);
+
+      // Stage 1: Nova 2 Lite extracts image/document content (non-streaming)
+      const ocrStart = Date.now();
+      ocrText = await generateNonStreaming(OCR_MODEL, conversationMessages, 4096);
+      const ocrDuration = Date.now() - ocrStart;
+      console.log(`[inference] OCR stage complete in ${ocrDuration}ms, output ${ocrText.length} chars`);
+
+      if (ocrText.trim().length > 0) {
+        // Stage 2: Qwen3-235b enhances the OCR output
+        finalExecutedModelId = ENHANCE_MODEL;
+
+        const enhancedPrompt = [
+          `Original request: ${routingEffectivePrompt}`,
+          '',
+          `Content extracted from uploaded file(s):`,
+          ocrText,
+          '',
+          'Please provide a comprehensive response incorporating the extracted content above.',
+        ].join('\n');
+
+        currentUserContent = [{ text: enhancedPrompt }];
+        currentUserMessage = { role: 'user', content: currentUserContent as Array<{ text: string }> };
+        conversationMessages = [...inferenceMessages, currentUserMessage];
+
+        console.log(`[inference] Stage 2: enhancing OCR output with ${ENHANCE_MODEL}, enhanced prompt ${enhancedPrompt.length} chars`);
+      } else {
+        // OCR returned empty — fall through to original single-stage flow
+        console.warn('[inference] OCR returned empty text, falling back to single-stage inference');
+        finalExecutedModelId = executedModelId;
+      }
+    } catch (ocrError: unknown) {
+      // OCR failed — fall through to original single-stage flow
+      console.warn('[inference] OCR stage failed, falling back to single-stage inference:', (ocrError as Error).message);
+      finalExecutedModelId = executedModelId;
+    }
   }
 
   // Step 14: Set SSE headers
@@ -821,42 +916,21 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
       complexityScore: routingDecision.complexityScore,
       scoreBand: routingDecision.scoreBand,
       routingState: routingDecision.routingState,
-      executedModelId: routingDecision.executedModelId,
-      routingReasonCode: routingDecision.routingReasonCode,
-      reasoningSummary: routingDecision.reasoningSummary,
+      executedModelId: finalExecutedModelId,
+      routingReasonCode: needsOCR ? 'ocr-two-stage' : routingDecision.routingReasonCode,
+      reasoningSummary: needsOCR
+        ? `Two-stage OCR: ${OCR_MODEL} extracted content, ${ENHANCE_MODEL} enhanced response`
+        : routingDecision.reasoningSummary,
       modalityFlags: routingDecision.modalityFlags,
       manualOverrideApplied: routingDecision.manualOverrideApplied,
     };
     res.write(`event: routing\ndata: ${JSON.stringify(routingMetadata)}\n\n`);
   }
 
-  // Step 15: Call generate with content blocks and conversation context
-  // Build ConversationInferenceRequest: context history messages + current prompt (with file content blocks) as final message
-  // Use inference_payload from buildContext() for history, exclude the last message (current prompt placeholder)
-  const inferenceMessages: BedrockMessage[] = contextOutput.inference_payload.slice(0, -1);
-
-  // The current user message includes text + documents + images as content blocks
-  const currentUserContent: Array<{ text: string } | { image: any }> = contentBlocks.map(block => {
-    if ('text' in block) {
-      return { text: block.text };
-    }
-    return { image: (block as any).image };
-  });
-
-  const currentUserMessage: BedrockMessage = {
-    role: 'user',
-    content: currentUserContent as Array<{ text: string }>,
-  };
-
-  // Build full messages array: history + current user message
-  const conversationMessages: BedrockMessage[] = [
-    ...inferenceMessages,
-    currentUserMessage,
-  ];
-
+  // Step 15: Call generate (streams Qwen3-235b or original model)
   const conversationRequest: ConversationInferenceRequest = {
     messages: conversationMessages,
-    modelId: executedModelId,
+    modelId: finalExecutedModelId,
     userId: user.sub,
     ...(inferenceConfig && {
       inferenceConfig: {
@@ -896,7 +970,7 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
       timestamp: new Date().toISOString(),
       userId: user.sub,
       username: user.username,
-      modelId: executedModelId,
+      modelId: finalExecutedModelId,
       inputTokens: result.inputTokens,
       outputTokens: result.outputTokens,
       status: 'success',
@@ -909,7 +983,7 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
       // Routing metadata
       routingState: routingDecision?.routingState,
       complexityScore: routingDecision?.complexityScore,
-      routingReasonCode: routingDecision?.routingReasonCode,
+      routingReasonCode: needsOCR ? 'ocr-two-stage' : routingDecision?.routingReasonCode,
       reasoningSummary: routingDecision?.reasoningSummary,
       executedModelId: routingDecision?.executedModelId,
       manualOverrideApplied: routingDecision?.manualOverrideApplied,
@@ -945,7 +1019,7 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
       timestamp: new Date().toISOString(),
       userId: user.sub,
       username: user.username,
-      modelId: executedModelId,
+      modelId: finalExecutedModelId,
       inputTokens: 0,
       outputTokens: 0,
       status: 'failed',
@@ -958,7 +1032,7 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
       // Routing metadata
       routingState: routingDecision?.routingState,
       complexityScore: routingDecision?.complexityScore,
-      routingReasonCode: routingDecision?.routingReasonCode,
+      routingReasonCode: needsOCR ? 'ocr-two-stage' : routingDecision?.routingReasonCode,
       reasoningSummary: routingDecision?.reasoningSummary,
       executedModelId: routingDecision?.executedModelId,
       manualOverrideApplied: routingDecision?.manualOverrideApplied,

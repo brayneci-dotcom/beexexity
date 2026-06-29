@@ -1,5 +1,6 @@
 import {
   BedrockRuntimeClient,
+  ConverseCommand,
   ConverseStreamCommand,
   type Message,
 } from '@aws-sdk/client-bedrock-runtime';
@@ -244,8 +245,11 @@ export async function generate(
         if ('text' in block) {
           return { text: block.text };
         }
-        // Image block
-        return { image: block.image };
+        if ('image' in block) {
+          return { image: block.image };
+        }
+        // Document block
+        return { document: (block as any).document };
       });
     } else {
       // Legacy text-only: wrap maskedPrompt
@@ -326,6 +330,37 @@ export async function generate(
     outputTokens,
     modelId: request.modelId,
   };
+}
+
+/**
+ * Non-streaming inference for OCR/extraction tasks.
+ * Sends a request to Bedrock Converse and returns the full text response.
+ * Used by the two-stage pipeline: Nova extracts image/document content,
+ * then Qwen3-235b enhances the extracted text for the final response.
+ */
+export async function generateNonStreaming(
+  modelId: string,
+  messages: Message[],
+  maxTokens: number = 4096,
+): Promise<string> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60_000);
+
+  try {
+    const command = new ConverseCommand({
+      modelId,
+      messages,
+      inferenceConfig: { maxTokens, temperature: 0.1 },
+    });
+
+    const response = await bedrockClient.send(command, {
+      abortSignal: controller.signal,
+    });
+
+    return response.output?.message?.content?.[0]?.text ?? '';
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 /** Exposed for testing — allows injecting a mock client. */

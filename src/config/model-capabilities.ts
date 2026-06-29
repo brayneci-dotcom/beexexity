@@ -14,6 +14,11 @@ export interface ModelCapabilityEntry {
 }
 
 export const MODEL_CAPABILITIES: Record<string, ModelCapabilityEntry> = {
+  'amazon.nova-2-lite-v1:0': {
+    modelId: 'amazon.nova-2-lite-v1:0',
+    capability: 'text-and-image',
+    displayName: 'Amazon Nova 2 Lite',
+  },
   'openai.gpt-oss-120b-1:0': {
     modelId: 'openai.gpt-oss-120b-1:0',
     capability: 'text-and-image',

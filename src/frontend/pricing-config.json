@@ -1,7 +1,12 @@
 {
   "currency": "USD",
-  "lastUpdated": "2026-06-23",
+  "lastUpdated": "2026-06-29",
   "models": {
+    "amazon.nova-2-lite-v1:0": {
+      "displayName": "Amazon Nova 2 Lite",
+      "inputPricePer1MTokens": 0.06,
+      "outputPricePer1MTokens": 0.24
+    },
     "nvidia.nemotron-super-3-120b": {
       "displayName": "NVIDIA Nemotron Super 3 120B",
       "inputPricePer1MTokens": 0.18,
