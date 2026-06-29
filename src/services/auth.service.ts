@@ -129,29 +129,43 @@ export async function changePassword(
   newPassword: string,
 ): Promise<ChangePasswordResult> {
   // Query user by ID to get stored hash
-  const result = await query<{
-    id: string;
-    username: string;
-    password: string;
-    role: 'admin' | 'user';
-    display_name: string;
-    force_password_reset: boolean;
-    created_at: string;
-    updated_at: string;
-  }>(
-    'SELECT id, username, password, role, display_name, force_password_reset, created_at, updated_at FROM users WHERE id = $1',
-    [userId],
-  );
+  let result;
+  try {
+    result = await query<{
+      id: string;
+      username: string;
+      password: string;
+      role: 'admin' | 'user';
+      display_name: string;
+      force_password_reset: boolean;
+      created_at: string;
+      updated_at: string;
+    }>(
+      'SELECT id, username, password, role, display_name, force_password_reset, created_at, updated_at FROM users WHERE id = $1',
+      [userId],
+    );
+  } catch (dbError: unknown) {
+    console.error('[auth] Database query failed during change-password:', {
+      userId,
+      error: (dbError as Error).message,
+      code: (dbError as any).code,
+    });
+    const error = new Error('Authentication failed');
+    (error as Error & { statusCode: number }).statusCode = 500;
+    throw error;
+  }
 
   const user = result.rows[0];
 
   if (!user) {
+    console.warn('[auth] Change-password failed: user not found', { userId });
     throw new Error('Authentication failed');
   }
 
   // Validate current password against stored hash
   const isCurrentValid = await bcrypt.compare(currentPassword, user.password);
   if (!isCurrentValid) {
+    console.warn('[auth] Change-password failed: current password mismatch', { userId, username: user.username });
     const error = new Error('Authentication failed');
     (error as Error & { statusCode: number }).statusCode = 401;
     throw error;
@@ -194,6 +208,8 @@ export async function changePassword(
   );
 
   const updatedUser = updateResult.rows[0];
+
+  console.log('[auth] Change-password succeeded', { userId, username: updatedUser.username });
 
   // Generate and return a full JWT token with standard expiry
   const token = jwt.sign(
