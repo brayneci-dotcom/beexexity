@@ -49,10 +49,11 @@ export const activeTurns: Map<string, boolean> = new Map();
 
 /**
  * Map user-facing model IDs to actual Bedrock invocation IDs.
- * Amazon Nova models require an inference profile for on-demand access,
- * not a raw model ID. The regional profile keeps data in ap-southeast-3.
+ * Amazon Nova models require an inference profile for on-demand access.
+ * Falls back to us. cross-region profile if regional one isn't available.
+ * NOTE: us. profile routes through US — disable if data residency is required.
  */
-const OCR_INFERENCE_PROFILE = 'ap-southeast-3.amazon.nova-2-lite-v1:0';
+const OCR_INFERENCE_PROFILE = 'us.amazon.nova-2-lite-v1:0';
 function resolveModelForInvocation(modelId: string): string {
   if (modelId === 'amazon.nova-2-lite-v1:0') return OCR_INFERENCE_PROFILE;
   return modelId;
