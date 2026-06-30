@@ -2,7 +2,7 @@
   "currency": "USD",
   "lastUpdated": "2026-06-29",
   "models": {
-    "amazon.nova-2-lite-v1:0": {
+    "amazon.nova-lite-v1:0": {
       "displayName": "Amazon Nova 2 Lite",
       "inputPricePer1MTokens": 0.06,
       "outputPricePer1MTokens": 0.24

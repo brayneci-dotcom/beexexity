@@ -2,6 +2,7 @@ import {
   BedrockRuntimeClient,
   ConverseCommand,
   ConverseStreamCommand,
+  InvokeModelCommand,
   type Message,
 } from '@aws-sdk/client-bedrock-runtime';
 import type { Response } from 'express';
@@ -358,6 +359,47 @@ export async function generateNonStreaming(
     });
 
     return response.output?.message?.content?.[0]?.text ?? '';
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
+ * Invoke Nova Lite via raw InvokeModel API with Messages schema.
+ * Nova Lite does not support the Converse API — it requires the raw
+ * InvokeModel endpoint with schemaVersion: "messages-v1".
+ *
+ * Used by the two-stage OCR pipeline for image/document extraction.
+ * All processing stays in ap-southeast-3 (no cross-region inference profile).
+ */
+export async function invokeNovaForOCR(
+  messages: Array<{ role: string; content: any[] }>,
+  maxTokens: number = 4096,
+): Promise<string> {
+  const body = JSON.stringify({
+    schemaVersion: 'messages-v1',
+    messages,
+    inferenceConfig: { maxTokens, temperature: 0.1 },
+  });
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60_000);
+
+  try {
+    const command = new InvokeModelCommand({
+      modelId: 'amazon.nova-lite-v1:0',
+      contentType: 'application/json',
+      accept: 'application/json',
+      body,
+    });
+
+    const response = await bedrockClient.send(command, {
+      abortSignal: controller.signal,
+    });
+
+    const bodyStr = new TextDecoder().decode(response.body);
+    const parsed = JSON.parse(bodyStr);
+    return parsed.output?.message?.content?.[0]?.text ?? '';
   } finally {
     clearTimeout(timeout);
   }

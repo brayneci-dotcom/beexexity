@@ -37,7 +37,7 @@ export interface InferenceResult {
 }
 
 export const ALLOWED_MODELS = [
-  'amazon.nova-2-lite-v1:0',
+  'amazon.nova-lite-v1:0',
   'openai.gpt-oss-120b-1:0',
   'qwen.qwen3-235b-a22b-2507-v1:0',
   'qwen.qwen3-32b-v1:0',

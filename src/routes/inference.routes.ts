@@ -4,7 +4,7 @@ import { forcePasswordResetMiddleware } from '../middleware/password-reset.middl
 import { inferenceRateLimit } from '../middleware/security.middleware.js';
 import { uploadMiddleware, multerErrorHandler } from '../middleware/upload.middleware.js';
 import { mask } from '../services/pii-masker.service.js';
-import { validateModelId, generate, generateNonStreaming, InferenceError } from '../services/inference.service.js';
+import { validateModelId, generate, generateNonStreaming, invokeNovaForOCR, InferenceError } from '../services/inference.service.js';
 import { validateAndClassifyFiles } from '../services/upload-validator.service.js';
 import { supportsImages, getVisionModels } from '../config/model-capabilities.js';
 import { extractDocumentText } from '../services/document-extractor.service.js';
@@ -48,14 +48,11 @@ import type { ConversationInferenceRequest, ConversationInferenceResult, Bedrock
 export const activeTurns: Map<string, boolean> = new Map();
 
 /**
- * Map user-facing model IDs to actual Bedrock invocation IDs.
- * Amazon Nova models require an inference profile for on-demand access.
- * Falls back to us. cross-region profile if regional one isn't available.
- * NOTE: us. profile routes through US — disable if data residency is required.
+ * Nova Lite uses the raw InvokeModel API (Messages schema), not Converse.
+ * It works directly in ap-southeast-3 — no inference profile needed.
  */
-const OCR_INFERENCE_PROFILE = 'us.amazon.nova-2-lite-v1:0';
+const NOVA_LITE_MODEL = 'amazon.nova-lite-v1:0';
 function resolveModelForInvocation(modelId: string): string {
-  if (modelId === 'amazon.nova-2-lite-v1:0') return OCR_INFERENCE_PROFILE;
   return modelId;
 }
 
@@ -871,16 +868,22 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
 
   if (needsOCR) {
     try {
-      console.log(`[inference] Two-stage OCR pipeline: ${OCR_INFERENCE_PROFILE} → ${ENHANCE_MODEL}`);
+      console.log(`[inference] Two-stage OCR pipeline: ${NOVA_LITE_MODEL} → ${ENHANCE_MODEL}`);
 
-      // Stage 1: Nova 2 Lite extracts image/document content (non-streaming)
+      // Stage 1: Nova Lite extracts image/document content via raw InvokeModel API
+      // Build Messages API payload from history + current user content blocks
+      const ocrMessages = [
+        ...inferenceMessages.map(m => ({ role: m.role, content: m.content })),
+        { role: 'user' as const, content: currentUserContent },
+      ];
+
       const ocrStart = Date.now();
-      ocrText = await generateNonStreaming(OCR_INFERENCE_PROFILE, conversationMessages, 4096);
+      ocrText = await invokeNovaForOCR(ocrMessages, 4096);
       const ocrDuration = Date.now() - ocrStart;
       console.log(`[inference] OCR stage complete in ${ocrDuration}ms, output ${ocrText.length} chars`);
 
       if (ocrText.trim().length > 0) {
-        // Stage 2: Qwen3-235b enhances the OCR output
+        // Stage 2: GPT-OSS enhances the OCR output
         finalExecutedModelId = ENHANCE_MODEL;
 
         const enhancedPrompt = [
@@ -898,12 +901,12 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
 
         console.log(`[inference] Stage 2: enhancing OCR output with ${ENHANCE_MODEL}, enhanced prompt ${enhancedPrompt.length} chars`);
       } else {
-        // OCR returned empty — fall back to Qwen3-235b (native image support)
+        // OCR returned empty — fall back to GPT-OSS (native image support)
         console.warn('[inference] OCR returned empty text, falling back to direct vision model');
         finalExecutedModelId = ENHANCE_MODEL;
       }
     } catch (ocrError: unknown) {
-      // OCR failed — fall back to Qwen3-235b which supports images natively
+      // OCR failed — fall back to GPT-OSS which supports images natively
       console.warn('[inference] OCR stage failed, falling back to direct vision model:', (ocrError as Error).message);
       finalExecutedModelId = ENHANCE_MODEL;
     }
@@ -929,7 +932,7 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
       executedModelId: finalExecutedModelId,
       routingReasonCode: needsOCR ? 'ocr-two-stage' : routingDecision.routingReasonCode,
       reasoningSummary: needsOCR
-        ? `Two-stage OCR: ${OCR_INFERENCE_PROFILE} extracted content, ${ENHANCE_MODEL} enhanced response`
+        ? `Two-stage OCR: ${NOVA_LITE_MODEL} extracted content, ${ENHANCE_MODEL} enhanced response`
         : routingDecision.reasoningSummary,
       modalityFlags: routingDecision.modalityFlags,
       manualOverrideApplied: routingDecision.manualOverrideApplied,
