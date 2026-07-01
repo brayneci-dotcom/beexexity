@@ -149,10 +149,10 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
   }
 
   // 1b. Limit prompt length (prevent abuse — max 32KB)
-  if (prompt.length > 32_000) {
+  if (prompt.length > 64_000) {
     res.status(400).json({
       error: 'PROMPT_TOO_LONG',
-      message: 'Prompt exceeds maximum length of 32,000 characters',
+      message: 'Prompt exceeds maximum length of 64,000 characters',
     });
     return;
   }

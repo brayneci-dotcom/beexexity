@@ -262,7 +262,7 @@ export async function generate(
   // Default maxTokens to 8192 if not specified — prevents models from using
   // their own low defaults (often 512-1024) which cuts off longer responses.
   const inferenceConfig = {
-    maxTokens: request.inferenceConfig?.maxTokens ?? 8192,
+    maxTokens: request.inferenceConfig?.maxTokens ?? 16384,
     ...(request.inferenceConfig?.temperature !== undefined && { temperature: request.inferenceConfig.temperature }),
     ...(request.inferenceConfig?.topP !== undefined && { topP: request.inferenceConfig.topP }),
   };
