@@ -3,6 +3,7 @@ import { authMiddleware } from '../middleware/auth.middleware.js';
 import { forcePasswordResetMiddleware } from '../middleware/password-reset.middleware.js';
 import { adminMiddleware } from '../middleware/admin.middleware.js';
 import { createUser, updateUser } from '../services/auth.service.js';
+import { getCostReport } from '../services/cost-reporting.service.js';
 import { TokenPayload } from '../types/auth.types.js';
 import { ErrorResponse } from '../types/error.types.js';
 
@@ -147,6 +148,60 @@ router.put('/users/:username', async (req: Request, res: Response): Promise<void
       return;
     }
     // Unexpected error — return 500 without exposing internals
+    const error: ErrorResponse = {
+      error: 'INTERNAL_ERROR',
+      message: 'An unexpected error occurred',
+    };
+    res.status(500).json(error);
+  }
+});
+
+/**
+ * GET /api/v1/admin/usage/cost
+ *
+ * Returns a paginated per-user cost report aggregated from audit_logs.
+ * Cost is computed from per-request pricing snapshots stored at inference time.
+ *
+ * Query params:
+ *   - from     (ISO date, optional)  Earliest timestamp to include (inclusive)
+ *   - to       (ISO date, optional)  Latest date to include (inclusive — full day)
+ *   - page     (number, default 1)
+ *   - pageSize (number, default 20, max 100)
+ *
+ * Response: CostReportResponse
+ */
+router.get('/usage/cost', async (req: Request, res: Response): Promise<void> => {
+  const from = typeof req.query.from === 'string' && req.query.from.trim()
+    ? req.query.from.trim() : undefined;
+  const to = typeof req.query.to === 'string' && req.query.to.trim()
+    ? req.query.to.trim() : undefined;
+
+  if (from && isNaN(Date.parse(from))) {
+    const error: ErrorResponse = {
+      error: 'VALIDATION_ERROR',
+      message: 'Invalid "from" date format. Use ISO 8601 (e.g., 2026-06-01).',
+    };
+    res.status(400).json(error);
+    return;
+  }
+  if (to && isNaN(Date.parse(to))) {
+    const error: ErrorResponse = {
+      error: 'VALIDATION_ERROR',
+      message: 'Invalid "to" date format. Use ISO 8601 (e.g., 2026-06-01).',
+    };
+    res.status(400).json(error);
+    return;
+  }
+
+  const page = Math.max(1, parseInt(String(req.query.page ?? ''), 10) || 1);
+  const rawPageSize = parseInt(String(req.query.pageSize ?? ''), 10) || 20;
+  const pageSize = Math.min(100, Math.max(1, rawPageSize));
+
+  try {
+    const report = await getCostReport(from, to, page, pageSize);
+    res.status(200).json(report);
+  } catch (err: unknown) {
+    console.error('[admin] Cost report failed:', (err as Error).message);
     const error: ErrorResponse = {
       error: 'INTERNAL_ERROR',
       message: 'An unexpected error occurred',
