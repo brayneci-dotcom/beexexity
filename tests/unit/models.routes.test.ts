@@ -18,6 +18,11 @@ const mockPricingConfig = {
   currency: 'USD',
   lastUpdated: '2026-06-23',
   models: {
+    'amazon.nova-lite-v1:0': {
+      displayName: 'Amazon Nova 2 Lite',
+      inputPricePer1MTokens: 0.06,
+      outputPricePer1MTokens: 0.24,
+    },
     'openai.gpt-oss-120b-1:0': {
       displayName: 'OpenAI GPT OSS 120B',
       inputPricePer1MTokens: 0.16,
@@ -74,7 +79,7 @@ describe('GET /api/v1/models', () => {
     const response = jsonSpy.mock.calls[0][0];
 
     // Should have 3 models
-    expect(response.models).toHaveLength(3);
+    expect(response.models).toHaveLength(4);
 
     // Should include all allowed models
     const modelIds = response.models.map((m: { modelId: string }) => m.modelId);
@@ -187,7 +192,7 @@ describe('GET /api/v1/models', () => {
     const response = jsonSpy.mock.calls[0][0];
 
     // Should still return all models
-    expect(response.models).toHaveLength(3);
+    expect(response.models).toHaveLength(4);
 
     // Should fall back to modelId as displayName
     for (const model of response.models) {

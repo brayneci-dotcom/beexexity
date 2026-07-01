@@ -54,5 +54,6 @@ export const config = {
     routingContextMaxTurns: parseInt(process.env.SESSION_ROUTING_CONTEXT_MAX_TURNS || '2', 10),
     maxHistoryTurns: parseInt(process.env.MAX_HISTORY_TURNS || '10', 10),
     maxContextCharacters: parseInt(process.env.MAX_CONTEXT_CHARACTERS || '120000', 10),
+    listPageSize: parseInt(process.env.SESSION_LIST_PAGE_SIZE || '50', 10),
   },
 } as const;

@@ -31,7 +31,7 @@ export interface RoutingDecision {
   executedModelId: string;
   routingState: 'auto' | 'manual';
   complexityScore: number;          // 1-5
-  scoreBand: 'direct-answer' | 'stronger-reasoning' | 'advanced-reasoning';
+  scoreBand: 'direct-answer' | 'moderate-reasoning' | 'advanced-reasoning';
   confidence: number;               // 0.0-1.0
   refinedPrompt: string;            // The refined or original prompt
   routingReasonCode: string;        // e.g. 'complexity-band-1-3', 'long-context', 'vision-required'

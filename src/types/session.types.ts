@@ -66,3 +66,32 @@ export interface ConversationInferenceRequest {
 export interface ConversationInferenceResult extends InferenceResult {
   assistantText: string;  // Full accumulated assistant response for storage
 }
+
+// ── Chat History Sidebar Types ──
+
+/** Session enriched with preview text and aggregated token stats for sidebar listing. */
+export interface SessionWithStats extends Session {
+  preview: string | null;       // First user message truncated to 60 chars
+  totalInputTokens: number;     // SUM from audit_logs (success only)
+  totalOutputTokens: number;
+  requestCount: number;
+}
+
+/** Per-model token/cost breakdown for a session. */
+export interface ModelBreakdown {
+  modelId: string;
+  inputTokens: number;
+  outputTokens: number;
+  requestCount: number;
+  estimatedCostUsd: number | null; // null if pricing snapshot unavailable
+}
+
+/** Aggregated token/cost statistics for a session derived from audit_logs. */
+export interface SessionStats {
+  sessionId: string;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  requestCount: number;
+  estimatedCostUsd: number | null; // null if pricing snapshot unavailable for all rows
+  breakdown: ModelBreakdown[];
+}

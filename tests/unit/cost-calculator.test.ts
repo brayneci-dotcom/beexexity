@@ -36,8 +36,8 @@ describe('loadPricingConfig', () => {
     const config = loadPricingConfig(PRICING_CONFIG_PATH);
     expect(config).not.toBeNull();
     expect(config!.currency).toBe('USD');
-    expect(config!.lastUpdated).toBe('2026-06-23');
-    expect(Object.keys(config!.models)).toHaveLength(5);
+    expect(config!.lastUpdated).toBe('2026-06-29');
+    expect(Object.keys(config!.models)).toHaveLength(6);
   });
 
   it('should return null for a non-existent file path', () => {

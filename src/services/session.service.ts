@@ -1,6 +1,6 @@
 import { query } from '../config/database.js';
 import { config } from '../config/index.js';
-import type { Session, StoredMessage, StorageFlags } from '../types/session.types.js';
+import type { Session, StoredMessage, StorageFlags, SessionWithStats, SessionStats, ModelBreakdown } from '../types/session.types.js';
 
 /**
  * Session Service — manages conversation session lifecycle and message CRUD.
@@ -257,6 +257,36 @@ export async function markSessionInactive(sessionId: string): Promise<void> {
 }
 
 /**
+ * Fetch a session by ID, verifying ownership. Returns null if not found or wrong user.
+ * Does NOT throw on expired status — callers decide whether expiry matters.
+ */
+export async function getSessionById(userId: string, sessionId: string): Promise<Session | null> {
+  const result = await query<SessionRow>(
+    `SELECT id, user_id, status, turn_count, created_at, updated_at, last_activity_at, expires_at
+     FROM sessions WHERE id = $1`,
+    [sessionId],
+  );
+
+  const row = result.rows[0];
+  if (!row || row.user_id !== userId) return null;
+
+  return mapSessionRow(row);
+}
+
+/**
+ * Sweep expired sessions for a user, transitioning them to 'expired' status.
+ * Called before listing sessions so the list reflects current state.
+ * This operation is idempotent — running it multiple times is safe.
+ */
+export async function sweepExpiredSessions(userId: string): Promise<void> {
+  await query(
+    `UPDATE sessions SET status = 'expired', updated_at = NOW()
+     WHERE user_id = $1 AND expires_at <= NOW() AND status != 'expired'`,
+    [userId],
+  );
+}
+
+/**
  * Get session with state validation — rejects expired sessions.
  * Returns the session or throws SessionExpiredError / SessionNotFoundError.
  *
@@ -303,4 +333,200 @@ export async function getValidatedSession(
 
   // Allow both 'active' and 'degraded' sessions to proceed
   return session;
+}
+
+// ── Chat History Sidebar Functions ──
+
+/**
+ * Database row shape for the session list query (includes lateral join columns).
+ */
+interface SessionListRow extends SessionRow {
+  preview: string | null;
+  total_input_tokens: string | null;
+  total_output_tokens: string | null;
+  request_count: string | null;
+}
+
+/**
+ * List sessions for a user with pagination, preview text, and aggregated token stats.
+ * Runs an expiry sweep before fetching to keep the list accurate.
+ *
+ * @see Requirements R5
+ */
+export async function listUserSessions(
+  userId: string,
+  page: number,
+  pageSize: number,
+): Promise<{ sessions: SessionWithStats[]; total: number }> {
+  // 1. Sweep expired sessions first
+  await sweepExpiredSessions(userId);
+
+  // 2. Count total sessions for this user
+  const countResult = await query<{ count: string }>(
+    `SELECT COUNT(*)::integer AS count FROM sessions WHERE user_id = $1`,
+    [userId],
+  );
+  const total = parseInt(countResult.rows[0].count, 10);
+
+  // 3. Fetch page with lateral joins for preview + stats
+  const offset = (page - 1) * pageSize;
+  const result = await query<SessionListRow>(
+    `SELECT
+       s.id, s.user_id, s.status, s.turn_count,
+       s.created_at, s.updated_at, s.last_activity_at, s.expires_at,
+       LEFT(pv.sanitized_content, 60) AS preview,
+       COALESCE(st.total_input_tokens, '0')  AS total_input_tokens,
+       COALESCE(st.total_output_tokens, '0') AS total_output_tokens,
+       COALESCE(st.request_count, '0')       AS request_count
+     FROM sessions s
+     LEFT JOIN LATERAL (
+       SELECT sanitized_content
+       FROM messages
+       WHERE session_id = s.id AND role = 'user'
+       ORDER BY created_at ASC, id ASC
+       LIMIT 1
+     ) pv ON true
+     LEFT JOIN LATERAL (
+       SELECT
+         COALESCE(SUM(input_tokens), 0)  AS total_input_tokens,
+         COALESCE(SUM(output_tokens), 0) AS total_output_tokens,
+         COUNT(*)::integer                AS request_count
+       FROM audit_logs
+       WHERE session_id = s.id AND status = 'success'
+     ) st ON true
+     WHERE s.user_id = $1
+     ORDER BY s.last_activity_at DESC
+     LIMIT $2 OFFSET $3`,
+    [userId, pageSize, offset],
+  );
+
+  const sessions: SessionWithStats[] = result.rows.map((row) => ({
+    ...mapSessionRow(row),
+    preview: row.preview || null,
+    totalInputTokens: parseInt(row.total_input_tokens ?? '0', 10),
+    totalOutputTokens: parseInt(row.total_output_tokens ?? '0', 10),
+    requestCount: parseInt(row.request_count ?? '0', 10),
+  }));
+
+  return { sessions, total };
+}
+
+/**
+ * Audit log row shape for per-session stats aggregation.
+ */
+interface StatsAuditRow {
+  model_id: string;
+  input_tokens: string;
+  output_tokens: string;
+  request_count: string;
+  model_pricing_snapshot: Record<string, number> | null;
+}
+
+/**
+ * Get aggregated token/cost statistics for a session from audit_logs.
+ * Returns per-model breakdown with estimated cost from pricing snapshots.
+ *
+ * @see Requirements R6
+ */
+export async function getSessionStats(sessionId: string): Promise<SessionStats | null> {
+  const result = await query<StatsAuditRow>(
+    `SELECT
+       model_id,
+       SUM(input_tokens)::bigint  AS input_tokens,
+       SUM(output_tokens)::bigint AS output_tokens,
+       COUNT(*)::integer          AS request_count,
+       model_pricing_snapshot
+     FROM audit_logs
+     WHERE session_id = $1 AND status = 'success'
+     GROUP BY model_id, model_pricing_snapshot`,
+    [sessionId],
+  );
+
+  if (result.rows.length === 0) return null;
+
+  const breakdown: ModelBreakdown[] = [];
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+  let totalRequests = 0;
+  let totalCostUsd: number | null = 0;
+
+  for (const row of result.rows) {
+    const inputTokens = parseInt(row.input_tokens, 10);
+    const outputTokens = parseInt(row.output_tokens, 10);
+    const requestCount = parseInt(row.request_count, 10);
+    const snapshot = row.model_pricing_snapshot;
+
+    totalInputTokens += inputTokens;
+    totalOutputTokens += outputTokens;
+    totalRequests += requestCount;
+
+    let estimatedCostUsd: number | null = null;
+    if (snapshot && typeof snapshot.inputPricePer1MTokens === 'number' && typeof snapshot.outputPricePer1MTokens === 'number') {
+      estimatedCostUsd = (inputTokens * snapshot.inputPricePer1MTokens + outputTokens * snapshot.outputPricePer1MTokens) / 1_000_000;
+    } else {
+      totalCostUsd = null; // If any row lacks pricing, total cost becomes unknown
+    }
+
+    breakdown.push({
+      modelId: row.model_id,
+      inputTokens,
+      outputTokens,
+      requestCount,
+      estimatedCostUsd,
+    });
+  }
+
+  return {
+    sessionId,
+    totalInputTokens,
+    totalOutputTokens,
+    requestCount: totalRequests,
+    estimatedCostUsd: totalCostUsd,
+    breakdown,
+  };
+}
+
+/**
+ * Resume (reactivate) an inactive/degraded/expired session.
+ *
+ * Transaction:
+ *   1. Mark any currently active session for this user as inactive.
+ *   2. Reactivate the target session with refreshed expires_at and last_activity_at.
+ *
+ * Throws SessionNotFoundError if the session doesn't exist or belongs to another user.
+ * Idempotent — if the target is already active, just returns it.
+ * Expired sessions can be resumed (their expiry is refreshed).
+ *
+ * @see Requirements R8
+ */
+export async function resumeSession(userId: string, sessionId: string): Promise<Session> {
+  // Validate ownership and existence
+  const session = await getSessionById(userId, sessionId);
+  if (!session) {
+    throw new SessionNotFoundError(sessionId);
+  }
+
+  // Already active — idempotent
+  if (session.status === 'active') {
+    return session;
+  }
+
+  // Transaction: deactivate current active + reactivate target
+  const expiryHours = config.session.expiryHours;
+  const result = await query<SessionRow>(
+    `WITH deactivate AS (
+       UPDATE sessions SET status = 'inactive', updated_at = NOW()
+       WHERE user_id = $1 AND status = 'active'
+     )
+     UPDATE sessions
+     SET status = 'active',
+         last_activity_at = NOW(),
+         expires_at = NOW() + INTERVAL '1 hour' * $2,
+         updated_at = NOW()
+     WHERE id = $3 AND user_id = $1
+     RETURNING id, user_id, status, turn_count, created_at, updated_at, last_activity_at, expires_at`,
+    [userId, expiryHours, sessionId],
+  );
+
+  return mapSessionRow(result.rows[0]);
 }

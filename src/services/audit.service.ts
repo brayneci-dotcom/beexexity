@@ -1,5 +1,14 @@
 import { query } from '../config/database.js';
 import { AuditEntry } from '../types/audit.types.js';
+import { readFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+interface PricingConfigFile {
+  currency: string;
+  lastUpdated: string;
+  models: Record<string, { inputPricePer1MTokens: number; outputPricePer1MTokens: number }>;
+}
 
 /**
  * Audit Logger Service.
@@ -9,6 +18,35 @@ import { AuditEntry } from '../types/audit.types.js';
  * @see Requirements 8.1, 8.2, 8.3, 8.4
  */
 class AuditService {
+  private pricingCache: PricingConfigFile | null = null;
+  private pricingCacheLoaded = false;
+
+  /**
+   * Load pricing config lazily, cache in memory. Never throws.
+   * Returns the model's pricing as a snapshot object, or null if unavailable.
+   */
+  private getPricingSnapshot(modelId: string): Record<string, number> | null {
+    if (!this.pricingCacheLoaded) {
+      try {
+        const __dirname = dirname(fileURLToPath(import.meta.url));
+        const configPath = join(__dirname, '..', 'frontend', 'pricing-config.json');
+        const raw = readFileSync(configPath, 'utf-8');
+        this.pricingCache = JSON.parse(raw) as PricingConfigFile;
+      } catch {
+        // Graceful degradation — pricing config is optional
+        this.pricingCache = null;
+      }
+      this.pricingCacheLoaded = true;
+    }
+
+    const modelPricing = this.pricingCache?.models[modelId];
+    if (!modelPricing) return null;
+
+    return {
+      inputPricePer1MTokens: modelPricing.inputPricePer1MTokens,
+      outputPricePer1MTokens: modelPricing.outputPricePer1MTokens,
+    };
+  }
   /**
    * Log an audit entry to the database.
    * This method is designed for fire-and-forget usage — callers should
@@ -19,6 +57,11 @@ class AuditService {
    */
   async log(entry: AuditEntry): Promise<void> {
     try {
+      // Capture model pricing snapshot for successful requests (for historical cost accuracy)
+      const pricingSnapshot = entry.status === 'success'
+        ? this.getPricingSnapshot(entry.modelId)
+        : null;
+
       await query(
         `INSERT INTO audit_logs (
           timestamp,
@@ -39,8 +82,9 @@ class AuditService {
           context_truncated,
           context_summarized,
           session_state,
-          turn_count
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+          turn_count,
+          model_pricing_snapshot
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
         [
           entry.timestamp,
           entry.userId,
@@ -61,6 +105,7 @@ class AuditService {
           entry.contextSummarized ?? false,
           entry.sessionState ?? null,
           entry.turnCount ?? null,
+          pricingSnapshot ? JSON.stringify(pricingSnapshot) : null,
         ],
       );
     } catch (error) {

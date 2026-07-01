@@ -6,6 +6,131 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Unified Inference Gateway — a built-in Express.js proxy/gateway to AWS Bedrock in **ap-southeast-3 (Jakarta)** for a banking application. All processing is locked to Jakarta for Indonesian data residency compliance (OJK/BI regulations).
 
+## Behavioral Guidelines
+
+**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
+
+### 1. Think Before Coding
+
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
+
+Before implementing:
+- State your assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them - don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
+
+### 2. Simplicity First
+
+**Minimum code that solves the problem. Nothing speculative.**
+
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If you write 200 lines and it could be 50, rewrite it.
+
+Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+### 3. Surgical Changes
+
+**Touch only what you must. Clean up only your own mess.**
+
+When editing existing code:
+- Don't "improve" adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken.
+- Match existing style, even if you'd do it differently.
+- If you notice unrelated dead code, mention it - don't delete it.
+
+When your changes create orphans:
+- Remove imports/variables/functions that YOUR changes made unused.
+- Don't remove pre-existing dead code unless asked.
+
+The test: Every changed line should trace directly to the user's request.
+
+### 4. Goal-Driven Execution
+
+**Define success criteria. Loop until verified.**
+
+Transform tasks into verifiable goals:
+- "Add validation" → "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" → "Write a test that reproduces it, then make it pass"
+- "Refactor X" → "Ensure tests pass before and after"
+
+For multi-step tasks, state a brief plan:
+```
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+3. [Step] → verify: [check]
+```
+
+Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+
+---
+
+**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+
+## Feature Development Workflow
+
+For every new feature, **follow this documentation-first process** before writing any code:
+
+### 1. Create a Feature Folder
+- Name the folder after the feature (e.g., `feature-conversation-memory/`).
+- Inside it, produce three files:  
+  `requirements.md`, `design.md`, `tasks.md`.
+
+### 2. Content of Each File
+
+#### `requirements.md`
+- **Introduction** – concise overview, purpose, and high‑level constraints.
+- **Glossary** – define key domain terms specific to this feature.
+- **Requirements** – each is a user story with a title and acceptance criteria, formatted as:  
+  > **Requirement X: Title**  
+  > **User Story:** As a …, I want …, so that …  
+  > **Acceptance Criteria:**  
+  > 1. WHEN … THEN …  
+  > 2. …  
+- **Notes** – additional context, trade‑offs, or references.
+
+#### `design.md`
+- **Overview** – high‑level description of the solution, how it fits into the existing system, and the layered approach.
+- **Architecture** – include diagrams (sequence, ER) using Mermaid syntax.
+- **Components and Interfaces** – list each new/modified service/component with TypeScript (or relevant) interfaces and key functions.
+- **Data Models** – database migrations (SQL) with indexes.
+- **Configuration** – new environment variables / config entries.
+- **Correctness Properties** – a list of formal properties the system should uphold (for property‑based testing later).
+- **Error Handling** – table of failure scenarios, system behaviour, and user impact.
+- **Testing Strategy** – unit, property‑based, and integration tests – what will be covered.
+
+#### `tasks.md`
+- **Overview** – brief summary of the implementation plan.
+- **Tasks** – ordered, actionable tasks with checkboxes `- [ ]`. Each task should link to requirement(s) it fulfils (e.g., `_Requirements: 1.1, 2.3_`). Optional tasks can be marked with `*`.
+- **Checkpoints** – include tasks like “Checkpoint - Ensure all tests pass” for incremental validation.
+- **Task Dependency Graph** – provide a JSON structure showing waves of tasks that can be parallelised.
+
+### 3. Process
+- When a new feature is requested, **first produce these three documents**.
+- Iterate on them until I approve them.
+- Only after approval, start writing code following the order and detail in `tasks.md`.
+- Reference the documents as the source of truth – every code change should trace back to a task/requirement.
+- Keep the documents up‑to‑date if implementation reveals deviations.
+
+### 4. Communication
+- Ask clarifying questions **before** writing the documents.
+- Explicitly note assumptions or open questions during document creation.
+- Use the provided sample (conversation memory feature) as a reference for style and depth.
+
+**Example prompt to start a new feature:**
+
+> “We need to add [feature description]. Please follow the Feature Development Workflow to produce requirements.md, design.md, and tasks.md. Use the conversation memory sample as a reference for style and depth. After I approve, we'll proceed with implementation.”
+
+---
+
+This workflow ensures thorough planning, traceability, and quality before any code is written.
+
+
+
+
 ## Common Commands
 
 ```bash

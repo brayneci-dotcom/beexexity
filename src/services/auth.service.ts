@@ -321,6 +321,8 @@ export async function updateUser(_admin: TokenPayload, username: string, data: U
     setClauses.push(`password = $${paramIndex}`);
     params.push(hashedPassword);
     paramIndex++;
+    // Force password reset on next login so the user picks their own password
+    setClauses.push(`force_password_reset = TRUE`);
   }
 
   // Always update the updated_at timestamp

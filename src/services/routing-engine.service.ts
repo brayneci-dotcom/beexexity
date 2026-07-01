@@ -33,6 +33,8 @@ const bedrockClient = new BedrockRuntimeClient({
 
 /**
  * Refines the prompt using qwen.qwen3-32b-v1:0 via Bedrock Converse (non-streaming).
+ * Structures the output into four sections: Role, Context, Task, Intent —
+ * giving the downstream model a clear persona and framework for answering.
  * Returns the refined prompt or null on failure.
  */
 export async function refinePrompt(
@@ -46,13 +48,27 @@ export async function refinePrompt(
 
   try {
     const systemPrompt = [
-      'You are a prompt refinement assistant. Your task is to rewrite the user\'s request into a clearer, more precise prompt suitable for a large language model.',
+      'You are a prompt structuring assistant. Your job is to decompose the user\'s request into a structured prompt that helps a large language model give the best possible answer.',
+      '',
+      'Analyze the request and produce output in exactly these four sections:',
+      '',
+      '1. ROLE — The single best professional persona or expert role to answer this question (e.g. "Indonesian banking lawyer", "financial analyst", "tax consultant", "software architect"). Choose the most relevant domain expert.',
+      '2. CONTEXT — Relevant background, domain knowledge, or situational framing the model needs to know. Infer reasonable context from the request; do not fabricate facts.',
+      '3. TASK — The core task in one clear, actionable sentence. What exactly should the model produce? (e.g. "Explain the steps to...", "Compare X and Y...", "Draft a response to...")',
+      '4. INTENT — The underlying goal or purpose. What does the user ultimately want to accomplish or decide? (e.g. "To make an informed investment decision", "To comply with OJK regulation")',
+      '',
       'Rules:',
       '- Preserve the original intent exactly.',
-      '- Clarify ambiguous phrasing.',
-      '- Do NOT add information that was not present in the original request.',
-      '- Do NOT include any personally identifiable information.',
-      '- Return ONLY the refined prompt text with no additional commentary.',
+      '- CRITICAL: Respond in the SAME LANGUAGE as the original request. If the user wrote in Bahasa Indonesia, the refined prompt must be in Bahasa Indonesia. If in English, respond in English. Match the language exactly.',
+      '- Do NOT add facts that were not implied by the original request.',
+      '- Do NOT include any personally identifiable information (PII).',
+      '- The output prompt will be sent directly to the answering model, so make it self-contained.',
+      '',
+      'Output format (do not include the numbers or labels in the final prompt — write it as flowing text):',
+      'You are a [role]. [Context paragraph]. Your task is to [task]. The goal is to [intent].',
+      '(Write the entire output in the same language as the original request.)',
+      '',
+      'Now structure this request accordingly.',
     ].join('\n');
 
     const userContent = documentContext
@@ -184,10 +200,13 @@ export async function scoreComplexity(
 
 /**
  * Maps a complexity score to its band name.
+ * Complexity 1 → Qwen3 32B (simple, fast answers)
+ * Complexity 2-3 → moderate (needs stronger model)
+ * Complexity 4-5 → advanced (needs highest-capability model)
  */
-function scoreToBand(score: number): 'direct-answer' | 'stronger-reasoning' | 'advanced-reasoning' {
-  if (score <= 3) return 'direct-answer';
-  if (score === 4) return 'stronger-reasoning';
+function scoreToBand(score: number): 'direct-answer' | 'moderate-reasoning' | 'advanced-reasoning' {
+  if (score <= 1) return 'direct-answer';
+  if (score <= 3) return 'moderate-reasoning';
   return 'advanced-reasoning';
 }
 

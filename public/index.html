@@ -187,7 +187,7 @@
     /* Chat Screen */
     #chat-screen {
       display: none;
-      flex-direction: column;
+      flex-direction: row;
       height: 100vh;
       position: relative;
     }
@@ -905,6 +905,220 @@
       opacity: 1;
     }
 
+    /* ── Sidebar ── */
+    .sidebar {
+      width: 280px;
+      min-width: 280px;
+      max-width: 280px;
+      background: var(--bg-secondary);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+      transition: width 0.25s ease, min-width 0.25s ease, padding 0.25s ease;
+    }
+
+    .sidebar.collapsed {
+      min-width: 0;
+      width: 0;
+      max-width: 0;
+      border-right: none;
+      padding: 0;
+    }
+
+    .sidebar-header {
+      padding: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .sidebar-title {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .sidebar-toggle {
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: 1.1rem;
+      padding: 0.25rem 0.5rem;
+      border-radius: 6px;
+      line-height: 1;
+    }
+
+    .sidebar-toggle:hover { color: var(--text-primary); background: var(--bg-tertiary); }
+
+    .sidebar-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0.5rem 0;
+    }
+
+    .chat-main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      min-width: 0;
+    }
+
+    /* Session row */
+    .session-row {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.15s;
+      position: relative;
+    }
+
+    .session-row:hover { background: var(--bg-tertiary); }
+
+    .session-row.active {
+      border-left: 3px solid var(--accent);
+      background: rgba(181, 228, 247, 0.06);
+      padding-left: calc(1rem - 3px);
+    }
+
+    .session-row-preview {
+      font-size: 0.8125rem;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 0.3rem;
+      line-height: 1.3;
+    }
+
+    .session-row-meta {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-size: 0.7rem;
+      color: var(--text-tertiary);
+      flex-wrap: wrap;
+    }
+
+    .session-row-meta span {
+      white-space: nowrap;
+    }
+
+    .session-row-tokens {
+      color: var(--text-secondary);
+    }
+
+    .session-row-cost {
+      color: var(--accent);
+      font-weight: 600;
+      font-family: 'SF Mono', Monaco, monospace;
+    }
+
+    .session-row-status {
+      position: absolute;
+      top: 0.5rem;
+      right: 0.75rem;
+      font-size: 0.75rem;
+      cursor: help;
+    }
+
+    /* Sidebar footer */
+    .sidebar-footer {
+      padding: 0.75rem 1rem;
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .load-more-btn {
+      width: 100%;
+      padding: 0.5rem;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.75rem;
+      transition: all 0.2s;
+    }
+
+    .load-more-btn:hover {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+    }
+
+    .sidebar-error {
+      font-size: 0.75rem;
+      color: #ef4444;
+      text-align: center;
+    }
+
+    .sidebar-error button {
+      background: transparent;
+      border: none;
+      color: var(--accent);
+      cursor: pointer;
+      text-decoration: underline;
+      font-size: 0.75rem;
+      padding: 0;
+    }
+
+    .sidebar-empty {
+      padding: 2rem 1rem;
+      text-align: center;
+      font-size: 0.8125rem;
+      color: var(--text-tertiary);
+      line-height: 1.5;
+    }
+
+    /* Resume button in chat area */
+    .resume-bar {
+      display: none;
+      padding: 0.75rem 2rem;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      text-align: center;
+    }
+
+    .resume-bar.visible { display: block; }
+
+    .resume-btn {
+      padding: 0.6rem 1.5rem;
+      background: var(--accent);
+      color: var(--bg-primary);
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.875rem;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .resume-btn:hover { background: var(--accent-hover); }
+
+    .resume-btn:disabled {
+      background: var(--bg-tertiary);
+      color: var(--text-tertiary);
+      cursor: not-allowed;
+    }
+
+    /* Viewing-history banner */
+    .viewing-banner {
+      display: none;
+      padding: 0.5rem 2rem;
+      background: rgba(181, 228, 247, 0.05);
+      border-bottom: 1px solid var(--border);
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      text-align: center;
+    }
+
+    .viewing-banner.visible { display: block; }
+
     /* Responsive — Tablet (≤768px) */
     @media (max-width: 768px) {
       .header { padding: 1rem; }
@@ -913,6 +1127,16 @@
       .input-wrapper { padding: 1rem; }
       .login-box { width: 90%; padding: 2rem; }
       .password-reset-box { width: 90%; padding: 2rem; }
+
+      /* Sidebar collapses by default on tablet */
+      #chat-screen { flex-direction: column; }
+      .sidebar {
+        width: 100%; min-width: 100%; max-width: 100%;
+        max-height: 40vh; border-right: none; border-bottom: 1px solid var(--border);
+      }
+      .sidebar.collapsed { max-height: 0; min-height: 0; min-width: 100%; }
+      .sidebar-toggle { display: block; }
+      .chat-main { height: auto; flex: 1; }
     }
 
     /* Responsive — Phone (≤480px) */
@@ -1001,67 +1225,93 @@
 
 <!-- Chat Screen -->
 <div id="chat-screen">
-  <div class="header">
-    <div class="header-left">
-      <div class="logo">beexexity</div>
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <span class="sidebar-title">Conversations</span>
     </div>
-    <div class="header-right">
-      <button class="logout-btn" onclick="handleNewChat()">New Chat</button>
-      <div class="user-info">
-        <div class="user-avatar" id="user-avatar"></div>
-        <span id="user-badge"></span>
+    <div class="sidebar-list" id="sidebar-list">
+      <div class="sidebar-empty">No conversations yet.</div>
+    </div>
+    <div class="sidebar-footer" id="sidebar-footer">
+      <button class="load-more-btn" id="load-more-btn" style="display:none" onclick="loadMoreSessions()">Load more</button>
+      <div class="sidebar-error" id="sidebar-error" style="display:none">
+        Failed to load conversations. <button onclick="loadSessions(1)">Retry</button>
       </div>
-      <button class="logout-btn" onclick="handleLogout()">Logout</button>
     </div>
-  </div>
+  </aside>
 
-  <div class="cost-bar">
-    <span>Session: <span class="cost-value" id="session-cost">Rp 0.00</span></span>
-    <span>Current: <span class="cost-value" id="current-cost">Rp 0.00</span></span>
-    <span>Tokens: <span class="cost-value" id="tokens-in">0</span> / <span class="cost-value" id="tokens-out">0</span></span>
-    <span>Requests: <span class="cost-value" id="request-count">0</span></span>
-  </div>
-
-  <div class="degraded-banner" id="degraded-banner">Chat history save failed. Future context may be lost.</div>
-
-  <div class="messages" id="messages">
-    <div class="empty-state">
-      <h2>How can I help you today?</h2>
-      <p>Ask anything. Your data is automatically masked for compliance before processing.</p>
+  <!-- Main chat area -->
+  <div class="chat-main">
+    <div class="header">
+      <div class="header-left">
+        <button class="sidebar-toggle" id="sidebar-toggle-header" onclick="toggleSidebar()" title="Toggle sidebar">☰</button>
+        <div class="logo">beexexity</div>
+      </div>
+      <div class="header-right">
+        <button class="logout-btn" onclick="handleNewChat()">New Chat</button>
+        <div class="user-info">
+          <div class="user-avatar" id="user-avatar"></div>
+          <span id="user-badge"></span>
+        </div>
+        <button class="logout-btn" onclick="handleLogout()">Logout</button>
+      </div>
     </div>
-  </div>
 
-  <div class="input-wrapper">
-    <div class="input-container">
-      <div class="input-area" id="input-area">
-        <div class="drop-zone-overlay" id="drop-zone"><span>Drop files here</span></div>
-        <input type="file" id="file-input" multiple accept=".pdf,.docx,.png,.jpg,.jpeg,.webp" style="display:none" onchange="handleFilePicker(event)">
-        <button class="attach-btn" id="attach-btn" onclick="document.getElementById('file-input').click()" title="Attach files">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19"></line>
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-          </svg>
-        </button>
+    <div class="cost-bar">
+      <span>Session: <span class="cost-value" id="session-cost">Rp 0.00</span></span>
+      <span>Current: <span class="cost-value" id="current-cost">Rp 0.00</span></span>
+      <span>Tokens: <span class="cost-value" id="tokens-in">0</span> / <span class="cost-value" id="tokens-out">0</span></span>
+      <span>Requests: <span class="cost-value" id="request-count">0</span></span>
+    </div>
 
-        <textarea id="prompt-input" placeholder="Ask anything..." rows="1" onkeydown="handleKeyDown(event)"></textarea>
+    <div class="viewing-banner" id="viewing-banner">📋 Viewing past conversation</div>
 
-        <div class="input-controls">
-          <div class="model-select-wrapper">
-            <select id="model-select" onchange="checkModelCompatibility()"></select>
-          </div>
-          <button id="send-btn" onclick="handleSend()" title="Send">
+    <div class="resume-bar" id="resume-bar">
+      <button class="resume-btn" id="resume-btn" onclick="handleResumeSession()">Resume Conversation</button>
+    </div>
+
+    <div class="degraded-banner" id="degraded-banner">Chat history save failed. Future context may be lost.</div>
+
+    <div class="messages" id="messages">
+      <div class="empty-state">
+        <h2>How can I help you today?</h2>
+        <p>Ask anything. Your data is automatically masked for compliance before processing.</p>
+      </div>
+    </div>
+
+    <div class="input-wrapper">
+      <div class="input-container">
+        <div class="input-area" id="input-area">
+          <div class="drop-zone-overlay" id="drop-zone"><span>Drop files here</span></div>
+          <input type="file" id="file-input" multiple accept=".pdf,.docx,.png,.jpg,.jpeg,.webp" style="display:none" onchange="handleFilePicker(event)">
+          <button class="attach-btn" id="attach-btn" onclick="document.getElementById('file-input').click()" title="Attach files">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="22" y1="2" x2="11" y2="13"></line>
-              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
             </svg>
           </button>
+
+          <textarea id="prompt-input" placeholder="Ask anything..." rows="1" onkeydown="handleKeyDown(event)"></textarea>
+
+          <div class="input-controls">
+            <div class="model-select-wrapper">
+              <select id="model-select" onchange="checkModelCompatibility()"></select>
+            </div>
+            <button id="send-btn" onclick="handleSend()" title="Send">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+            </button>
+          </div>
         </div>
+        <div class="file-preview-area" id="file-preview-area"></div>
+        <div class="model-compat-warning" id="model-compat-warning">⚠ Selected model does not support image inputs</div>
+        <div class="file-error-area" id="file-error-area"></div>
       </div>
-      <div class="file-preview-area" id="file-preview-area"></div>
-      <div class="model-compat-warning" id="model-compat-warning">⚠ Selected model does not support image inputs</div>
-      <div class="file-error-area" id="file-error-area"></div>
     </div>
-  </div>
+  </div><!-- /.chat-main -->
 </div>
 
 <script>
@@ -1075,6 +1325,16 @@ let sessionTotal = 0;
 let isStreaming = false;
 let currentSessionId = null;
 let idrRate = null; // Cached USD → IDR conversion rate
+
+// ── Chat History Sidebar State ──
+let sessionList = [];                // Array of session objects from API
+let currentViewingSessionId = null;  // Session ID being viewed (null = active session)
+let savedSessionCost = 0;            // Persisted cost from GET /:id/stats (USD)
+let savedSessionTokens = { in: 0, out: 0, requests: 0 }; // Persisted token/request counts
+let sessionPage = 1;
+let sessionHasMore = false;
+let isLoadingSessions = false;
+let sidebarCollapsed = false;
 
 // --- File Upload State ---
 let attachedFiles = [];
@@ -1233,6 +1493,9 @@ async function showChatScreen() {
   // Fetch USD → IDR conversion rate (once per session)
   fetchIdrRate();
 
+  // Load session list into sidebar
+  loadSessions(1);
+
   document.getElementById('prompt-input').focus();
 }
 
@@ -1297,6 +1560,33 @@ async function handleSend() {
   const modelId = document.getElementById('model-select').value;
   input.value = '';
   input.style.height = 'auto';
+
+  // Auto-resume: if viewing a past session, reactivate it first
+  if (currentViewingSessionId && currentViewingSessionId !== currentSessionId) {
+    try {
+      const resumeRes = await fetch(`${API_BASE}/sessions/${currentViewingSessionId}/resume`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (resumeRes.ok) {
+        const resumeData = await resumeRes.json();
+        currentSessionId = resumeData.session.id;
+        currentViewingSessionId = null;
+        document.getElementById('viewing-banner').classList.remove('visible');
+        document.getElementById('resume-bar').classList.remove('visible');
+        document.getElementById('prompt-input').placeholder = 'Ask anything...';
+        updateCostBar();
+        loadSessions(1);
+      } else {
+        // Resume failed — show error and abort
+        addMessage('error', 'Failed to resume conversation. Please try again.');
+        return;
+      }
+    } catch (e) {
+      addMessage('error', 'Network error: ' + e.message);
+      return;
+    }
+  }
 
   // Remove empty state if exists
   const emptyState = document.querySelector('.empty-state');
@@ -1368,13 +1658,24 @@ async function handleSend() {
       // Handle invalid/expired session errors by clearing state
       if (res.status === 404 || res.status === 410 || err.error === 'SESSION_EXPIRED' || err.error === 'SESSION_NOT_FOUND') {
         currentSessionId = null;
+        currentViewingSessionId = null;
+        savedSessionCost = 0;
+        savedSessionTokens = { in: 0, out: 0, requests: 0 };
+        sessionCosts = [];
+        sessionTotal = 0;
         assistantEl.remove();
+        document.getElementById('viewing-banner').classList.remove('visible');
+        document.getElementById('resume-bar').classList.remove('visible');
+        setInputEnabled(true);
+        document.getElementById('prompt-input').placeholder = 'Ask anything...';
         document.getElementById('messages').innerHTML = `
           <div class="empty-state">
             <h2>How can I help you today?</h2>
             <p>Ask anything. Your data is automatically masked for compliance before processing.</p>
           </div>
         `;
+        updateCostBar();
+        loadSessions(1);
         showToast('Previous session expired. Started new session.');
         setStreaming(false);
         return;
@@ -1468,12 +1769,23 @@ async function handleSend() {
               // Clear chat UI and reset session
               assistantEl.remove();
               currentSessionId = null;
+              currentViewingSessionId = null;
+              savedSessionCost = 0;
+              savedSessionTokens = { in: 0, out: 0, requests: 0 };
+              sessionCosts = [];
+              sessionTotal = 0;
+              document.getElementById('viewing-banner').classList.remove('visible');
+              document.getElementById('resume-bar').classList.remove('visible');
+              setInputEnabled(true);
+              document.getElementById('prompt-input').placeholder = 'Ask anything...';
               document.getElementById('messages').innerHTML = `
                 <div class="empty-state">
                   <h2>How can I help you today?</h2>
                   <p>Ask anything. Your data is automatically masked for compliance before processing.</p>
                 </div>
               `;
+              updateCostBar();
+              loadSessions(1);
               showToast('Previous session expired. Started new session.');
             } else {
               assistantEl.remove();
@@ -1600,7 +1912,75 @@ function formatMarkdown(text) {
       codeBlockContent += (codeBlockContent ? '\n' : '') + line;
       continue;
     }
-    
+
+    // ── Table detection ──
+    // A table row starts/ends with | and has at least one | in between
+    const isTableRow = /^\|.+\|$/.test(line.trim());
+    const isTableSeparator = /^\|[\s\-:|]+\|$/.test(line.trim()) && /-/.test(line); // separator contains dashes
+
+    if (isTableRow && i + 1 < lines.length && /^\|[\s\-:|]+\|$/.test(lines[i + 1].trim()) && /-/.test(lines[i + 1])) {
+      // Close any open list before the table
+      if (inList) {
+        html += listType === 'ul' ? '</ul>' : '</ol>';
+        inList = false;
+        listType = '';
+      }
+
+      // Collect table lines: header + separator + data rows
+      const tableLines = [line];       // header
+      tableLines.push(lines[i + 1]);  // separator
+      let j = i + 2;
+      while (j < lines.length && /^\|.+\|$/.test(lines[j].trim())) {
+        tableLines.push(lines[j]);
+        j++;
+      }
+
+      // Parse alignment from separator
+      const sepCells = tableLines[1].split('|').filter(c => c.trim() !== '');
+      const alignments = sepCells.map(c => {
+        const trimmed = c.trim();
+        if (trimmed.startsWith(':') && trimmed.endsWith(':')) return 'center';
+        if (trimmed.endsWith(':')) return 'right';
+        return 'left';
+      });
+
+      // Parse header
+      const headerCells = tableLines[0].split('|').filter(c => c.trim() !== '');
+      let tableHtml = '<table>';
+
+      // Optional <thead> if first row looks like a header (next line is separator)
+      if (headerCells.length > 0) {
+        tableHtml += '<thead><tr>';
+        for (let ci = 0; ci < headerCells.length; ci++) {
+          const align = alignments[ci] ? ` style="text-align:${alignments[ci]}"` : '';
+          tableHtml += `<th${align}>${inlineFormat(headerCells[ci].trim())}</th>`;
+        }
+        tableHtml += '</tr></thead>';
+      }
+
+      // Parse data rows (skip header at index 0 and separator at index 1)
+      if (tableLines.length > 2) {
+        tableHtml += '<tbody>';
+        for (let ri = 2; ri < tableLines.length; ri++) {
+          const cells = tableLines[ri].split('|').filter(c => c.trim() !== '');
+          tableHtml += '<tr>';
+          for (let ci = 0; ci < cells.length; ci++) {
+            const align = alignments[ci] ? ` style="text-align:${alignments[ci]}"` : '';
+            tableHtml += `<td${align}>${inlineFormat(cells[ci].trim())}</td>`;
+          }
+          tableHtml += '</tr>';
+        }
+        tableHtml += '</tbody>';
+      }
+
+      tableHtml += '</table>';
+      html += tableHtml;
+
+      // Skip consumed lines
+      i = j - 1; // -1 because the for loop will increment i
+      continue;
+    }
+
     // Close list if line is not a list item
     const isUnorderedItem = /^[\-\*]\s+/.test(line);
     const isOrderedItem = /^\d+\.\s+/.test(line);
@@ -1727,8 +2107,8 @@ function updateCurrentCost(modelId, inputTokens, outputTokens) {
 }
 
 function updateSessionDisplay() {
-  document.getElementById('session-cost').textContent = formatCost(sessionTotal);
-  document.getElementById('request-count').textContent = sessionCosts.length;
+  // Delegate to session-aware cost bar update
+  updateCostBar();
 }
 
 async function fetchIdrRate() {
@@ -1741,9 +2121,8 @@ async function fetchIdrRate() {
     const data = await res.json();
     if (data && typeof data.conversion_rate === 'number') {
       idrRate = data.conversion_rate;
-      // Re-render current cost displays with IDR
-      document.getElementById('session-cost').textContent = formatCost(sessionTotal);
-      document.getElementById('current-cost').textContent = formatCost(0);
+      // Re-render cost displays with IDR
+      updateCostBar();
     }
   } catch (e) {
     console.warn('[cost] Failed to fetch IDR rate:', e.message);
@@ -1861,6 +2240,10 @@ function handleLogout() {
   resetToken = null;
   user = null;
   currentSessionId = null;
+  currentViewingSessionId = null;
+  sessionList = [];
+  savedSessionCost = 0;
+  savedSessionTokens = { in: 0, out: 0, requests: 0 };
   sessionCosts = [];
   sessionTotal = 0;
   document.getElementById('chat-screen').style.display = 'none';
@@ -1872,8 +2255,13 @@ function handleLogout() {
       <p>Ask anything. Your data is automatically masked for compliance before processing.</p>
     </div>
   `;
+  document.getElementById('viewing-banner').classList.remove('visible');
+  document.getElementById('resume-bar').classList.remove('visible');
+  setInputEnabled(true);
+  document.getElementById('prompt-input').placeholder = 'Ask anything...';
   document.getElementById('password').value = '';
   document.getElementById('prompt-input').value = '';
+  document.getElementById('sidebar-list').innerHTML = '<div class="sidebar-empty">No conversations yet.</div>';
   document.getElementById('session-cost').textContent = formatCost(0);
   document.getElementById('current-cost').textContent = formatCost(0);
   document.getElementById('tokens-in').textContent = '0';
@@ -1898,13 +2286,24 @@ async function handleNewChat() {
   }
 
   currentSessionId = null;
+  currentViewingSessionId = null;
+  savedSessionCost = 0;
+  savedSessionTokens = { in: 0, out: 0, requests: 0 };
+  sessionCosts = [];
+  sessionTotal = 0;
   hideDegradedBanner();
+  document.getElementById('viewing-banner').classList.remove('visible');
+  document.getElementById('resume-bar').classList.remove('visible');
+  setInputEnabled(true);
+  document.getElementById('prompt-input').placeholder = 'Ask anything...';
   document.getElementById('messages').innerHTML = `
     <div class="empty-state">
       <h2>How can I help you today?</h2>
       <p>Ask anything. Your data is automatically masked for compliance before processing.</p>
     </div>
   `;
+  updateCostBar();
+  loadSessions(1);
   document.getElementById('prompt-input').value = '';
   document.getElementById('prompt-input').focus();
 }
@@ -2097,6 +2496,320 @@ function showToast(message) {
   setTimeout(() => {
     toast.classList.remove('visible');
   }, 5000);
+}
+
+// ── Chat History Sidebar Functions ──
+
+/** Toggle sidebar visibility (mobile only). */
+function toggleSidebar() {
+  sidebarCollapsed = !sidebarCollapsed;
+  const sidebar = document.getElementById('sidebar');
+  if (sidebarCollapsed) {
+    sidebar.classList.add('collapsed');
+  } else {
+    sidebar.classList.remove('collapsed');
+  }
+}
+
+/** Load session list from API. Called on login and after New Chat / Resume. */
+async function loadSessions(page) {
+  if (isLoadingSessions) return;
+  isLoadingSessions = true;
+
+  const errorEl = document.getElementById('sidebar-error');
+  errorEl.style.display = 'none';
+
+  try {
+    const res = await fetch(`${API_BASE}/sessions?page=${page || 1}&pageSize=50`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+
+    if (!res.ok) throw new Error('Failed to load');
+
+    const data = await res.json();
+    sessionList = page === 1 ? data.sessions : [...sessionList, ...data.sessions];
+    sessionPage = data.page;
+    sessionHasMore = data.hasMore;
+    renderSessionList();
+  } catch (e) {
+    if (page === 1) {
+      errorEl.style.display = 'block';
+    }
+    console.warn('[sidebar] Failed to load sessions:', e.message);
+  }
+
+  isLoadingSessions = false;
+}
+
+/** Render session rows from sessionList into the sidebar. */
+function renderSessionList() {
+  const listEl = document.getElementById('sidebar-list');
+  const loadMoreBtn = document.getElementById('load-more-btn');
+
+  if (sessionList.length === 0) {
+    listEl.innerHTML = '<div class="sidebar-empty">No conversations yet.</div>';
+    loadMoreBtn.style.display = 'none';
+    return;
+  }
+
+  listEl.innerHTML = sessionList.map(s => {
+    const isActive = s.id === currentSessionId;
+    const isViewing = s.id === currentViewingSessionId;
+    const isDegraded = s.status === 'degraded';
+    const cls = ['session-row'];
+    if (isActive || isViewing) cls.push('active');
+
+    const preview = s.preview || '(no messages)';
+    const time = formatRelativeTime(s.lastActivityAt);
+    const turns = `${s.turnCount} turn${s.turnCount !== 1 ? 's' : ''}`;
+    const tokens = formatCompactTokens(s.totalInputTokens + s.totalOutputTokens);
+    const cost = sessionListCost(s);
+
+    return `
+      <div class="${cls.join(' ')}" data-session-id="${s.id}" onclick="viewSession('${s.id}')">
+        <div class="session-row-preview">${escapeHtml(preview)}</div>
+        <div class="session-row-meta">
+          <span class="session-row-time">${time}</span>
+          <span>${turns}</span>
+          ${tokens ? `<span class="session-row-tokens">${tokens}</span>` : ''}
+          ${cost ? `<span class="session-row-cost">${cost}</span>` : ''}
+        </div>
+        ${isDegraded ? '<div class="session-row-status" title="Some messages may be missing">⚠️</div>' : ''}
+      </div>
+    `;
+  }).join('');
+
+  loadMoreBtn.style.display = sessionHasMore ? 'block' : 'none';
+}
+
+/** Compute approximate cost for a session row from token counts. */
+function sessionListCost(session) {
+  if (!pricingConfig || session.totalInputTokens === 0 && session.totalOutputTokens === 0) return null;
+  // Use a blended rate: average of default model pricing across all models
+  // This is an approximation for the sidebar row; the cost bar shows precise values
+  const avgInputPrice = 0.20;   // ~average input price per 1M tokens
+  const avgOutputPrice = 0.70;  // ~average output price per 1M tokens
+  const usd = (session.totalInputTokens * avgInputPrice + session.totalOutputTokens * avgOutputPrice) / 1_000_000;
+  return formatCompactCost(usd);
+}
+
+/** Load more sessions (next page). */
+async function loadMoreSessions() {
+  await loadSessions(sessionPage + 1);
+}
+
+/** View a past session's messages in the chat area. */
+async function viewSession(sessionId) {
+  if (isStreaming) return;
+
+  // If clicking the active session, return to live chat
+  if (sessionId === currentSessionId) {
+    currentViewingSessionId = null;
+    document.getElementById('viewing-banner').classList.remove('visible');
+    document.getElementById('resume-bar').classList.remove('visible');
+    setInputEnabled(true);
+    document.getElementById('prompt-input').placeholder = 'Ask anything...';
+    updateCostBar();
+    renderSessionList();
+    return;
+  }
+
+  // Clear chat area and show loading
+  const messagesEl = document.getElementById('messages');
+  messagesEl.innerHTML = '<div class="message system">Loading conversation…</div>';
+
+  currentViewingSessionId = sessionId;
+  renderSessionList();
+
+  try {
+    // Fetch messages and stats in parallel
+    const [msgRes, statsRes] = await Promise.all([
+      fetch(`${API_BASE}/sessions/${sessionId}/messages`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      }),
+      fetch(`${API_BASE}/sessions/${sessionId}/stats`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      }),
+    ]);
+
+    if (!msgRes.ok) {
+      const err = await msgRes.json();
+      messagesEl.innerHTML = `<div class="message error">${err.message || 'Failed to load conversation'}</div>`;
+      return;
+    }
+
+    const msgData = await msgRes.json();
+
+    // Render messages
+    messagesEl.innerHTML = '';
+    if (msgData.messages && msgData.messages.length > 0) {
+      for (const msg of msgData.messages) {
+        addMessage(msg.role, msg.content);
+      }
+    } else {
+      messagesEl.innerHTML = '<div class="message system">This conversation has no messages.</div>';
+    }
+
+    // Load stats for cost bar
+    if (statsRes.ok) {
+      const statsData = await statsRes.json();
+      savedSessionCost = statsData.estimatedCostUsd ?? 0;
+      savedSessionTokens = {
+        in: statsData.totalInputTokens,
+        out: statsData.totalOutputTokens,
+        requests: statsData.requestCount,
+      };
+    } else {
+      savedSessionCost = 0;
+      savedSessionTokens = { in: 0, out: 0, requests: 0 };
+    }
+
+    // Update UI for viewing mode
+    document.getElementById('viewing-banner').classList.add('visible');
+
+    // Show resume bar if session is not active
+    const session = msgData.session;
+    const isActive = session && session.status === 'active';
+
+    if (!isActive) {
+      const resumeBar = document.getElementById('resume-bar');
+      const resumeBtn = document.getElementById('resume-btn');
+      resumeBar.classList.add('visible');
+      resumeBtn.disabled = false;
+      resumeBtn.textContent = 'Resume Conversation';
+      resumeBtn.title = '';
+    } else {
+      document.getElementById('resume-bar').classList.remove('visible');
+    }
+
+    // Keep input enabled — typing auto-resumes the session
+    setInputEnabled(true);
+    document.getElementById('prompt-input').placeholder = 'Continue this conversation…';
+    updateCostBar();
+    scrollToBottom();
+
+  } catch (e) {
+    messagesEl.innerHTML = `<div class="message error">Network error: ${e.message}</div>`;
+  }
+}
+
+/** Resume the currently-viewed session. */
+async function handleResumeSession() {
+  if (!currentViewingSessionId) return;
+
+  try {
+    const res = await fetch(`${API_BASE}/sessions/${currentViewingSessionId}/resume`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      showToast(err.message || 'Failed to resume conversation');
+      return;
+    }
+
+    const data = await res.json();
+    const resumedSession = data.session;
+
+    // Switch to live mode
+    currentSessionId = resumedSession.id;
+    currentViewingSessionId = null;
+
+    // Keep persisted stats as baseline for resumed session
+    // (savedSessionCost and savedSessionTokens are already set from viewSession)
+
+    // Reset in-memory tracking for new turns
+    sessionCosts = [];
+    sessionTotal = 0;
+
+    document.getElementById('viewing-banner').classList.remove('visible');
+    document.getElementById('resume-bar').classList.remove('visible');
+    setInputEnabled(true);
+    document.getElementById('prompt-input').placeholder = 'Continue conversation…';
+    updateCostBar();
+    await loadSessions(1);
+    document.getElementById('prompt-input').focus();
+
+  } catch (e) {
+    showToast('Failed to resume conversation: ' + e.message);
+  }
+}
+
+/** Disable or enable chat input and send button. */
+function setInputEnabled(enabled) {
+  const input = document.getElementById('prompt-input');
+  const sendBtn = document.getElementById('send-btn');
+  const attachBtn = document.getElementById('attach-btn');
+  const fileInput = document.getElementById('file-input');
+
+  if (isStreaming) return; // Don't override streaming state
+
+  input.disabled = !enabled;
+  sendBtn.disabled = !enabled;
+  attachBtn.disabled = !enabled;
+  fileInput.disabled = !enabled;
+}
+
+/** Update cost bar based on current viewing state. */
+function updateCostBar() {
+  if (currentViewingSessionId && currentViewingSessionId !== currentSessionId) {
+    // Viewing a past session → show persisted stats
+    document.getElementById('session-cost').textContent = formatCost(savedSessionCost);
+    document.getElementById('current-cost').textContent = formatCost(0);
+    document.getElementById('tokens-in').textContent = savedSessionTokens.in.toLocaleString();
+    document.getElementById('tokens-out').textContent = savedSessionTokens.out.toLocaleString();
+    document.getElementById('request-count').textContent = savedSessionTokens.requests;
+  } else if (currentSessionId) {
+    // Active session → show saved baseline + live additions
+    const totalCost = savedSessionCost + sessionTotal;
+    document.getElementById('session-cost').textContent = formatCost(totalCost);
+    document.getElementById('request-count').textContent = (savedSessionTokens.requests + sessionCosts.length).toLocaleString();
+    // current-cost and tokens-in/out still updated by SSE metadata events via updateCurrentCost()
+  } else {
+    // No session → all zeros
+    document.getElementById('session-cost').textContent = formatCost(0);
+    document.getElementById('current-cost').textContent = formatCost(0);
+    document.getElementById('tokens-in').textContent = '0';
+    document.getElementById('tokens-out').textContent = '0';
+    document.getElementById('request-count').textContent = '0';
+  }
+}
+
+// ── Relative Time Formatting ──
+
+function formatRelativeTime(isoString) {
+  if (!isoString) return '';
+  const now = Date.now();
+  const then = new Date(isoString).getTime();
+  const diffMs = now - then;
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHr = Math.floor(diffMin / 60);
+  const diffDays = Math.floor(diffHr / 24);
+
+  if (diffSec < 60) return 'Just now';
+  if (diffMin < 60) return `${diffMin} min ago`;
+  if (diffHr < 24) return `${diffHr} hour${diffHr !== 1 ? 's' : ''} ago`;
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays < 7) return `${diffDays} days ago`;
+  return new Date(isoString).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function formatCompactTokens(n) {
+  if (!n || n === 0) return '';
+  if (n < 1000) return n.toString();
+  if (n < 1000000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+  return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+}
+
+function formatCompactCost(usd) {
+  if (idrRate !== null) {
+    const idr = usd * idrRate;
+    if (idr >= 1000) return 'Rp ' + (idr / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+    return `Rp ${idr.toFixed(2)}`;
+  }
+  return `$${usd.toFixed(4)}`;
 }
 </script>
 

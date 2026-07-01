@@ -12,17 +12,17 @@
 import type { PolicyInput, PolicyResult } from '../types/routing.types.js';
 
 /**
- * Applies text-only routing policy based on complexity score bands.
- * Score 1-3 → qwen.qwen3-32b-v1:0 (fast, lightweight)
- * Score 4-5 → qwen.qwen3-235b-a22b-2507-v1:0 (stronger reasoning/thinking)
+ * Applies text-only routing policy based on complexity score.
+ * Score 1     → qwen.qwen3-32b-v1:0 (fast, simple questions only)
+ * Score 2-5   → qwen.qwen3-235b-a22b-2507-v1:0 (stronger reasoning)
  */
 export function applyTextPolicy(score: number): PolicyResult {
-  if (score >= 4) {
-    return { modelId: 'qwen.qwen3-235b-a22b-2507-v1:0', reasonCode: `complexity-band-${score}` };
+  if (score <= 1) {
+    return { modelId: 'qwen.qwen3-32b-v1:0', reasonCode: 'complexity-1' };
   }
 
-  // Score 1-3 (and any edge case below 1)
-  return { modelId: 'qwen.qwen3-32b-v1:0', reasonCode: 'complexity-band-1-3' };
+  // Score 2-5 → higher performance model
+  return { modelId: 'qwen.qwen3-235b-a22b-2507-v1:0', reasonCode: `complexity-${score}` };
 }
 
 /**
@@ -33,21 +33,21 @@ export function applyTextPolicy(score: number): PolicyResult {
  *   - qwen.qwen3-32b-v1:0
  *
  * Complexity bands within vision models:
- *   Score 1-3 → qwen.qwen3-32b-v1:0 (lightweight vision)
- *   Score 4   → openai.gpt-oss-120b-1:0 (stronger vision)
- *   Score 5   → qwen.qwen3-235b-a22b-2507-v1:0 (advanced vision)
+ *   Score 1     → qwen.qwen3-32b-v1:0 (lightweight, simple questions)
+ *   Score 2-3   → openai.gpt-oss-120b-1:0 (stronger vision, moderate complexity)
+ *   Score 4-5   → qwen.qwen3-235b-a22b-2507-v1:0 (advanced vision + reasoning)
  */
 export function applyVisionPolicy(score: number): PolicyResult {
-  if (score >= 5) {
-    return { modelId: 'qwen.qwen3-235b-a22b-2507-v1:0', reasonCode: 'vision-complexity-5' };
+  if (score >= 4) {
+    return { modelId: 'qwen.qwen3-235b-a22b-2507-v1:0', reasonCode: `vision-complexity-${score}` };
   }
 
-  if (score === 4) {
-    return { modelId: 'openai.gpt-oss-120b-1:0', reasonCode: 'vision-complexity-4' };
+  if (score >= 2) {
+    return { modelId: 'openai.gpt-oss-120b-1:0', reasonCode: `vision-complexity-${score}` };
   }
 
-  // Score 1-3 (and any edge case below 1)
-  return { modelId: 'qwen.qwen3-32b-v1:0', reasonCode: 'vision-complexity-1-3' };
+  // Score 1 → lightweight model
+  return { modelId: 'qwen.qwen3-32b-v1:0', reasonCode: 'vision-complexity-1' };
 }
 
 /**

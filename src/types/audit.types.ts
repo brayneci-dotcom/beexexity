@@ -38,4 +38,7 @@ export interface AuditEntry {
   // Session continuity fields
   sessionState?: string;
   turnCount?: number;
+
+  // Pricing snapshot for historical cost accuracy
+  modelPricingSnapshot?: Record<string, number> | null;
 }

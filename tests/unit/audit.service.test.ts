@@ -56,6 +56,7 @@ describe('AuditService', () => {
           false, // contextSummarized is undefined → false
           null, // sessionState is undefined → null
           null, // turnCount is undefined → null
+          JSON.stringify({ inputPricePer1MTokens: 0.16, outputPricePer1MTokens: 0.62 }), // modelPricingSnapshot for qwen3-32b
         ],
       );
     });
@@ -145,7 +146,7 @@ describe('AuditService', () => {
 
       // Verify the params array only contains the expected metadata fields
       const params = mockedQuery.mock.calls[0][1] as unknown[];
-      expect(params).toHaveLength(19);
+      expect(params).toHaveLength(20);
       expect(params).toEqual([
         validEntry.timestamp,
         validEntry.userId,
@@ -166,6 +167,7 @@ describe('AuditService', () => {
         false, // contextSummarized
         null, // sessionState
         null, // turnCount
+        JSON.stringify({ inputPricePer1MTokens: 0.16, outputPricePer1MTokens: 0.62 }), // modelPricingSnapshot
       ]);
     });
 
@@ -203,6 +205,8 @@ describe('AuditService', () => {
       // Session continuity fields at indices 17-18
       expect(params[17]).toBe('active'); // sessionState
       expect(params[18]).toBe(3); // turnCount
+      // Pricing snapshot at index 19 (from actual pricing-config.json)
+      expect(params[19]).toBe(JSON.stringify({ inputPricePer1MTokens: 0.16, outputPricePer1MTokens: 0.62 }));
     });
 
     it('should not include any raw message content in audit fields', async () => {
@@ -242,6 +246,8 @@ describe('AuditService', () => {
       // sessionState is null (not provided), turnCount is null (not provided)
       expect(params[17]).toBeNull();
       expect(params[18]).toBeNull();
+      // modelPricingSnapshot (from actual pricing-config.json for qwen3-32b)
+      expect(params[19]).toBe(JSON.stringify({ inputPricePer1MTokens: 0.16, outputPricePer1MTokens: 0.62 }));
     });
   });
 });
