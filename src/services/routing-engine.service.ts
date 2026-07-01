@@ -32,11 +32,45 @@ const bedrockClient = new BedrockRuntimeClient({
 });
 
 /**
- * Refines the prompt using qwen.qwen3-32b-v1:0 via Bedrock Converse (non-streaming).
- * Structures the output into four sections: Role, Context, Task, Intent —
- * giving the downstream model a clear persona and framework for answering.
- * Returns the refined prompt or null on failure.
+ * Detects the language of the input text using high-frequency function words.
+ * Returns an ISO 639-1 code ('id', 'en', etc.) or null if uncertain.
  */
+function detectLanguage(text: string): string | null {
+  // Normalize to lowercase for matching
+  const lower = text.toLowerCase();
+
+  // High-frequency Bahasa Indonesia function words (not typically found in English)
+  const indonesianMarkers = [
+    'yang', 'dan', 'di', 'ke', 'dari', 'ini', 'itu', 'dengan', 'pada',
+    'untuk', 'adalah', 'tidak', 'juga', 'sudah', 'akan', 'bisa', 'ada',
+    'atau', 'jika', 'karena', 'tapi', 'saat', 'lebih', 'sangat', 'kalau',
+    'boleh', 'belum', 'lagi', 'saja', 'dong', 'sih', 'deh', 'kok', 'kan',
+    'ya', 'nih', 'tuh', 'bagaimana', 'mengapa', 'kenapa', 'kapan', 'dimana',
+    'siapa', 'apa', 'bagi', 'dalam', 'sebagai', 'tersebut', 'merupakan',
+    'ialah', 'ialah', 'bahwa', 'agar', 'supaya', 'meski', 'walau', 'walaupun',
+    'ketika', 'setelah', 'sebelum', 'selama', 'hingga', 'sampai', 'maka',
+    'lalu', 'kemudian', 'selalu', 'sering', 'pernah', 'masih', 'hanya',
+    'jelaskan', 'terkait', 'kenapa',
+  ];
+
+  // Count how many Indonesian markers appear as whole words
+  let matches = 0;
+  for (const marker of indonesianMarkers) {
+    const regex = new RegExp(`\\b${marker}\\b`, 'gi');
+    const count = (lower.match(regex) || []).length;
+    matches += count;
+  }
+
+  // If we have 3+ Indonesian marker words, classify as Indonesian
+  if (matches >= 3) {
+    return 'id';
+  }
+
+  // Could add more language detectors here (e.g., Japanese, Arabic)
+
+  return null; // default/unknown → model will infer from context
+}
+
 export async function refinePrompt(
   originalPrompt: string,
   documentContext?: string
@@ -46,9 +80,17 @@ export async function refinePrompt(
     controller.abort();
   }, config.routing.refinementTimeoutMs);
 
+  // Detect language for a hard constraint in the system prompt
+  const detectedLang = detectLanguage(originalPrompt);
+  const langInstruction = detectedLang === 'id'
+    ? 'CRITICAL: The user wrote in BAHASA INDONESIA. You MUST write the ENTIRE refined output in Bahasa Indonesia. Role names, context, task, intent — everything in Indonesian. Do NOT use English at all.'
+    : 'Write the output in the same language as the user\'s request.';
+
   try {
     const systemPrompt = [
       'You are a prompt structuring assistant. Your job is to decompose the user\'s request into a structured prompt that helps a large language model give the best possible answer.',
+      '',
+      langInstruction,
       '',
       'Analyze the request and produce output in exactly these four sections:',
       '',
@@ -59,16 +101,12 @@ export async function refinePrompt(
       '',
       'Rules:',
       '- Preserve the original intent exactly.',
-      '- CRITICAL: Respond in the SAME LANGUAGE as the original request. If the user wrote in Bahasa Indonesia, the refined prompt must be in Bahasa Indonesia. If in English, respond in English. Match the language exactly.',
       '- Do NOT add facts that were not implied by the original request.',
       '- Do NOT include any personally identifiable information (PII).',
       '- The output prompt will be sent directly to the answering model, so make it self-contained.',
       '',
-      'Output format (do not include the numbers or labels in the final prompt — write it as flowing text):',
+      'Output format (write as flowing text, no labels or numbers):',
       'You are a [role]. [Context paragraph]. Your task is to [task]. The goal is to [intent].',
-      '(Write the entire output in the same language as the original request.)',
-      '',
-      'Now structure this request accordingly.',
     ].join('\n');
 
     const userContent = documentContext
