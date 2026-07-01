@@ -13,41 +13,30 @@ import type { PolicyInput, PolicyResult } from '../types/routing.types.js';
 
 /**
  * Applies text-only routing policy based on complexity score.
- * Score 1     → qwen.qwen3-32b-v1:0 (fast, simple questions only)
- * Score 2-5   → qwen.qwen3-235b-a22b-2507-v1:0 (stronger reasoning)
+ * Qwen3 32B is reserved for prompt refinement + complexity scoring only.
+ * All inference is routed to models with 128K+ context windows.
+ *
+ * Score 1-5 → qwen.qwen3-235b-a22b-2507-v1:0 (256K context, 8K output)
  */
 export function applyTextPolicy(score: number): PolicyResult {
-  if (score <= 1) {
-    return { modelId: 'qwen.qwen3-32b-v1:0', reasonCode: 'complexity-1' };
-  }
-
-  // Score 2-5 → higher performance model
   return { modelId: 'qwen.qwen3-235b-a22b-2507-v1:0', reasonCode: `complexity-${score}` };
 }
 
 /**
  * Applies vision-aware routing when images are present.
- * Selects from vision-capable models only:
- *   - openai.gpt-oss-120b-1:0
- *   - qwen.qwen3-235b-a22b-2507-v1:0
- *   - qwen.qwen3-32b-v1:0
+ * Qwen3 32B is not used for inference — refinement/scoring only.
  *
- * Complexity bands within vision models:
- *   Score 1     → qwen.qwen3-32b-v1:0 (lightweight, simple questions)
- *   Score 2-3   → openai.gpt-oss-120b-1:0 (stronger vision, moderate complexity)
- *   Score 4-5   → qwen.qwen3-235b-a22b-2507-v1:0 (advanced vision + reasoning)
+ * Complexity bands:
+ *   Score 1-3   → openai.gpt-oss-120b-1:0 (128K context, 16K output, strong vision)
+ *   Score 4-5   → qwen.qwen3-235b-a22b-2507-v1:0 (256K context, 8K output, advanced)
  */
 export function applyVisionPolicy(score: number): PolicyResult {
   if (score >= 4) {
     return { modelId: 'qwen.qwen3-235b-a22b-2507-v1:0', reasonCode: `vision-complexity-${score}` };
   }
 
-  if (score >= 2) {
-    return { modelId: 'openai.gpt-oss-120b-1:0', reasonCode: `vision-complexity-${score}` };
-  }
-
-  // Score 1 → lightweight model
-  return { modelId: 'qwen.qwen3-32b-v1:0', reasonCode: 'vision-complexity-1' };
+  // Score 1-3 → mid-tier vision model
+  return { modelId: 'openai.gpt-oss-120b-1:0', reasonCode: `vision-complexity-${score}` };
 }
 
 /**
