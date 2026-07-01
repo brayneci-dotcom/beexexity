@@ -32,43 +32,42 @@ const bedrockClient = new BedrockRuntimeClient({
 });
 
 /**
- * Detects the language of the input text using high-frequency function words.
- * Returns an ISO 639-1 code ('id', 'en', etc.) or null if uncertain.
+ * Parses a JSON response from the refinement model and reconstructs a flowing
+ * self-contained prompt. Handles markdown-wrapped JSON (```json ... ```).
+ * Returns null if the response cannot be parsed or required fields are missing.
  */
-function detectLanguage(text: string): string | null {
-  // Normalize to lowercase for matching
-  const lower = text.toLowerCase();
-
-  // High-frequency Bahasa Indonesia function words (not typically found in English)
-  const indonesianMarkers = [
-    'yang', 'dan', 'di', 'ke', 'dari', 'ini', 'itu', 'dengan', 'pada',
-    'untuk', 'adalah', 'tidak', 'juga', 'sudah', 'akan', 'bisa', 'ada',
-    'atau', 'jika', 'karena', 'tapi', 'saat', 'lebih', 'sangat', 'kalau',
-    'boleh', 'belum', 'lagi', 'saja', 'dong', 'sih', 'deh', 'kok', 'kan',
-    'ya', 'nih', 'tuh', 'bagaimana', 'mengapa', 'kenapa', 'kapan', 'dimana',
-    'siapa', 'apa', 'bagi', 'dalam', 'sebagai', 'tersebut', 'merupakan',
-    'ialah', 'ialah', 'bahwa', 'agar', 'supaya', 'meski', 'walau', 'walaupun',
-    'ketika', 'setelah', 'sebelum', 'selama', 'hingga', 'sampai', 'maka',
-    'lalu', 'kemudian', 'selalu', 'sering', 'pernah', 'masih', 'hanya',
-    'jelaskan', 'terkait', 'kenapa',
-  ];
-
-  // Count how many Indonesian markers appear as whole words
-  let matches = 0;
-  for (const marker of indonesianMarkers) {
-    const regex = new RegExp(`\\b${marker}\\b`, 'gi');
-    const count = (lower.match(regex) || []).length;
-    matches += count;
+function parseRefinementJson(raw: string): string | null {
+  // Strip markdown code fences if present
+  let jsonStr = raw.trim();
+  if (jsonStr.startsWith('```')) {
+    jsonStr = jsonStr.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
   }
 
-  // If we have 3+ Indonesian marker words, classify as Indonesian
-  if (matches >= 3) {
-    return 'id';
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(jsonStr);
+  } catch {
+    return null;
   }
 
-  // Could add more language detectors here (e.g., Japanese, Arabic)
+  const role = typeof parsed.role === 'string' ? parsed.role.trim() : '';
+  const context = typeof parsed.context === 'string' ? parsed.context.trim() : '';
+  const task = typeof parsed.task === 'string' ? parsed.task.trim() : '';
+  const intent = typeof parsed.intent === 'string' ? parsed.intent.trim() : '';
 
-  return null; // default/unknown → model will infer from context
+  if (!role && !context && !task && !intent) {
+    return null;
+  }
+
+  // Reconstruct the flowing text prompt (matching the legacy format)
+  const parts: string[] = [];
+  if (role) parts.push(`You are a ${role}.`);
+  if (context) parts.push(context);
+  if (task) parts.push(`Your task is to ${task}.`);
+  if (intent) parts.push(`The goal is to ${intent}.`);
+
+  const result = parts.join(' ');
+  return result.length > 0 ? result : null;
 }
 
 export async function refinePrompt(
@@ -80,33 +79,26 @@ export async function refinePrompt(
     controller.abort();
   }, config.routing.refinementTimeoutMs);
 
-  // Detect language for a hard constraint in the system prompt
-  const detectedLang = detectLanguage(originalPrompt);
-  const langInstruction = detectedLang === 'id'
-    ? 'CRITICAL: The user wrote in BAHASA INDONESIA. You MUST write the ENTIRE refined output in Bahasa Indonesia. Role names, context, task, intent — everything in Indonesian. Do NOT use English at all.'
-    : 'Write the output in the same language as the user\'s request.';
-
   try {
     const systemPrompt = [
-      'You are a prompt structuring assistant. Your job is to decompose the user\'s request into a structured prompt that helps a large language model give the best possible answer.',
+      'You are an expert AI prompt engineer. Your task is to refine the user\'s raw input into a strict, highly effective, and CONCISE structural prompt format.',
       '',
-      langInstruction,
+      '### CRITICAL RULES:',
+      '1. LANGUAGE PRESERVATION: Detect the language of the original input. The refined prompt values MUST be in that EXACT SAME language. Do NOT translate to English.',
+      '2. STRUCTURAL KEYS: Keep JSON keys in English. ONLY values in the detected language.',
+      '3. BE EXTREMELY CONCISE:',
+      '   - Do not add unnecessary context or hallucinate details.',
+      '   - Avoid filler words and verbose phrasing. High signal, zero noise.',
+      '   - Keep each field as short as possible.',
+      '4. JSON ONLY: Output strictly valid JSON. No markdown, no explanations.',
       '',
-      'Analyze the request and produce output in exactly these four sections:',
-      '',
-      '1. ROLE — The single best professional persona or expert role to answer this question (e.g. "Indonesian banking lawyer", "financial analyst", "tax consultant", "software architect"). Choose the most relevant domain expert.',
-      '2. CONTEXT — Relevant background, domain knowledge, or situational framing the model needs to know. Infer reasonable context from the request; do not fabricate facts.',
-      '3. TASK — The core task in one clear, actionable sentence. What exactly should the model produce? (e.g. "Explain the steps to...", "Compare X and Y...", "Draft a response to...")',
-      '4. INTENT — The underlying goal or purpose. What does the user ultimately want to accomplish or decide? (e.g. "To make an informed investment decision", "To comply with OJK regulation")',
-      '',
-      'Rules:',
-      '- Preserve the original intent exactly.',
-      '- Do NOT add facts that were not implied by the original request.',
-      '- Do NOT include any personally identifiable information (PII).',
-      '- The output prompt will be sent directly to the answering model, so make it self-contained.',
-      '',
-      'Output format (write as flowing text, no labels or numbers):',
-      'You are a [role]. [Context paragraph]. Your task is to [task]. The goal is to [intent].',
+      '### OUTPUT SCHEMA (use exactly these keys):',
+      '{',
+      '  "role": "<single best professional persona or expert role, e.g. financial analyst, tax consultant, software architect>",',
+      '  "context": "<relevant background or situational framing — infer only what the request implies, do not fabricate>",',
+      '  "task": "<the core task in one clear, actionable sentence — what should the model produce?>",',
+      '  "intent": "<the underlying goal — what does the user ultimately want to accomplish?>"',
+      '}',
     ].join('\n');
 
     const userContent = documentContext
@@ -137,7 +129,8 @@ export async function refinePrompt(
       return null;
     }
 
-    return outputText.trim();
+    // Parse JSON and reconstruct flowing prompt
+    return parseRefinementJson(outputText);
   } catch {
     // Any failure (timeout, API error, parse error) → return null
     return null;
