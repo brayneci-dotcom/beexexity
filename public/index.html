@@ -18,6 +18,22 @@
       --accent-hover: #9bd0e6;
       --border: #2a2a2a;
       --shadow: 0 4px 24px rgba(0,0,0,0.4);
+      --login-gradient: linear-gradient(135deg, #0f0f0f 0%, #1a1a2e 100%);
+    }
+
+    /* Light mode */
+    [data-theme="light"] {
+      --bg-primary: #f5f5f5;
+      --bg-secondary: #ffffff;
+      --bg-tertiary: #e8e8e8;
+      --text-primary: #1a1a1a;
+      --text-secondary: #555555;
+      --text-tertiary: #999999;
+      --accent: #1a6b8a;
+      --accent-hover: #155570;
+      --border: #dddddd;
+      --shadow: 0 4px 24px rgba(0,0,0,0.08);
+      --login-gradient: linear-gradient(135deg, #e8edf2 0%, #d0dce8 100%);
     }
 
     body {
@@ -36,7 +52,11 @@
       align-items: center;
       justify-content: center;
       height: 100vh;
-      background: linear-gradient(135deg, #0f0f0f 0%, #1a1a2e 100%);
+      background: var(--login-gradient);
+    }
+
+    #password-reset-screen {
+      background: var(--login-gradient);
     }
 
     .login-box {
@@ -105,7 +125,7 @@
       align-items: center;
       justify-content: center;
       height: 100vh;
-      background: linear-gradient(135deg, #0f0f0f 0%, #1a1a2e 100%);
+      background: var(--login-gradient);
     }
 
     .password-reset-box {
@@ -194,8 +214,9 @@
 
     /* Header */
     .header {
-      background: rgba(15, 15, 15, 0.8);
+      background: var(--header-bg, rgba(15, 15, 15, 0.8));
       backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       padding: 1rem 2rem;
       display: flex;
       align-items: center;
@@ -204,6 +225,10 @@
       position: sticky;
       top: 0;
       z-index: 100;
+    }
+
+    [data-theme="light"] .header {
+      --header-bg: rgba(255, 255, 255, 0.85);
     }
 
     .header-left {
@@ -249,6 +274,24 @@
       font-weight: 600;
       font-size: 0.75rem;
       color: var(--bg-primary);
+    }
+
+    .theme-toggle {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 0.5rem;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+
+    .theme-toggle:hover {
+      background: var(--bg-secondary);
+      color: var(--accent);
     }
 
     .logout-btn {
@@ -1249,6 +1292,19 @@
         <div class="logo">beexexity</div>
       </div>
       <div class="header-right">
+        <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+          </svg>
+        </button>
         <button class="logout-btn" onclick="handleNewChat()">New Chat</button>
         <div class="user-info">
           <div class="user-avatar" id="user-avatar"></div>
@@ -2811,6 +2867,28 @@ function formatCompactCost(usd) {
   }
   return `$${usd.toFixed(4)}`;
 }
+
+// ── Theme Toggle ──
+
+function getTheme() {
+  return localStorage.getItem('theme') || 'dark';
+}
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('theme', theme);
+}
+
+function toggleTheme() {
+  const current = getTheme();
+  const next = current === 'dark' ? 'light' : 'dark';
+  applyTheme(next);
+}
+
+// Apply saved theme on load
+(function initTheme() {
+  applyTheme(getTheme());
+})();
 </script>
 
 <div class="toast-notification" id="toast-notification"></div>
