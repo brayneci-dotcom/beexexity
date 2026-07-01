@@ -69,31 +69,27 @@ describe('PII Masker - Person Name Detection (NAMA)', () => {
     });
 
     describe('capitalized word sequences (without titles)', () => {
-      it('should detect sequences of 2 capitalized words as potential names', () => {
+      it('should NOT detect capitalized words without a title prefix', () => {
         const text = 'Nasabah bernama Ahmad Rizky telah konfirmasi';
         const detections = detectPersonName(text);
 
-        expect(detections).toHaveLength(1);
-        expect(detections[0].type).toBe('NAMA');
-        expect(detections[0].matchedText).toBe('Ahmad Rizky');
+        // Strategy 2 (capitalized word sequences without titles) removed —
+        // only title-prefixed names (Bapak/Ibu/etc.) are detected
+        expect(detections).toHaveLength(0);
       });
 
-      it('should detect sequences of 3 capitalized words', () => {
+      it('should NOT detect 3 capitalized words without a title prefix', () => {
         const text = 'Transfer dari Siti Nur Aisyah berhasil';
         const detections = detectPersonName(text);
 
-        expect(detections).toHaveLength(1);
-        expect(detections[0].type).toBe('NAMA');
-        expect(detections[0].matchedText).toBe('Siti Nur Aisyah');
+        expect(detections).toHaveLength(0);
       });
 
-      it('should detect sequences of 4 capitalized words', () => {
+      it('should NOT detect 4 capitalized words without a title prefix', () => {
         const text = 'Data milik Muhammad Rizky Andi Pratama sudah diupdate';
         const detections = detectPersonName(text);
 
-        expect(detections).toHaveLength(1);
-        expect(detections[0].type).toBe('NAMA');
-        expect(detections[0].matchedText).toBe('Muhammad Rizky Andi Pratama');
+        expect(detections).toHaveLength(0);
       });
     });
 

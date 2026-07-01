@@ -356,19 +356,17 @@ export function detectBankName(text: string): RawDetection[] {
 /**
  * Detect NAMA (person names) using pattern-based heuristics for Indonesian names.
  *
- * Detection strategies:
- * 1. Title-prefixed names: "Bapak Ahmad Rizky", "Ibu Siti Nurhaliza", "Pak Budi"
- * 2. Capitalized word sequences (2-4 words) that look like person names
+ * Detection strategy: Title-prefixed names only.
+ * "Bapak Ahmad Rizky", "Ibu Siti Nurhaliza", "Pak Budi", etc.
  *
  * Avoids false positives by:
- * - Excluding standalone common words, locations, bank names
- * - Requiring at least 2 capitalized words for non-title sequences
+ * - Excluding standalone common words from the exclusion list
  * - Not matching words that are part of already-detected entities (bank names, etc.)
  */
 export function detectPersonName(text: string): RawDetection[] {
   const detections: RawDetection[] = [];
 
-  // Strategy 1: Title prefix followed by capitalized words
+  // Title prefix followed by capitalized words
   // Build title pattern: (Bapak|Ibu|Pak|Bu|...) followed by 1-4 capitalized words
   const titlePattern = TITLE_PREFIXES
     .map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
@@ -400,53 +398,6 @@ export function detectPersonName(text: string): RawDetection[] {
       });
     }
   }
-
-  // Strategy 2: Sequences of 2-4 capitalized words without a title prefix
-  // This catches names like "Ahmad Rizky Pratama" or "Siti Nurhaliza"
-  const capitalizedSeqRegex = /(?:^|(?<=\s|[,.;:!?()]))((?:[A-Z][a-z]{1,}(?:'[a-z]+)?)(?:\s+[A-Z][a-z]{1,}(?:'[a-z]+)?){1,3})(?=\s|[,.;:!?()]|$)/gm;
-
-  while ((match = capitalizedSeqRegex.exec(text)) !== null) {
-    const fullMatch = match[1];
-    const startIndex = match.index + (match[0].length - fullMatch.length);
-    const endIndex = startIndex + fullMatch.length;
-
-    // Check for overlap with existing detections (title-based)
-    const overlaps = detections.some(
-      d => (startIndex >= d.startIndex && startIndex < d.endIndex) ||
-           (endIndex > d.startIndex && endIndex <= d.endIndex) ||
-           (startIndex <= d.startIndex && endIndex >= d.endIndex)
-    );
-    if (overlaps) continue;
-
-    // Validate: at least 2 words, not all exclusion words
-    const words = fullMatch.split(/\s+/);
-    if (words.length < 2) continue;
-
-    const nonExcludedWords = words.filter(
-      w => !NAME_EXCLUSION_SET.has(w.toLowerCase())
-    );
-
-    // All words must not be in the exclusion set for non-title names
-    // (stricter than title-based detection since we don't have a title signal)
-    if (nonExcludedWords.length < 2) continue;
-
-    // Additional check: don't match if it starts with a bank name pattern
-    const lowerMatch = fullMatch.toLowerCase();
-    const isBankName = BANK_NAMES.some(
-      b => lowerMatch === b.toLowerCase() || lowerMatch.startsWith(b.toLowerCase() + ' ')
-    );
-    if (isBankName) continue;
-
-    detections.push({
-      type: 'NAMA',
-      startIndex,
-      endIndex,
-      matchedText: fullMatch,
-    });
-  }
-
-  // Sort by startIndex
-  detections.sort((a, b) => a.startIndex - b.startIndex);
 
   return detections;
 }
