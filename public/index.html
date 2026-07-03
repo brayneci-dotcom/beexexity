@@ -1458,9 +1458,11 @@
   <div class="login-box">
     <h1>beexexity</h1>
     <div id="login-error" class="login-error" style="display:none"></div>
-    <input type="text" id="username" placeholder="Username" autocomplete="username">
-    <input type="password" id="password" placeholder="Password" autocomplete="current-password">
-    <button onclick="handleLogin()">Continue</button>
+    <form onsubmit="event.preventDefault(); handleLogin();">
+      <input type="text" id="username" placeholder="Username" autocomplete="username">
+      <input type="password" id="password" placeholder="Password" autocomplete="current-password">
+      <button type="submit">Continue</button>
+    </form>
   </div>
 </div>
 
@@ -1470,13 +1472,15 @@
     <h1>Change Your Password</h1>
     <p class="subtitle">Your account requires a password change before continuing.</p>
     <div id="password-reset-error" class="password-reset-error" style="display:none"></div>
-    <label for="current-password">Current Password</label>
-    <input type="password" id="current-password" placeholder="Enter your existing password" autocomplete="current-password">
-    <label for="new-password">New Password</label>
-    <input type="password" id="new-password" placeholder="Choose a new password" autocomplete="new-password">
-    <label for="confirm-password">Confirm New Password</label>
-    <input type="password" id="confirm-password" placeholder="Re-enter your new password" autocomplete="new-password">
-    <button onclick="handlePasswordChange()">Change Password</button>
+    <form onsubmit="event.preventDefault(); handlePasswordChange();">
+      <label for="current-password">Current Password</label>
+      <input type="password" id="current-password" placeholder="Enter your existing password" autocomplete="current-password">
+      <label for="new-password">New Password</label>
+      <input type="password" id="new-password" placeholder="Choose a new password" autocomplete="new-password">
+      <label for="confirm-password">Confirm New Password</label>
+      <input type="password" id="confirm-password" placeholder="Re-enter your new password" autocomplete="new-password">
+      <button type="submit">Change Password</button>
+    </form>
   </div>
 </div>
 
