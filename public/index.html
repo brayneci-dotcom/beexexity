@@ -1002,6 +1002,9 @@
       border-radius: 6px;
       line-height: 1.6;
       display: none;
+      word-break: break-word;
+      overflow-wrap: break-word;
+      max-width: 100%;
     }
 
     .routing-details.visible {
@@ -2031,9 +2034,10 @@ async function handleSend() {
             if (data.executedModelId) executedModelId = data.executedModelId;
             const displayName = getModelDisplayName(data.executedModelId || executedModelId);
             const scoreBand = data.scoreBand || (data.routingState === 'manual' ? 'manual-override' : '');
+            const skillLabel = data.skill && data.skill !== 'general' ? ` • ${data.skill}` : '';
             const indicatorText = scoreBand
-              ? `⚡ ${displayName} • ${scoreBand}`
-              : `⚡ ${displayName}`;
+              ? `⚡ ${displayName}${skillLabel} • ${scoreBand}`
+              : `⚡ ${displayName}${skillLabel}`;
             // Insert routing indicator above the assistant content
             let routingEl = assistantEl.querySelector('.routing-indicator');
             if (!routingEl) {
@@ -2051,18 +2055,20 @@ async function handleSend() {
               routingEl.after(detailsEl);
             }
             const details = [];
+            details.push(`<b>Thought Process:</b> ${data.reasoningSummary || 'auto-routed'}`);
+            details.push(`<hr style="border:0;border-top:1px solid var(--border);margin:4px 0">`);
+            if (data.skill) details.push(`<b>Skill:</b> ${data.skill}`);
             details.push(`<b>Routing State:</b> ${data.routingState || 'auto'}`);
             details.push(`<b>Executed Model:</b> ${data.executedModelId || 'unknown'}`);
             if (data.complexityScore) details.push(`<b>Complexity Score:</b> ${data.complexityScore}/5 (${data.scoreBand})`);
             if (data.routingReasonCode) details.push(`<b>Reason:</b> ${data.routingReasonCode}`);
-            if (data.reasoningSummary) details.push(`<b>Summary:</b> ${data.reasoningSummary}`);
             if (data.modalityFlags) {
               const mf = data.modalityFlags;
               const modality = mf.mixed ? 'mixed' : mf.image ? 'image' : mf.documentText ? 'document+text' : 'text-only';
               details.push(`<b>Modality:</b> ${modality}`);
             }
             if (data.refinedPrompt && data.refinedPrompt !== data.originalPrompt) {
-              details.push(`<b>Refined Prompt:</b> ${escapeHtml(data.refinedPrompt.substring(0, 200))}${data.refinedPrompt.length > 200 ? '...' : ''}`);
+              details.push(`<b>Refined Prompt:</b> ${escapeHtml(data.refinedPrompt)}`);
             }
             detailsEl.innerHTML = details.join('<br>');
           } else if (eventType === 'error') {

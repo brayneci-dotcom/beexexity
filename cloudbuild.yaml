@@ -1,0 +1,63 @@
+# Cloud Build configuration for Cloud Run deployment
+# Used by GCP's built-in continuous deployment from GitHub.
+#
+# Steps:
+#   1. Build Docker image from root Dockerfile
+#   2. Push to Artifact Registry
+#   3. Deploy to Cloud Run with secrets from Secret Manager
+
+steps:
+  # Build and push the container image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - '${_ARTIFACT_REGISTRY}/${PROJECT_ID}/${_SERVICE_NAME}/${_SERVICE_NAME}:$COMMIT_SHA'
+      - '-t'
+      - '${_ARTIFACT_REGISTRY}/${PROJECT_ID}/${_SERVICE_NAME}/${_SERVICE_NAME}:latest'
+      - '.'
+
+  # Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - '${_SERVICE_NAME}'
+      - '--image'
+      - '${_ARTIFACT_REGISTRY}/${PROJECT_ID}/${_SERVICE_NAME}/${_SERVICE_NAME}:$COMMIT_SHA'
+      - '--region'
+      - '${_REGION}'
+      - '--platform'
+      - 'managed'
+      - '--port'
+      - '3000'
+      - '--memory'
+      - '512Mi'
+      - '--cpu'
+      - '1'
+      - '--timeout'
+      - '300'
+      - '--max-instances'
+      - '10'
+      - '--concurrency'
+      - '80'
+      - '--allow-unauthenticated'
+      - '--set-env-vars'
+      - 'NODE_ENV=production,AWS_REGION=ap-southeast-3,DB_HOST=${_DB_HOST},DB_PORT=5432,DB_NAME=bedrock_gateway,DB_USER=${_DB_USER},DB_SSL=true'
+      - '--set-secrets'
+      - 'DB_PASSWORD=db-password:latest,JWT_SECRET=jwt-secret:latest,AWS_ACCESS_KEY_ID=aws-access-key-id:latest,AWS_SECRET_ACCESS_KEY=aws-secret-access-key:latest'
+
+substitutions:
+  _REGION: asia-southeast2
+  _SERVICE_NAME: bedrock-inference-gateway
+  _ARTIFACT_REGISTRY: asia-southeast2-docker.pkg.dev
+  _DB_HOST: ''     # set in Cloud Build trigger → Variables
+  _DB_USER: ''     # set in Cloud Build trigger → Variables
+
+images:
+  - '${_ARTIFACT_REGISTRY}/${PROJECT_ID}/${_SERVICE_NAME}/${_SERVICE_NAME}:$COMMIT_SHA'
+  - '${_ARTIFACT_REGISTRY}/${PROJECT_ID}/${_SERVICE_NAME}/${_SERVICE_NAME}:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

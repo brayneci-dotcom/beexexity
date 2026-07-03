@@ -306,6 +306,7 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
           modalityFlags: { textOnly: true, documentText: false, image: false, mixed: false },
           manualOverrideApplied: false,
           flags: ['routing-fallback'],
+          skill: 'general',
         };
       }
     } else {
@@ -322,6 +323,7 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
         modalityFlags: { textOnly: true, documentText: false, image: false, mixed: false },
         manualOverrideApplied: true,
         flags: [],
+        skill: 'general',
       };
     }
 
@@ -347,6 +349,7 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
         reasoningSummary: routingDecision.reasoningSummary,
         modalityFlags: routingDecision.modalityFlags,
         manualOverrideApplied: routingDecision.manualOverrideApplied,
+        skill: routingDecision.skill,
       };
       res.write(`event: routing\ndata: ${JSON.stringify(routingMetadata)}\n\n`);
     }
@@ -768,6 +771,7 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
         },
         manualOverrideApplied: false,
         flags: ['routing-fallback'],
+        skill: 'general',
       };
     }
   } else {
@@ -789,6 +793,7 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
       },
       manualOverrideApplied: true,
       flags: [],
+      skill: 'general',
     };
   }
 
@@ -936,6 +941,7 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
         : routingDecision.reasoningSummary,
       modalityFlags: routingDecision.modalityFlags,
       manualOverrideApplied: routingDecision.manualOverrideApplied,
+      skill: routingDecision.skill,
     };
     res.write(`event: routing\ndata: ${JSON.stringify(routingMetadata)}\n\n`);
   }

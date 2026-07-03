@@ -39,6 +39,9 @@ export const config = {
     metadataEnabled: process.env.ROUTING_METADATA_ENABLED !== 'false',
     transparencyEnabled: process.env.ROUTING_TRANSPARENCY_ENABLED === 'true',
     scoringModelId: 'qwen.qwen3-32b-v1:0',
+    classifierTimeoutMs: parseInt(
+      process.env.ROUTING_CLASSIFIER_TIMEOUT_MS || '2000', 10
+    ),
   },
   auth: {
     minPasswordLength: parseInt(process.env.MIN_PASSWORD_LENGTH || '8', 10),

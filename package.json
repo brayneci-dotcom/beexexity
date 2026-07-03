@@ -21,7 +21,6 @@
   "type": "module",
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.700.0",
-    "@vendia/serverless-express": "^4.12.6",
     "bcrypt": "^5.1.1",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",

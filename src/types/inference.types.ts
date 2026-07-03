@@ -64,4 +64,5 @@ export interface RoutingMetadataEvent {
   reasoningSummary: string;
   modalityFlags?: ModalityFlags;
   manualOverrideApplied: boolean;
+  skill?: string;  // classified request type from hybrid router
 }

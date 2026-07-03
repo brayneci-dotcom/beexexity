@@ -9,6 +9,31 @@ export type { ModalityFlags } from './inference.types.js';
 import type { ModalityFlags } from './inference.types.js';
 
 /**
+ * Skill type for the hybrid router — classifies user requests into one of
+ * 17 categories across 5 groups to select a skill-specific refinement prompt.
+ */
+export type SkillType =
+  // Generation
+  | 'email' | 'creative' | 'brainstorming' | 'meta_prompting'
+  // Transformation
+  | 'summarization' | 'translation' | 'data_conversion' | 'editing_critique'
+  // Interaction
+  | 'roleplay' | 'logic_math' | 'planning_strategy' | 'document_qna'
+  // Enterprise
+  | 'requirement_generation' | 'compliance_pre_assessment'
+  // Engineering
+  | 'code' | 'log_troubleshooting' | 'general';
+
+/** Ordered list of all skill types for regex extraction. */
+export const ALL_SKILLS: SkillType[] = [
+  'email', 'creative', 'brainstorming', 'meta_prompting',
+  'summarization', 'translation', 'data_conversion', 'editing_critique',
+  'roleplay', 'logic_math', 'planning_strategy', 'document_qna',
+  'requirement_generation', 'compliance_pre_assessment',
+  'code', 'log_troubleshooting', 'general',
+];
+
+/**
  * Input to the routing engine for determining model selection.
  * All text fields should already be PII-masked before reaching this interface.
  */
@@ -39,6 +64,7 @@ export interface RoutingDecision {
   modalityFlags: ModalityFlags;
   manualOverrideApplied: boolean;
   flags: string[];                  // e.g. ['refinement-failed']
+  skill: SkillType;                 // classified request type for transparency
 }
 
 /**
