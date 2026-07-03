@@ -25,6 +25,7 @@ import type {
   PolicyInput,
 } from '../types/routing.types.js';
 import { SkillType, ALL_SKILLS } from '../types/routing.types.js';
+import type { PromptContract, VerificationResult } from '../types/routing.types.js';
 import type { ModalityFlags } from '../types/inference.types.js';
 
 /** Bedrock client for routing engine calls (scoring + refinement). */
@@ -33,11 +34,15 @@ const bedrockClient = new BedrockRuntimeClient({
 });
 
 /**
- * Parses a JSON response from the refinement model and reconstructs a flowing
- * self-contained prompt. Handles markdown-wrapped JSON (```json ... ```).
- * Returns null if the response cannot be parsed or required fields are missing.
+ * Parses a JSON response from the refinement model and returns both a flowing
+ * text prompt (backward compat) and a structured contract (for verification).
+ * Handles markdown-wrapped JSON (```json ... ```).
+ * Returns null flowingText if the response cannot be parsed.
  */
-function parseRefinementJson(raw: string): string | null {
+function parseRefinementContract(raw: string): {
+  flowingText: string | null;
+  contract: PromptContract | null;
+} {
   // Strip markdown code fences if present
   let jsonStr = raw.trim();
   if (jsonStr.startsWith('```')) {
@@ -48,34 +53,54 @@ function parseRefinementJson(raw: string): string | null {
   try {
     parsed = JSON.parse(jsonStr);
   } catch {
-    return null;
+    return { flowingText: null, contract: null };
   }
 
   const role = typeof parsed.role === 'string' ? parsed.role.trim() : '';
   const context = typeof parsed.context === 'string' ? parsed.context.trim() : '';
   const task = typeof parsed.task === 'string' ? parsed.task.trim() : '';
   const intent = typeof parsed.intent === 'string' ? parsed.intent.trim() : '';
-  const constraints = Array.isArray(parsed.constraints)
-    ? parsed.constraints.filter((c): c is string => typeof c === 'string')
+  const ambiguities = Array.isArray(parsed.ambiguities)
+    ? parsed.ambiguities.filter((a): a is string => typeof a === 'string')
     : [];
-  const outputFormat = typeof parsed.outputFormat === 'string'
-    ? parsed.outputFormat.trim() : '';
+  const clarificationNeeded = parsed.clarification_needed === true;
 
-  if (!role && !context && !task && !intent) {
-    return null;
-  }
-
-  // Reconstruct the flowing text prompt (matching the legacy format)
+  // Build flowing text (unchanged — backward compat)
   const parts: string[] = [];
   if (role) parts.push(`You are a ${role}.`);
   if (context) parts.push(context);
   if (task) parts.push(`Your task is to ${task}.`);
   if (intent) parts.push(`The goal is to ${intent}.`);
-  if (constraints.length) parts.push(`Constraints: ${constraints.join('; ')}.`);
-  if (outputFormat) parts.push(`Output format: ${outputFormat}.`);
+  const flowingText = parts.length > 0 ? parts.join(' ') : null;
 
-  const result = parts.join(' ');
-  return result.length > 0 ? result : null;
+  // Build structured contract
+  const contract: PromptContract = {
+    role,
+    context,
+    task,
+    intent,
+    ambiguities,
+    clarificationNeeded,
+  };
+
+  // Extract optional format hints from parsed fields
+  if (typeof parsed.format === 'object' && parsed.format !== null) {
+    const fmt = parsed.format as Record<string, unknown>;
+    if (typeof fmt.type === 'string') {
+      contract.format = { type: fmt.type };
+      if (Array.isArray(fmt.mustInclude)) {
+        contract.format.mustInclude = fmt.mustInclude.filter((s): s is string => typeof s === 'string');
+      }
+      if (Array.isArray(fmt.mustAvoid)) {
+        contract.format.mustAvoid = fmt.mustAvoid.filter((s): s is string => typeof s === 'string');
+      }
+    }
+  }
+  if (Array.isArray(parsed.constraints)) {
+    contract.constraints = parsed.constraints.filter((c): c is string => typeof c === 'string');
+  }
+
+  return { flowingText, contract };
 }
 
 /**
@@ -160,7 +185,7 @@ const SKILL_PROMPTS: Record<SkillType, string> = {
     '',
     'Focus: sender/recipient relationship, formality level, greeting→body→CTA→closing.',
     '',
-    '{ "role": "<email writer persona>", "context": "<situation>", "task": "<what to write>", "intent": "<goal>", "constraints": ["<tone/length limit>"], "outputFormat": "<email text>" }',
+    '{ "role": "<email writer persona>", "context": "<situation>", "task": "<what to write>", "intent": "<...>", "ambiguities": ["<what is unclear>"], "clarification_needed": false }',
   ].join('\n'),
 
   creative: [
@@ -171,7 +196,7 @@ const SKILL_PROMPTS: Record<SkillType, string> = {
     '',
     'Focus: audience, platform, tone, style guidance.',
     '',
-    '{ "role": "<writer persona>", "context": "<audience/platform>", "task": "<creative piece>", "intent": "<goal>", "constraints": ["<style/tone>"], "outputFormat": "<e.g. caption, story, script>" }',
+    '{ "role": "<writer persona>", "context": "<audience/platform>", "task": "<creative piece>", "intent": "<...>", "ambiguities": ["<what is unclear>"], "clarification_needed": false }',
   ].join('\n'),
 
   brainstorming: [
@@ -182,7 +207,7 @@ const SKILL_PROMPTS: Record<SkillType, string> = {
     '',
     'Focus: creative domain, quantity of ideas, evaluation criteria.',
     '',
-    '{ "role": "<creative strategist>", "context": "<domain/topic>", "task": "<generate ideas for>", "intent": "<goal>", "constraints": ["<quantity/format>"], "outputFormat": "<list/table>" }',
+    '{ "role": "<creative strategist>", "context": "<domain/topic>", "task": "<generate ideas for>", "intent": "<...>", "ambiguities": ["<what is unclear>"], "clarification_needed": false }',
   ].join('\n'),
 
   meta_prompting: [
@@ -193,7 +218,7 @@ const SKILL_PROMPTS: Record<SkillType, string> = {
     '',
     'Focus: target model, task type, input/output specification.',
     '',
-    '{ "role": "<prompt engineer>", "context": "<target model/task>", "task": "<create a prompt for>", "intent": "<goal>", "constraints": ["<format constraints>"], "outputFormat": "<prompt text>" }',
+    '{ "role": "<prompt engineer>", "context": "<target model/task>", "task": "<create a prompt for>", "intent": "<...>", "ambiguities": ["<what is unclear>"], "clarification_needed": false }',
   ].join('\n'),
 
   // ── Transformation ──────────────────────────────────────────────
@@ -205,7 +230,7 @@ const SKILL_PROMPTS: Record<SkillType, string> = {
     '',
     'Focus: source type, target length, key facts to preserve.',
     '',
-    '{ "role": "<editor/researcher>", "context": "<source type>", "task": "<summarize to N paragraphs>", "intent": "<goal>", "constraints": ["<length/preserve facts>"], "outputFormat": "<summary>" }',
+    '{ "role": "<editor/researcher>", "context": "<source type>", "task": "<summarize to N paragraphs>", "intent": "<...>", "ambiguities": ["<what is unclear>"], "clarification_needed": false }',
   ].join('\n'),
 
   translation: [
@@ -216,7 +241,7 @@ const SKILL_PROMPTS: Record<SkillType, string> = {
     '',
     'Focus: source→target language pair, domain (legal/technical/general), terminology.',
     '',
-    '{ "role": "<translator>", "context": "<lang pair, domain>", "task": "<translate text>", "intent": "<goal>", "constraints": ["<preserve tone/terminology>"], "outputFormat": "<translated text>" }',
+    '{ "role": "<translator>", "context": "<lang pair, domain>", "task": "<translate text>", "intent": "<...>", "ambiguities": ["<what is unclear>"], "clarification_needed": false }',
   ].join('\n'),
 
   data_conversion: [
@@ -227,7 +252,7 @@ const SKILL_PROMPTS: Record<SkillType, string> = {
     '',
     'Focus: source format, target format, schema, validation rules.',
     '',
-    '{ "role": "<data engineer>", "context": "<source→target format>", "task": "<convert data>", "intent": "<goal>", "constraints": ["<schema/validation>"], "outputFormat": "<target format>" }',
+    '{ "role": "<data engineer>", "context": "<source→target format>", "task": "<convert data>", "intent": "<...>", "ambiguities": ["<what is unclear>"], "clarification_needed": false }',
   ].join('\n'),
 
   editing_critique: [
@@ -238,7 +263,7 @@ const SKILL_PROMPTS: Record<SkillType, string> = {
     '',
     'Focus: document type, style guide, specific issues to check.',
     '',
-    '{ "role": "<editor/proofreader>", "context": "<document type>", "task": "<edit/critique>", "intent": "<goal>", "constraints": ["<style/grammar focus>"], "outputFormat": "<edited text or feedback>" }',
+    '{ "role": "<editor/proofreader>", "context": "<document type>", "task": "<edit/critique>", "intent": "<...>", "ambiguities": ["<what is unclear>"], "clarification_needed": false }',
   ].join('\n'),
 
   // ── Interaction ─────────────────────────────────────────────────
@@ -250,7 +275,7 @@ const SKILL_PROMPTS: Record<SkillType, string> = {
     '',
     'Focus: character/scenario, interaction rules, output format.',
     '',
-    '{ "role": "<character role>", "context": "<scenario/setting>", "task": "<roleplay/respond as>", "intent": "<goal>", "constraints": ["<behavior rules>"], "outputFormat": "<dialogue/monologue>" }',
+    '{ "role": "<character role>", "context": "<scenario/setting>", "task": "<roleplay/respond as>", "intent": "<...>", "ambiguities": ["<what is unclear>"], "clarification_needed": false }',
   ].join('\n'),
 
   logic_math: [
@@ -261,7 +286,7 @@ const SKILL_PROMPTS: Record<SkillType, string> = {
     '',
     'Focus: problem type, known variables, expected output.',
     '',
-    '{ "role": "<mathematician/logician>", "context": "<problem domain>", "task": "<solve/compute>", "intent": "<goal>", "constraints": ["<show steps/format>"], "outputFormat": "<solution>" }',
+    '{ "role": "<mathematician/logician>", "context": "<problem domain>", "task": "<solve/compute>", "intent": "<...>", "ambiguities": ["<what is unclear>"], "clarification_needed": false }',
   ].join('\n'),
 
   planning_strategy: [
@@ -272,7 +297,7 @@ const SKILL_PROMPTS: Record<SkillType, string> = {
     '',
     'Focus: scope, constraints, timeline, deliverables.',
     '',
-    '{ "role": "<strategist/planner>", "context": "<domain/scope>", "task": "<create plan/strategy for>", "intent": "<goal>", "constraints": ["<timeline/resources>"], "outputFormat": "<plan/roadmap>" }',
+    '{ "role": "<strategist/planner>", "context": "<domain/scope>", "task": "<create plan/strategy for>", "intent": "<...>", "ambiguities": ["<what is unclear>"], "clarification_needed": false }',
   ].join('\n'),
 
   document_qna: [
@@ -283,7 +308,7 @@ const SKILL_PROMPTS: Record<SkillType, string> = {
     '',
     'Focus: document type, specific questions, analysis depth.',
     '',
-    '{ "role": "<document analyst>", "context": "<document type>", "task": "<analyze/answer questions about document>", "intent": "<goal>", "constraints": ["<depth/focus areas>"], "outputFormat": "<analysis/extracted answers>" }',
+    '{ "role": "<document analyst>", "context": "<document type>", "task": "<analyze/answer questions about document>", "intent": "<...>", "ambiguities": ["<what is unclear>"], "clarification_needed": false }',
   ].join('\n'),
 
   // ── Enterprise ──────────────────────────────────────────────────
@@ -295,7 +320,7 @@ const SKILL_PROMPTS: Record<SkillType, string> = {
     '',
     'Focus: stakeholder, feature scope, acceptance criteria, constraints.',
     '',
-    '{ "role": "<business analyst>", "context": "<feature/domain>", "task": "<generate requirements for>", "intent": "<goal>", "constraints": ["<as user/I want/so that format>"], "outputFormat": "<user stories>" }',
+    '{ "role": "<business analyst>", "context": "<feature/domain>", "task": "<generate requirements for>", "intent": "<...>", "ambiguities": ["<what is unclear>"], "clarification_needed": false }',
   ].join('\n'),
 
   compliance_pre_assessment: [
@@ -306,7 +331,7 @@ const SKILL_PROMPTS: Record<SkillType, string> = {
     '',
     'Focus: applicable regulations (OJK/BI/POJK), jurisdiction, risk assessment.',
     '',
-    '{ "role": "<compliance officer>", "context": "<regulation/jurisdiction>", "task": "<assess compliance of>", "intent": "<goal>", "constraints": ["<specific regulation articles>"], "outputFormat": "<compliance assessment>" }',
+    '{ "role": "<compliance officer>", "context": "<regulation/jurisdiction>", "task": "<assess compliance of>", "intent": "<...>", "ambiguities": ["<what is unclear>"], "clarification_needed": false }',
   ].join('\n'),
 
   // ── Engineering ─────────────────────────────────────────────────
@@ -318,7 +343,7 @@ const SKILL_PROMPTS: Record<SkillType, string> = {
     '',
     'Focus: language, framework, dependencies, testing expectations.',
     '',
-    '{ "role": "<software engineer>", "context": "<language/framework>", "task": "<write code to>", "intent": "<goal>", "constraints": ["<imports/deps/tests>"], "outputFormat": "<code with explanation>" }',
+    '{ "role": "<software engineer>", "context": "<language/framework>", "task": "<write code to>", "intent": "<...>", "ambiguities": ["<what is unclear>"], "clarification_needed": false }',
   ].join('\n'),
 
   log_troubleshooting: [
@@ -329,7 +354,7 @@ const SKILL_PROMPTS: Record<SkillType, string> = {
     '',
     'Focus: system context, error patterns, root cause analysis.',
     '',
-    '{ "role": "<SRE/DevOps>", "context": "<system/stack>", "task": "<troubleshoot/debug>", "intent": "<goal>", "constraints": ["<log source/error pattern>"], "outputFormat": "<diagnosis and fix>" }',
+    '{ "role": "<SRE/DevOps>", "context": "<system/stack>", "task": "<troubleshoot/debug>", "intent": "<...>", "ambiguities": ["<what is unclear>"], "clarification_needed": false }',
   ].join('\n'),
 
   // ── General (catch-all, unchanged from original) ─────────────────
@@ -359,7 +384,7 @@ export async function refinePrompt(
   originalPrompt: string,
   documentContext?: string,
   skill: SkillType = 'general',
-): Promise<string | null> {
+): Promise<{ flowingText: string | null; contract: PromptContract | null }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => {
     controller.abort();
@@ -393,14 +418,14 @@ export async function refinePrompt(
 
     const outputText = response.output?.message?.content?.[0]?.text;
     if (!outputText || outputText.trim().length === 0) {
-      return null;
+      return { flowingText: null, contract: null };
     }
 
-    // Parse JSON and reconstruct flowing prompt
-    return parseRefinementJson(outputText);
+    // Parse JSON and return both flowing text + structured contract
+    return parseRefinementContract(outputText);
   } catch {
     // Any failure (timeout, API error, parse error) → return null
-    return null;
+    return { flowingText: null, contract: null };
   } finally {
     clearTimeout(timeout);
   }
@@ -512,6 +537,90 @@ function scoreToBand(score: number): 'direct-answer' | 'moderate-reasoning' | 'a
 }
 
 /**
+ * Deterministic verifier — checks assistant output against the prompt contract.
+ * No LLM call. Returns structured verification result with pass/fail per check.
+ */
+export function verifyOutput(
+  contract: PromptContract,
+  assistantText: string,
+): VerificationResult {
+  const checks: VerificationResult['checks'] = [];
+  const violations: VerificationResult['violations'] = [];
+
+  // 1. Empty output check
+  if (!assistantText || assistantText.trim().length === 0) {
+    violations.push({ field: 'output', issue: 'Empty assistant response', severity: 'error' });
+    checks.push({ name: 'Empty output', passed: false, detail: 'No text returned' });
+    return { passed: false, violations, checks };
+  }
+  checks.push({ name: 'Empty output', passed: true, detail: `${assistantText.length} chars` });
+
+  // 2. PII leakage check — placeholder residues
+  const piiPattern = /\[(NIK|NO_HP|NO_REKENING|NAMA|NAMA_BANK)_\d+\]/g;
+  const piiMatches = assistantText.match(piiPattern);
+  if (piiMatches && piiMatches.length > 0) {
+    violations.push({ field: 'pii', issue: `PII placeholders leaked: ${piiMatches.join(', ')}`, severity: 'error' });
+    checks.push({ name: 'PII leakage', passed: false, detail: `${piiMatches.length} placeholders found` });
+  } else {
+    checks.push({ name: 'PII leakage', passed: true, detail: 'No placeholders' });
+  }
+
+  // 3. Word count check from contract constraints
+  if (contract.constraints) {
+    for (const constraint of contract.constraints) {
+      const wordMatch = constraint.match(/under\s+(\d+)\s+words?/i);
+      if (wordMatch) {
+        const maxWords = parseInt(wordMatch[1], 10);
+        const wordCount = assistantText.trim().split(/\s+/).length;
+        if (wordCount > maxWords) {
+          violations.push({
+            field: 'constraints.wordCount',
+            issue: `Word count exceeded: ${wordCount}/${maxWords}`,
+            severity: 'warn',
+          });
+          checks.push({ name: 'Word count', passed: false, detail: `${wordCount}/${maxWords}` });
+        } else {
+          checks.push({ name: 'Word count', passed: true, detail: `${wordCount}/${maxWords}` });
+        }
+      }
+    }
+  }
+
+  // 4. Required sections check from format.mustInclude
+  if (contract.format?.mustInclude) {
+    for (const section of contract.format.mustInclude) {
+      const found = assistantText.toLowerCase().includes(section.toLowerCase());
+      if (!found) {
+        violations.push({
+          field: `format.mustInclude.${section}`,
+          issue: `Missing required section: "${section}"`,
+          severity: 'error',
+        });
+      }
+      checks.push({ name: `Required: ${section}`, passed: found, detail: found ? 'Present' : 'Missing' });
+    }
+  }
+
+  // 5. Forbidden content check from format.mustAvoid
+  if (contract.format?.mustAvoid) {
+    for (const avoid of contract.format.mustAvoid) {
+      const found = assistantText.toLowerCase().includes(avoid.toLowerCase());
+      if (found) {
+        violations.push({
+          field: `format.mustAvoid.${avoid}`,
+          issue: `Contains prohibited content: "${avoid}"`,
+          severity: 'error',
+        });
+      }
+      checks.push({ name: `Avoid: ${avoid}`, passed: !found, detail: found ? 'Found' : 'Absent' });
+    }
+  }
+
+  const passed = violations.filter(v => v.severity === 'error').length === 0;
+  return { passed, violations, checks };
+}
+
+/**
  * Builds modality flags from routing input.
  */
 function buildModalityFlags(input: RoutingInput): ModalityFlags {
@@ -575,6 +684,7 @@ export async function routeRequest(input: RoutingInput): Promise<RoutingDecision
       manualOverrideApplied: true,
       flags,
       skill: 'general',
+      contract: null,
     };
   }
 
@@ -602,8 +712,10 @@ export async function routeRequest(input: RoutingInput): Promise<RoutingDecision
   const refinementStart = Date.now();
   const refinementResult = await refinePrompt(input.originalPrompt, input.maskedDocumentText, skill);
   const refinementDuration = Date.now() - refinementStart;
-  if (refinementResult !== null) {
-    refinedPrompt = refinementResult;
+  let contract: PromptContract | null = null;
+  if (refinementResult.flowingText !== null) {
+    refinedPrompt = refinementResult.flowingText;
+    contract = refinementResult.contract;
     console.log(`[routing] Prompt refinement (${skill}) succeeded in ${refinementDuration}ms`);
   } else {
     // Refinement failed: use original prompt and flag
@@ -680,6 +792,7 @@ export async function routeRequest(input: RoutingInput): Promise<RoutingDecision
     manualOverrideApplied: false,
     flags,
     skill,
+    contract,
   };
 }
 

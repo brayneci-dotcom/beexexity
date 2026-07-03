@@ -11,7 +11,7 @@ import { extractDocumentText } from '../services/document-extractor.service.js';
 import { processImages } from '../services/image-processor.service.js';
 import { buildContentBlocks } from '../services/content-builder.service.js';
 import { auditService } from '../services/audit.service.js';
-import { routeRequest } from '../services/routing-engine.service.js';
+import { routeRequest, verifyOutput } from '../services/routing-engine.service.js';
 import {
   getActiveSession,
   getSessionMessages,
@@ -307,6 +307,7 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
           manualOverrideApplied: false,
           flags: ['routing-fallback'],
           skill: 'general',
+          contract: null,
         };
       }
     } else {
@@ -324,6 +325,7 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
         manualOverrideApplied: true,
         flags: [],
         skill: 'general',
+        contract: null,
       };
     }
 
@@ -350,6 +352,7 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
         modalityFlags: routingDecision.modalityFlags,
         manualOverrideApplied: routingDecision.manualOverrideApplied,
         skill: routingDecision.skill,
+        contract: routingDecision.contract as Record<string, unknown> | null | undefined,
       };
       res.write(`event: routing\ndata: ${JSON.stringify(routingMetadata)}\n\n`);
     }
@@ -380,7 +383,18 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
       console.log(`[inference] Calling generate() with model=${resolveModelForInvocation(executedModelId)}, prompt length=${effectivePrompt.length}, history messages=${contextOutput.historyMessageCount}`);
       const result = await generate(conversationRequest, res) as ConversationInferenceResult;
 
-      // 12. After streaming: store assistant message
+      // 12. Run verifier if we have a contract
+      if (routingDecision?.contract && result.assistantText) {
+        try {
+          const verification = verifyOutput(routingDecision.contract, result.assistantText);
+          res.write(`event: verification\ndata: ${JSON.stringify(verification)}\n\n`);
+          console.log(`[verification] ${verification.passed ? 'PASSED' : 'FAILED'} — ${verification.violations.length} violations`);
+        } catch (verifyErr: unknown) {
+          console.warn('[verification] Verifier error:', (verifyErr as Error).message);
+        }
+      }
+
+      // 13. After streaming: store assistant message
       if (result.assistantText) {
         try {
           const sanitizedAssistant = mask(result.assistantText).maskedText;
@@ -772,6 +786,7 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
         manualOverrideApplied: false,
         flags: ['routing-fallback'],
         skill: 'general',
+        contract: null,
       };
     }
   } else {
@@ -794,6 +809,7 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
       manualOverrideApplied: true,
       flags: [],
       skill: 'general',
+      contract: null,
     };
   }
 
@@ -942,6 +958,7 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
       modalityFlags: routingDecision.modalityFlags,
       manualOverrideApplied: routingDecision.manualOverrideApplied,
       skill: routingDecision.skill,
+      contract: routingDecision.contract as Record<string, unknown> | null | undefined,
     };
     res.write(`event: routing\ndata: ${JSON.stringify(routingMetadata)}\n\n`);
   }

@@ -34,6 +34,29 @@ export const ALL_SKILLS: SkillType[] = [
 ];
 
 /**
+ * Structured prompt contract produced by the refinement step.
+ * Preserves structure that flowing text loses — enables verification.
+ */
+export interface PromptContract {
+  role: string;
+  context: string;
+  task: string;
+  intent: string;
+  /** What is unclear or missing in the user's request. */
+  ambiguities: string[];
+  /** Whether the system should ask the user for clarification before proceeding. */
+  clarificationNeeded: boolean;
+  /** Optional format constraints inferred from the request. */
+  format?: {
+    type: string;              // "email", "code", "report", "plain-text"
+    mustInclude?: string[];    // required sections
+    mustAvoid?: string[];      // prohibited content
+  };
+  /** Explicit constraints from the user. */
+  constraints?: string[];
+}
+
+/**
  * Input to the routing engine for determining model selection.
  * All text fields should already be PII-masked before reaching this interface.
  */
@@ -65,6 +88,20 @@ export interface RoutingDecision {
   manualOverrideApplied: boolean;
   flags: string[];                  // e.g. ['refinement-failed']
   skill: SkillType;                 // classified request type for transparency
+  contract: PromptContract | null;  // structured contract from refinement
+}
+
+/** Result of a deterministic verification check. */
+export interface VerificationViolation {
+  field: string;       // "format.subject", "constraints.wordCount"
+  issue: string;       // "missing subject line"
+  severity: 'error' | 'warn';
+}
+
+export interface VerificationResult {
+  passed: boolean;
+  violations: VerificationViolation[];
+  checks: { name: string; passed: boolean; detail: string }[];
 }
 
 /**

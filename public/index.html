@@ -2070,7 +2070,29 @@ async function handleSend() {
             if (data.refinedPrompt && data.refinedPrompt !== data.originalPrompt) {
               details.push(`<b>Refined Prompt:</b> ${escapeHtml(data.refinedPrompt)}`);
             }
+            // Show contract ambiguities if present
+            if (data.contract && data.contract.ambiguities && data.contract.ambiguities.length > 0) {
+              const ambIcon = data.contract.clarificationNeeded ? '🚩' : '⚠️';
+              details.push(`<hr style="border:0;border-top:1px solid var(--border);margin:4px 0">`);
+              details.push(`<b>${ambIcon} Ambiguities${data.contract.clarificationNeeded ? ' (clarification needed)' : ''}:</b>`);
+              data.contract.ambiguities.forEach(a => { details.push(`  • ${escapeHtml(a)}`); });
+            }
+            // Verification placeholder (filled by verification event)
+            details.push(`<div class="verification-status" style="margin-top:4px;font-style:italic;color:var(--text-tertiary)"></div>`);
             detailsEl.innerHTML = details.join('<br>');
+          } else if (eventType === 'verification') {
+            // Verification event — update the routing details panel
+            const detailsEl = assistantEl.querySelector('.routing-details');
+            const verifyEl = detailsEl ? detailsEl.querySelector('.verification-status') : null;
+            if (verifyEl && data.checks) {
+              const icon = data.passed ? '✓' : '✗';
+              verifyEl.innerHTML = `<hr style="border:0;border-top:1px solid var(--border);margin:4px 0"><b>${icon} Verification (${data.checks.filter(c => c.passed).length}/${data.checks.length} passed):</b><br>` +
+                data.checks.map(c => `  ${c.passed ? '✓' : '✗'} ${c.name}: ${c.detail}`).join('<br>');
+              if (data.violations && data.violations.length > 0) {
+                verifyEl.innerHTML += '<br><b>Violations:</b><br>' +
+                  data.violations.map(v => `  • [${v.severity}] ${v.field}: ${v.issue}`).join('<br>');
+              }
+            }
           } else if (eventType === 'error') {
             if (data.error === 'SESSION_EXPIRED' || data.error === 'SESSION_NOT_FOUND') {
               // Clear chat UI and reset session

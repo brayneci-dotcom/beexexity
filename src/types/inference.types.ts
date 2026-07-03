@@ -65,4 +65,5 @@ export interface RoutingMetadataEvent {
   modalityFlags?: ModalityFlags;
   manualOverrideApplied: boolean;
   skill?: string;  // classified request type from hybrid router
+  contract?: Record<string, unknown> | null;  // structured prompt contract
 }

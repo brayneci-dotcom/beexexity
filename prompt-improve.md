@@ -1,518 +1,225 @@
-# **Automated Multi-Step Prompt Refinement Agent**
+Below is a concrete v2 architecture. It keeps your current routing idea, but removes the two biggest sources of failure: freeform prompt rewriting and single-label routing.
 
-## **📋 Current Situation**
+## Target architecture
 
-You are building an **integrated AI inference application** that:
-- Runs on **multiple local LLMs via AWS Bedrock**
-- Implements an **automated prompt refinement gate** that converts raw user input into a structured format/framework
-- Successfully detects and preserves the **original prompt language** (e.g., Bahasa Indonesia stays Indonesian)
-- Ensures outputs are **concise and non-verbose**
+Use four explicit stages:
 
-**Example of what you've achieved:**
-- Input: `"Buatkan email izin sakit"` → Output: Structured JSON with Indonesian content, concise fields
+1. **Intent extraction** from the raw prompt.
+2. **Constraint normalization** into a structured contract.
+3. **Policy/routing** using the contract, not paraphrased prose.
+4. **Output verification** against the contract before returning the answer.
 
----
+This matches the broader pattern in recent work on decomposition, verification, and refinement: break complex instructions into checkable pieces, verify them with reliable checks, then refine only the unsatisfied parts. [openreview](https://openreview.net/pdf?id=WrTjCHs2tS)
 
-## **🎯 Problem to Solve**
+## v2 flow
 
-You want to implement an **agentic workflow** that:
-1. **Automatically processes prompts through multiple reasoning steps** (analyze → deconstruct → identify missing info → structure → draft → review)
-2. **Performs internal "thought process"** 
-3. **Still outputs concise, non-verbose results**
-4. **Maintains language detection and preservation**
-5. **Works efficiently with local LLMs via Bedrock**
-
-**The Challenge:** How to get multi-step reasoning quality while keeping outputs short and showing the "thinking" process to end users for thought transparency?
-
----
-
-## **💡 Three Possible Solutions**
-
-### **Option 1: Single LLM Call with Hidden Chain-of-Thought**
-
-**How it works:**
-- Use **one LLM call** with instructions to perform multi-step reasoning **internally**
-- The model thinks through all steps (analyze, structure, refine, review) but **only outputs the final concise JSON**
-- Similar to how the refund email screenshots show thinking, but you suppress that output
-
-**Implementation:**
-```python
-system_prompt = """
-PROCESS INTERNALLY (do not show):
-1. Analyze user request
-2. Deconstruct source material  
-3. Identify missing information
-4. Structure the output
-5. Draft and refine
-6. Final review
-
-OUTPUT ONLY: Final refined prompt in concise JSON format
-"""
+```text
+Raw prompt
+  ↓
+Normalize input
+  ↓
+Extract structured intent + constraints
+  ↓
+Detect ambiguity / missing info
+  ↓
+Route with multi-label confidence
+  ↓
+Generate using:
+  - original prompt
+  - prompt contract
+  - task policy
+  ↓
+Verify output against contract
+  ↓
+Accept / repair / ask clarification
 ```
 
-**✅ Pros:**
-- **Fastest** - Single API call (~1-2 seconds)
-- **Cheapest** - One model invocation
-- **Simplest** - Minimal code, easy to maintain
-- **Low latency** - Best for real-time user experience
-- **Works well** with Claude 3 Sonnet/Haiku which follow instructions reliably
+The key change is that the “refined prompt” is no longer the user-facing prompt replacement. It becomes an internal **contract** that the final generator must obey. That reduces drift and makes failures auditable.
 
-**❌ Cons:**
-- **Less control** - Cannot inspect/modify intermediate steps
-- **Harder to debug** - If output is wrong, don't know which step failed
-- **Limited flexibility** - Cannot use different models for different steps
-- **Token limits** - Complex reasoning might hit max_tokens
-- **Quality ceiling** - Single pass may miss nuances that multi-step would catch
+## Prompt contract schema
 
-**Best for:** Simple to moderate complexity prompts, production apps where speed/cost matter most
+Stop using flowing text like “You are a professional email writer.” Replace it with a schema like this:
 
----
-
-### **Option 2: Multi-Step Workflow with LangGraph**
-
-**How it works:**
-- Use **LangGraph** (or similar orchestration framework) to create explicit state-based workflow
-- Each step is a **separate LLM call**: analyze → structure → refine → finalize
-- State is passed between steps, allowing inspection and modification
-- Final step extracts only the concise output
-
-**Implementation:**
-```python
-# Step 1: Analyze (Haiku - fast/cheap)
-analysis = llm.invoke(f"Analyze: {user_input}")
-
-# Step 2: Structure (Haiku - fast/cheap)  
-structure = llm.invoke(f"Structure based on: {analysis}")
-
-# Step 3: Refine (Sonnet - higher quality)
-refined = final_llm.invoke(f"Refine using: {structure}")
-
-# Step 4: Finalize (extract only JSON)
-output = extract_json(refined)
-```
-
-**✅ Pros:**
-- **Maximum control** - Can inspect/modify each step
-- **Easy debugging** - See exactly where things go wrong
-- **Model optimization** - Use cheap Haiku for early steps, powerful Sonnet for final
-- **Human-in-the-loop** - Can add validation/approval gates between steps
-- **Tool integration** - Can call external APIs, databases at specific steps
-- **Conditional branching** - Different paths based on intermediate results
-- **Best quality** - Multiple refinement passes catch errors
-
-**❌ Cons:**
-- **Slowest** - 4+ API calls (~5-10 seconds total)
-- **Most expensive** - Multiple model invocations
-- **Complex code** - State management, error handling, retries
-- **Higher latency** - Poor UX for real-time apps
-- **More failure points** - Each call can fail, need robust error handling
-- **Overkill** - For simple prompts, this is unnecessary complexity
-
-**Best for:** Complex enterprise workflows, applications requiring audit trails, scenarios needing human approval, when quality is more important than speed
-
----
-
-### **Option 3: Hybrid Router + Skill-Based Processing**
-
-**How it works:**
-- **Router step**: Classify the request type (email, code, creative, analysis, general)
-- **Skill-specific processors**: Each type has optimized prompts and constraints
-- **2-3 API calls total**: (1) detect language + route, (2) specialized processing, (3) optional final polish
-- Combines benefits of multi-step thinking with efficiency
-
-**Implementation:**
-```python
-# Step 1: Route (fast)
-skill = router.invoke(f"Classify: {user_input}")  # Returns: "email"
-
-# Step 2: Process with specialized prompt
-if skill == "email":
-    result = email_skill.invoke(f"""
-        Refine this email request. Be concise.
-        Structure: greeting → body → call-to-action → closing
-        {user_input}
-    """)
-elif skill == "code":
-    result = code_skill.invoke(f"""
-        Refine this coding request. Be concise.
-        Include: language, framework, constraints
-        {user_input}
-    """)
-```
-
-**✅ Pros:**
-- **Balanced** - Good speed (2-3 calls, ~2-4 seconds)
-- **Cost-effective** - Fewer calls than full LangGraph
-- **Specialized quality** - Email prompts get email-specific refinement, code gets code-specific
-- **Moderate complexity** - Easier than LangGraph, more flexible than single call
-- **Scalable** - Easy to add new skills without rewriting core logic
-- **Maintainable** - Each skill is isolated, can update independently
-- **Good UX** - Fast enough for real-time, smart enough for quality
-
-**❌ Cons:**
-- **Requires upfront work** - Must define skills and create specialized prompts
-- **Routing errors** - If router misclassifies, wrong skill is used
-- **Less granular control** - Can't inspect intermediate steps within a skill
-- **Skill overlap** - Some requests might fit multiple categories
-- **Maintenance overhead** - Each skill needs testing and optimization
-- **Not as powerful as LangGraph** - Cannot do complex conditional workflows
-
-**Best for:** Production apps with diverse prompt types, when you need better quality than single-call but faster than full multi-step, most real-world use cases
-
----
-
-## **📊 Comparison Table**
-
-| Feature | Option 1: Single Call | Option 2: LangGraph | Option 3: Hybrid Router |
-|---------|----------------------|---------------------|------------------------|
-| **Speed** | ⚡⚡⚡ Fastest (1-2s) | 🐌 Slowest (5-10s) | ⚡⚡ Medium (2-4s) |
-| **Cost** | 💰 Cheapest | 💰💰💰 Most expensive | 💰💰 Moderate |
-| **Quality** | ⭐⭐ Good | ⭐⭐⭐⭐⭐ Best | ⭐⭐⭐⭐ Very Good |
-| **Complexity** | 🔧 Simple | 🔧🔧 Complex | 🔧 Moderate |
-| **Control** | 🔒 Low | 🔓 Full control | 🔓🔓 Partial control |
-| **Debuggability** | 🔍 Hard | 🔍🔍 Easy | 🔍🔍 Moderate |
-| **Scalability** | ⚠️ Limited | ✅ Excellent | ✅ Good |
-| **Best Use Case** | Simple prompts, speed-critical | Enterprise workflows, audit trails | Diverse prompt types, balanced needs |
-
-
-
-
-Based on the screenshots and search results, you want to implement an **agentic workflow** that performs multi-step reasoning internally but outputs concise results. Here are three implementation approaches:
-
-## **Approach 1: Single LLM Call with Hidden Chain-of-Thought** (Simplest)
-
-Keep the detailed thinking internal to one LLM call, then extract only the final result:
-
-```python
-import boto3
-import json
-import re
-
-class PromptRefinementAgent:
-    def __init__(self, model_id="anthropic.claude-3-sonnet-20240229-v1:0"):
-        self.bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
-        self.model_id = model_id
-    
-    def refine_prompt(self, user_input: str) -> dict:
-        system_prompt = """You are an expert prompt refinement agent. 
-
-PROCESS (do this internally):
-1. Analyze the user's request - identify goal, language, context
-2. Deconstruct the source material - extract key elements
-3. Identify missing information - what needs clarification
-4. Structure the refined output - plan the structure
-5. Draft and refine - iterate for clarity and conciseness
-6. Final review - ensure it matches requirements
-
-OUTPUT RULES:
-- Perform all reasoning internally
-- Output ONLY the final refined prompt in this JSON format:
+```json
 {
-  "detected_language": "<code>",
-  "refined_prompt": {
-    "role": "<max 5 words>",
-    "context": "<max 15 words>",
-    "task": "<max 15 words>",
-    "constraints": ["<short item 1>", "<short item 2>"],
-    "output_format": "<max 10 words>"
-  }
+  "task_type": "generation",
+  "primary_skill": "email",
+  "secondary_skills": ["summarization"],
+  "objective": "Write a follow-up email requesting a meeting",
+  "audience": "internal stakeholder",
+  "tone": "professional, concise",
+  "language": "en",
+  "format": {
+    "type": "email",
+    "must_include": ["subject", "greeting", "body", "closing"],
+    "must_avoid": ["markdown code fence"]
+  },
+  "constraints": [
+    "keep under 120 words",
+    "do not invent facts",
+    "mention deadline if present in user input"
+  ],
+  "ambiguities": [
+    "recipient name missing",
+    "meeting purpose unspecified"
+  ],
+  "clarification_needed": false,
+  "confidence": 0.87
 }
+```
 
-EXAMPLE:
-Input: "Buatkan email izin sakit"
-Output:
+This is better because the model can preserve intent, and your verifier can check each field independently. The research on structured output reliability and constraint-following supports exactly this kind of separation between structure, semantics, and compliance. [openreview](https://openreview.net/pdf?id=rSCV1hTZvF)
+
+## Routing redesign
+
+Your current `extractSkill()` substring match is a weak link. Replace it with one of these:
+
+- **Option A: multi-label classifier output** with explicit enum labels and confidence.
+- **Option B: hierarchical routing**, first by task family, then by specialty.
+- **Option C: hybrid rules + classifier**, where obvious cases are handled by rules and ambiguous cases go to the model.
+
+For example:
+
+```json
 {
-  "detected_language": "id",
-  "refined_prompt": {
-    "role": "Karyawan profesional",
-    "context": "Sedang sakit, tidak bisa masuk kerja",
-    "task": "Tulis email izin sakit singkat dan sopan",
-    "constraints": ["Maksimal 3 kalimat", "Sebutkan tetap cek email"],
-    "output_format": "Teks email siap kirim"
-  }
-}"""
-
-        response = self.bedrock.invoke_model(
-            modelId=self.model_id,
-            body=json.dumps({
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 1000,
-                "temperature": 0.1,
-                "system": system_prompt,
-                "messages": [{"role": "user", "content": user_input}]
-            })
-        )
-        
-        result = json.loads(response['body'].read())
-        return json.loads(result['content'][0]['text'])
+  "task_family": "transformation",
+  "skills": ["email", "rewrite"],
+  "modality": "text",
+  "confidence": 0.91
+}
 ```
 
-**Pros:** Simple, fast, one API call  
-**Cons:** Less control over intermediate steps
+Do not force every prompt into one skill. A user prompt can be both `email` and `summarization`, or `code` and `explanation`. Single-label routing will keep breaking on mixed-intent prompts.
 
----
+## Verification layer
 
-## **Approach 2: Multi-Step Workflow with LangGraph** (Most Control)
+This is the part you are missing, and it is the most important. Build a verifier that checks the final output against the contract before returning it.
 
-Use LangGraph for explicit step-by-step processing with state management [[5]][[7]]:
+### Verifier checks
+- Schema validity.
+- Required sections present.
+- Prohibited content absent.
+- Tone/length constraints satisfied.
+- No unsupported factual additions.
+- Task completion aligned to original objective.
+- Multi-turn coherence if conversation history matters.
 
-```python
-from typing import TypedDict, Annotated
-from langgraph.graph import StateGraph, END
-from langchain_aws import ChatBedrock
-import operator
+For structured tasks, use deterministic validators first. For semantic checks, use a second pass judge or lightweight verifier. Division of complex instruction into single constraints, then verification and refinement, is exactly the pattern shown in Divide-Verify-Refine. [openreview](https://openreview.net/pdf?id=WrTjCHs2tS)
 
-# Define state structure
-class AgentState(TypedDict):
-    user_input: str
-    analysis: dict
-    structure: dict
-    refined_prompt: dict
-    final_output: dict
+## Refinement strategy
 
-class MultiStepRefinementAgent:
-    def __init__(self):
-        self.llm = ChatBedrock(
-            model_id="anthropic.claude-3-haiku-20240307-v1:0",  # Fast, cheap for intermediate steps
-            temperature=0.1
-        )
-        self.final_llm = ChatBedrock(
-            model_id="anthropic.claude-3-sonnet-20240229-v1:0",  # Better quality for final output
-            temperature=0.1
-        )
-        self.graph = self._build_graph()
-    
-    def _build_graph(self):
-        workflow = StateGraph(AgentState)
-        
-        # Add nodes for each step
-        workflow.add_node("analyze", self._analyze_request)
-        workflow.add_node("structure", self._create_structure)
-        workflow.add_node("refine", self._refine_prompt)
-        workflow.add_node("finalize", self._finalize_output)
-        
-        # Define edges (flow)
-        workflow.set_entry_point("analyze")
-        workflow.add_edge("analyze", "structure")
-        workflow.add_edge("structure", "refine")
-        workflow.add_edge("refine", "finalize")
-        workflow.add_edge("finalize", END)
-        
-        return workflow.compile()
-    
-    def _analyze_request(self, state: AgentState) -> dict:
-        """Step 1: Analyze user request"""
-        prompt = f"""Analyze this request. Return JSON:
-{{
-  "goal": "<what user wants>",
-  "language": "<detect language code>",
-  "key_elements": ["<element1>", "<element2>"],
-  "implied_needs": ["<need1>", "<need2>"]
-}}
+Your refinement loop should not rewrite the prompt from scratch. It should only fix the violated constraints.
 
-Request: {state['user_input']}"""
-        
-        result = self.llm.invoke(prompt)
-        return {"analysis": json.loads(result.content)}
-    
-    def _create_structure(self, state: AgentState) -> dict:
-        """Step 2: Create structure plan"""
-        prompt = f"""Based on this analysis: {state['analysis']}
-Create a structure plan. Return JSON:
-{{
-  "sections": ["<section1>", "<section2>"],
-  "format": "<output format>",
-  "tone": "<professional/casual/etc>"
-}}"""
-        
-        result = self.llm.invoke(prompt)
-        return {"structure": json.loads(result.content)}
-    
-    def _refine_prompt(self, state: AgentState) -> dict:
-        """Step 3: Generate refined prompt"""
-        prompt = f"""Using this analysis and structure:
-Analysis: {state['analysis']}
-Structure: {state['structure']}
+Bad:
+- “You are a professional X. Here is the intent in flowing prose...”
 
-Create a refined prompt in {state['analysis']['language']}. 
-Keep it concise. Return JSON:
-{{
-  "role": "<max 5 words>",
-  "context": "<max 15 words>",
-  "task": "<max 15 words>",
-  "constraints": ["<item1>", "<item2>"],
-  "output_format": "<max 10 words>"
-}}"""
-        
-        result = self.final_llm.invoke(prompt)
-        return {"refined_prompt": json.loads(result.content)}
-    
-    def _finalize_output(self, state: AgentState) -> dict:
-        """Step 4: Final review and formatting"""
-        # Optional: Add validation/enforcement step
-        return {"final_output": state['refined_prompt']}
-    
-    def process(self, user_input: str) -> dict:
-        initial_state = {
-            "user_input": user_input,
-            "analysis": {},
-            "structure": {},
-            "refined_prompt": {},
-            "final_output": {}
-        }
-        
-        result = self.graph.invoke(initial_state)
-        return result['final_output']
+Better:
+- “Constraint 2 failed: missing deadline mention. Revise only this part.”
+
+Example repair payload:
+
+```json
+{
+  "violations": [
+    {
+      "field": "format.must_include",
+      "issue": "missing subject line"
+    },
+    {
+      "field": "constraints",
+      "issue": "word count exceeded by 34 words"
+    }
+  ],
+  "repair_instruction": "Revise the draft to satisfy only these violations while preserving the rest."
+}
 ```
 
-**Pros:** Full control, debuggable steps, can use different models per step [[11]]  
-**Cons:** More complex, multiple API calls (higher latency/cost)
+That is much closer to the verifier-refiner loop used in modern self-correction frameworks. [ar5iv.labs.arxiv](https://ar5iv.labs.arxiv.org/html/2506.05305)
 
----
+## What to remove
 
-## **Approach 3: Hybrid Router + Skill-Based Processing** (Best Balance)
+You should strongly consider removing or demoting these parts:
 
-Use a router to determine the type of task, then apply specialized processing [[15]][[16]]:
+- `parseRefinementJson() → flowing text string`.
+- `skill-specific prose prompt as the primary effective prompt`.
+- `substring match across ALL_SKILLS`.
+- `complexity scoring on the refined prompt`.
+- `reasoningSummary` as a source of trust; keep it as telemetry only.
 
-```python
-class SkillBasedAgent:
-    def __init__(self):
-        self.bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
-        self.skills = {
-            "email": self._process_email,
-            "code": self._process_code,
-            "creative": self._process_creative,
-            "analysis": self._process_analysis,
-            "general": self._process_general
-        }
-    
-    def _route_request(self, user_input: str) -> str:
-        """Determine which skill to use"""
-        router_prompt = f"""Classify this request into ONE category:
-        Categories: email, code, creative, analysis, general
-        
-        Request: {user_input}
-        
-        Return ONLY the category name."""
-        
-        response = self.bedrock.invoke_model(
-            modelId="anthropic.claude-3-haiku-20240307-v1:0",
-            body=json.dumps({
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 50,
-                "temperature": 0,
-                "messages": [{"role": "user", "content": router_prompt}]
-            })
-        )
-        
-        skill = json.loads(response['body'].read())['content'][0]['text'].strip().lower()
-        return skill if skill in self.skills else "general"
-    
-    def _process_email(self, user_input: str, language: str) -> dict:
-        """Specialized email refinement"""
-        prompt = f"""Refine this email request in {language}. Be concise.
-        
-        Process:
-        1. Identify: sender, recipient, purpose, tone
-        2. Extract key points
-        3. Structure: greeting, body, call-to-action, closing
-        
-        Return ONLY this JSON:
-        {{
-          "detected_language": "{language}",
-          "refined_prompt": {{
-            "role": "Professional email writer",
-            "context": "<max 15 words>",
-            "task": "Write <type> email to <recipient>",
-            "constraints": ["<max 3 items>"],
-            "output_format": "Complete email text"
-          }}
-        }}
-        
-        Request: {user_input}"""
-        
-        return self._call_llm(prompt)
-    
-    def _process_code(self, user_input: str, language: str) -> dict:
-        """Specialized code refinement"""
-        prompt = f"""Refine this coding request in {language}. Be concise.
-        
-        Return ONLY this JSON:
-        {{
-          "detected_language": "{language}",
-          "refined_prompt": {{
-            "role": "Expert <language> developer",
-            "context": "<max 15 words>",
-            "task": "Write code to <specific task>",
-            "constraints": ["<max 3 technical constraints>"],
-            "output_format": "Code with brief explanation"
-          }}
-        }}
-        
-        Request: {user_input}"""
-        
-        return self._call_llm(prompt)
-    
-    # Add other skill methods...
-    
-    def _process_general(self, user_input: str, language: str) -> dict:
-        """General purpose refinement"""
-        prompt = f"""Refine this request in {language}. Be concise.
-        
-        Return ONLY this JSON:
-        {{
-          "detected_language": "{language}",
-          "refined_prompt": {{
-            "role": "Expert assistant",
-            "context": "<max 15 words>",
-            "task": "<max 15 words>",
-            "constraints": ["<max 3 items>"],
-            "output_format": "<max 10 words>"
-          }}
-        }}
-        
-        Request: {user_input}"""
-        
-        return self._call_llm(prompt)
-    
-    def _call_llm(self, prompt: str) -> dict:
-        response = self.bedrock.invoke_model(
-            modelId="anthropic.claude-3-sonnet-20240229-v1:0",
-            body=json.dumps({
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 800,
-                "temperature": 0.1,
-                "messages": [{"role": "user", "content": prompt}]
-            })
-        )
-        
-        result = json.loads(response['body'].read())
-        return json.loads(result['content'][0]['text'])
-    
-    def process(self, user_input: str) -> dict:
-        # Step 1: Detect language (fast model)
-        lang_response = self.bedrock.invoke_model(
-            modelId="anthropic.claude-3-haiku-20240307-v1:0",
-            body=json.dumps({
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 50,
-                "temperature": 0,
-                "messages": [{"role": "user", "content": f"Detect language of: {user_input}. Return ISO code only."}]
-            })
-        )
-        language = lang_response['body'].read().decode().strip()
-        
-        # Step 2: Route to appropriate skill
-        skill = self._route_request(user_input)
-        
-        # Step 3: Process with specialized skill
-        result = self.skills[skill](user_input, language)
-        
-        return result
-```
+Those features are adding confidence theater, not better output.
 
-**Pros:** Balanced complexity, specialized processing, efficient routing [[16]]  
-**Cons:** Requires defining skills upfront
+## What to keep
 
----
+Keep these, but tighten them:
 
+- JWT auth.
+- PII masking.
+- Conversation context window.
+- Silent upload detection.
+- SSE routing metadata.
+- Model selection by modality and context size.
+
+Those are solid infrastructure pieces. The issue is not the transport or auth path; the issue is the prompt semantics layer.
+
+## Evaluation framework
+
+You need a measurable eval suite, not opinions. Build it around four metrics:
+
+| Metric | What it measures | Why it matters |
+|---|---|---|
+| Intent preservation | Does the output still match the user’s real objective? | Prevents prompt drift. |
+| Constraint retention | Are all user constraints kept? | Prevents silent omission. |
+| Format compliance | Is the output structurally valid? | Critical for downstream use. |
+| Repair rate | How often the verifier had to fix output? | Shows routing/refinement quality. |
+
+Add a fifth metric for **clarification quality**: when the prompt is ambiguous, does the system ask the right question instead of guessing?
+
+## Test set design
+
+Build your benchmark from real prompt classes, not synthetic feel-good examples.
+
+### Required slices
+- Simple single-intent prompts.
+- Mixed-intent prompts.
+- Ambiguous prompts.
+- Long-context prompts.
+- High-risk prompts.
+- Format-constrained prompts.
+- Multi-turn follow-up prompts.
+- PII-heavy prompts.
+
+### Failure cases to include
+- Prompt contains two tasks but one label.
+- Prompt is short but high-risk.
+- Prompt asks for output in a strict format and with a specific tone.
+- Prompt requires missing info that cannot be inferred.
+- Prompt tries to inject instructions into the context.
+
+This is consistent with evaluation-driven iteration: define requirements, test with representative and adversarial prompts, diagnose failure mode, then fix and re-test. [arxiv](https://arxiv.org/html/2604.05149v1)
+
+## Practical implementation order
+
+Do this in order, not randomly:
+
+1. Add structured prompt contract output.
+2. Add multi-label routing with confidence.
+3. Add verifier checks for structure and constraints.
+4. Add clarification fallback when ambiguity is high.
+5. Add repair loop only for specific violations.
+6. Add eval suite and regression tracking.
+
+If you try to “improve prompt quality” before adding verification, you are just polishing a broken pipeline.
+
+## Suggested v2 policy
+
+A simple policy table:
+
+| Condition | Action |
+|---|---|
+| High confidence, low ambiguity | Route and generate normally. |
+| High ambiguity, low confidence | Ask clarification. |
+| Format-sensitive task | Use strict contract + deterministic validator. |
+| High-risk domain | Add extra verification and lower auto-accept threshold. |
+| Output fails verifier | Repair once, then escalate or clarify. |
+
+That gives you a system that behaves like an engineering product, not a prompt demo.
