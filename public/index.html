@@ -1787,8 +1787,8 @@ async function showChatScreen() {
   // Load active session history
   await loadSessionHistory();
 
-  // Fetch USD → IDR conversion rate (once per session)
-  fetchIdrRate();
+  // Fetch USD → IDR conversion rate before rendering session list
+  await fetchIdrRate();
 
   // Load session list into sidebar
   loadSessions(1);
@@ -2418,8 +2418,9 @@ async function fetchIdrRate() {
     const data = await res.json();
     if (data && typeof data.conversion_rate === 'number') {
       idrRate = data.conversion_rate;
-      // Re-render cost displays with IDR
+      // Re-render all cost displays with IDR
       updateCostBar();
+      renderSessionList();
     }
   } catch (e) {
     console.warn('[cost] Failed to fetch IDR rate:', e.message);
