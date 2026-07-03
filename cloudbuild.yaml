@@ -50,7 +50,7 @@ steps:
 
 substitutions:
   _REGION: asia-southeast2
-  _SERVICE_NAME: bedrock-inference-gateway
+  _SERVICE_NAME: beexexity
   _ARTIFACT_REGISTRY: asia-southeast2-docker.pkg.dev
   _DB_HOST: ''     # set in Cloud Build trigger → Variables
   _DB_USER: ''     # set in Cloud Build trigger → Variables
