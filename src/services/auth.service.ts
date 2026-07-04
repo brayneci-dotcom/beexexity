@@ -2,7 +2,16 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { query } from '../config/database.js';
 import { config } from '../config/index.js';
-import { ChangePasswordResult, CreateUserDto, LoginResult, TokenPayload, UpdateUserDto, UserProfile } from '../types/auth.types.js';
+import {
+  BulkUserEntry,
+  BulkItemResult,
+  ChangePasswordResult,
+  CreateUserDto,
+  LoginResult,
+  TokenPayload,
+  UpdateUserDto,
+  UserProfile,
+} from '../types/auth.types.js';
 
 const BCRYPT_SALT_ROUNDS = 12;
 
@@ -27,11 +36,12 @@ export async function login(username: string, password: string): Promise<LoginRe
       password: string;
       role: 'admin' | 'user';
       display_name: string;
+      group_name: string | null;
       force_password_reset?: boolean;
       created_at: string;
       updated_at: string;
     }>(
-      'SELECT id, username, password, role, display_name, force_password_reset, created_at, updated_at FROM users WHERE username = $1',
+      'SELECT id, username, password, role, display_name, group_name, force_password_reset, created_at, updated_at FROM users WHERE username = $1',
       [username],
     );
   } catch (dbError: unknown) {
@@ -65,6 +75,7 @@ export async function login(username: string, password: string): Promise<LoginRe
     username: user.username,
     role: user.role,
     displayName: user.display_name,
+    groupName: user.group_name ?? undefined,
     createdAt: user.created_at,
     updatedAt: user.updated_at,
     forcePasswordReset: user.force_password_reset ?? false,
@@ -137,11 +148,12 @@ export async function changePassword(
       password: string;
       role: 'admin' | 'user';
       display_name: string;
+      group_name: string | null;
       force_password_reset: boolean;
       created_at: string;
       updated_at: string;
     }>(
-      'SELECT id, username, password, role, display_name, force_password_reset, created_at, updated_at FROM users WHERE id = $1',
+      'SELECT id, username, password, role, display_name, group_name, force_password_reset, created_at, updated_at FROM users WHERE id = $1',
       [userId],
     );
   } catch (dbError: unknown) {
@@ -197,13 +209,14 @@ export async function changePassword(
     username: string;
     role: 'admin' | 'user';
     display_name: string;
+    group_name: string | null;
     force_password_reset: boolean;
     created_at: string;
     updated_at: string;
   }>(
     `UPDATE users SET password = $1, force_password_reset = false, updated_at = NOW()
      WHERE id = $2
-     RETURNING id, username, role, display_name, force_password_reset, created_at, updated_at`,
+     RETURNING id, username, role, display_name, group_name, force_password_reset, created_at, updated_at`,
     [hashedPassword, userId],
   );
 
@@ -227,6 +240,7 @@ export async function changePassword(
     username: updatedUser.username,
     role: updatedUser.role,
     displayName: updatedUser.display_name,
+    groupName: updatedUser.group_name ?? undefined,
     createdAt: updatedUser.created_at,
     updatedAt: updatedUser.updated_at,
     forcePasswordReset: updatedUser.force_password_reset,
@@ -269,14 +283,15 @@ export async function createUser(_admin: TokenPayload, data: CreateUserDto): Pro
     username: string;
     role: 'admin' | 'user';
     display_name: string;
+    group_name: string | null;
     force_password_reset: boolean;
     created_at: string;
     updated_at: string;
   }>(
-    `INSERT INTO users (username, password, role, display_name)
-     VALUES ($1, $2, $3, $4)
-     RETURNING id, username, role, display_name, force_password_reset, created_at, updated_at`,
-    [data.username, hashedPassword, data.role, data.displayName],
+    `INSERT INTO users (username, password, role, display_name, group_name)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id, username, role, display_name, group_name, force_password_reset, created_at, updated_at`,
+    [data.username, hashedPassword, data.role, data.displayName, data.groupName ?? null],
   );
 
   const user = result.rows[0];
@@ -286,6 +301,7 @@ export async function createUser(_admin: TokenPayload, data: CreateUserDto): Pro
     username: user.username,
     role: user.role,
     displayName: user.display_name,
+    groupName: user.group_name ?? undefined,
     createdAt: user.created_at,
     updatedAt: user.updated_at,
     forcePasswordReset: user.force_password_reset ?? true,
@@ -316,6 +332,12 @@ export async function updateUser(_admin: TokenPayload, username: string, data: U
     paramIndex++;
   }
 
+  if (data.groupName !== undefined) {
+    setClauses.push(`group_name = $${paramIndex}`);
+    params.push(data.groupName);
+    paramIndex++;
+  }
+
   if (data.password !== undefined) {
     const hashedPassword = await bcrypt.hash(data.password, BCRYPT_SALT_ROUNDS);
     setClauses.push(`password = $${paramIndex}`);
@@ -336,12 +358,13 @@ export async function updateUser(_admin: TokenPayload, username: string, data: U
     username: string;
     role: 'admin' | 'user';
     display_name: string;
+    group_name: string | null;
     force_password_reset: boolean;
     created_at: string;
     updated_at: string;
   }>(
     `UPDATE users SET ${setClauses.join(', ')} WHERE username = $${paramIndex}
-     RETURNING id, username, role, display_name, force_password_reset, created_at, updated_at`,
+     RETURNING id, username, role, display_name, group_name, force_password_reset, created_at, updated_at`,
     params,
   );
 
@@ -358,8 +381,60 @@ export async function updateUser(_admin: TokenPayload, username: string, data: U
     username: user.username,
     role: user.role,
     displayName: user.display_name,
+    groupName: user.group_name ?? undefined,
     createdAt: user.created_at,
     updatedAt: user.updated_at,
     forcePasswordReset: user.force_password_reset ?? false,
   };
+}
+
+/**
+ * Upsert a user — attempts to create, falls back to update if username exists.
+ * Used by the bulk upload endpoint.
+ */
+export async function upsertUser(data: BulkUserEntry): Promise<{ action: 'created' | 'updated'; user: UserProfile }> {
+  // Check if user exists
+  const existing = await query(
+    'SELECT id FROM users WHERE username = $1',
+    [data.username],
+  );
+
+  if (existing.rows.length > 0) {
+    // Update existing user — only fields provided in the payload
+    const updateData: UpdateUserDto = {
+      role: data.role,
+      displayName: data.displayName,
+      groupName: data.groupName,
+      password: data.password,
+      forcePasswordReset: data.forcePasswordReset,
+    };
+    // We need a mock TokenPayload since updateUser expects an admin caller
+    const mockAdmin: TokenPayload = {
+      sub: '',
+      username: 'bulk-upload',
+      role: 'admin',
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    };
+    const user = await updateUser(mockAdmin, data.username, updateData);
+    return { action: 'updated', user };
+  }
+
+  // Create new user
+  const createData: CreateUserDto = {
+    username: data.username,
+    password: data.password,
+    role: data.role,
+    displayName: data.displayName,
+    groupName: data.groupName,
+  };
+  const mockAdmin: TokenPayload = {
+    sub: '',
+    username: 'bulk-upload',
+    role: 'admin',
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  };
+  const user = await createUser(mockAdmin, createData);
+  return { action: 'created', user };
 }

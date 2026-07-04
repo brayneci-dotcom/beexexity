@@ -24,6 +24,7 @@ export interface UserProfile {
   username: string;
   role: 'admin' | 'user';
   displayName: string;
+  groupName?: string;                // Organizational group
   createdAt: string;
   updatedAt: string;
   forcePasswordReset: boolean;       // Exposed to client
@@ -34,12 +35,41 @@ export interface CreateUserDto {
   password: string;
   role: 'admin' | 'user';
   displayName: string;
+  groupName?: string;
 }
 
 export interface UpdateUserDto {
   role?: 'admin' | 'user';
   displayName?: string;
+  groupName?: string;
   password?: string;
+  forcePasswordReset?: boolean;
+}
+
+/** Single entry in a bulk user upload request. */
+export interface BulkUserEntry {
+  username: string;
+  displayName: string;
+  groupName?: string;
+  role: 'admin' | 'user';
+  password: string;
+  forcePasswordReset: boolean;
+}
+
+/** Per-item result from a bulk upload. */
+export interface BulkItemResult {
+  username: string;
+  action: 'created' | 'updated' | 'skipped';
+  success: boolean;
+  error?: string;
+}
+
+/** Response from the bulk upload endpoint. */
+export interface BulkUploadResponse {
+  total: number;
+  successful: number;
+  failed: number;
+  results: BulkItemResult[];
 }
 
 export interface ChangePasswordDto {

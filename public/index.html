@@ -1550,7 +1550,7 @@
           </svg>
           New Chat
         </button>
-        <div class="user-info">
+        <div class="user-info" id="user-info" onclick="handleUserInfoClick()">
           <div class="user-avatar" id="user-avatar"></div>
           <span id="user-badge"></span>
         </div>
@@ -1700,6 +1700,8 @@ async function handleLogin() {
     } else {
       token = data.token;
       user = data.user;
+      sessionStorage.setItem('admin_token', token);
+      sessionStorage.setItem('admin_role', user.role);
       showChatScreen();
     }
   } catch (e) {
@@ -1747,6 +1749,8 @@ async function handlePasswordChange() {
 
     token = data.token;
     resetToken = null;
+    sessionStorage.setItem('admin_token', token);
+    sessionStorage.setItem('admin_role', user?.role || '');
     document.getElementById('password-reset-screen').style.display = 'none';
     showChatScreen();
   } catch (e) {
@@ -2650,6 +2654,7 @@ function handleLogout() {
   token = null;
   resetToken = null;
   user = null;
+  sessionStorage.clear();
   currentSessionId = null;
   currentViewingSessionId = null;
   sessionList = [];
@@ -2678,6 +2683,16 @@ function handleLogout() {
   document.getElementById('tokens-in').textContent = '0';
   document.getElementById('tokens-out').textContent = '0';
   document.getElementById('request-count').textContent = '0';
+}
+
+// --- Admin Redirect ---
+function handleUserInfoClick() {
+  if (user && user.role === 'admin') {
+    // Save current token to sessionStorage for admin page
+    sessionStorage.setItem('admin_token', token);
+    sessionStorage.setItem('admin_role', user.role);
+    window.location.href = '/admin.html';
+  }
 }
 
 // --- New Chat ---
@@ -2720,7 +2735,27 @@ async function handleNewChat() {
 }
 
 // --- Auto-resize textarea + Drag and Drop Setup ---
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  // Restore session from sessionStorage (e.g. coming back from admin page)
+  const savedToken = sessionStorage.getItem('admin_token');
+  const savedRole = sessionStorage.getItem('admin_role');
+  if (savedToken && savedRole) {
+    try {
+      const verify = await fetch(`${window.location.origin}/api/v1/models`, {
+        headers: { 'Authorization': `Bearer ${savedToken}` }
+      });
+      if (verify.ok) {
+        token = savedToken;
+        user = { role: savedRole, displayName: savedRole === 'admin' ? 'Admin' : 'User' };
+        showChatScreen();
+        loadSessions(1);
+        return;
+      }
+    } catch {}
+    // Token invalid — clear and show login
+    sessionStorage.clear();
+  }
+
   const ta = document.getElementById('prompt-input');
   ta.addEventListener('input', () => {
     ta.style.height = 'auto';

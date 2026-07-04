@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>beexexity — Admin</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg-primary: #0f0f0f; --bg-secondary: #1a1a1a; --bg-tertiary: #262626;
+      --text-primary: #ffffff; --text-secondary: #a0a0a0; --text-tertiary: #666666;
+      --accent: #b5e4f7; --accent-hover: #9bd0e6; --border: #2a2a2a;
+      --success: #4caf50; --error: #f44336; --warning: #ff9800;
+    }
+    [data-theme="light"] {
+      --bg-primary: #f5f5f5; --bg-secondary: #ffffff; --bg-tertiary: #e8e8e8;
+      --text-primary: #1a1a1a; --text-secondary: #555555; --text-tertiary: #999999;
+      --accent: #1a6b8a; --accent-hover: #155570; --border: #dddddd;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg-primary); color: var(--text-primary);
+      min-height: 100vh;
+    }
+    /* Header */
+    .admin-header {
+      display: flex; align-items: center; gap: 1rem;
+      padding: 1rem 1.5rem; background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+    }
+    .back-btn {
+      background: var(--bg-tertiary); border: 1px solid var(--border);
+      color: var(--text-primary); padding: 0.5rem 1rem; border-radius: 8px;
+      cursor: pointer; font-size: 0.875rem;
+    }
+    .back-btn:hover { background: var(--accent); color: #000; }
+    .admin-header h1 { font-size: 1.25rem; font-weight: 600; flex: 1; }
+    .admin-header .token-status { font-size: 0.75rem; color: var(--text-tertiary); }
+
+    /* Tabs */
+    .tab-bar {
+      display: flex; gap: 0; background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border); padding: 0 1.5rem;
+    }
+    .tab-btn {
+      padding: 0.75rem 1.25rem; border: none; background: transparent;
+      color: var(--text-secondary); cursor: pointer; font-size: 0.875rem;
+      border-bottom: 2px solid transparent; transition: all 0.2s;
+    }
+    .tab-btn:hover { color: var(--text-primary); }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab-content { display: none; padding: 1.5rem; max-width: 900px; }
+    .tab-content.active { display: block; }
+
+    /* Forms */
+    label { display: block; font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 0.25rem; }
+    input, select {
+      width: 100%; padding: 0.625rem 0.75rem; margin-bottom: 0.75rem;
+      border: 1px solid var(--border); border-radius: 8px;
+      background: var(--bg-primary); color: var(--text-primary); font-size: 0.875rem;
+    }
+    input:focus, select:focus { outline: none; border-color: var(--accent); }
+    .form-row { display: flex; gap: 1rem; }
+    .form-row > * { flex: 1; }
+    .checkbox-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+    .checkbox-row input[type="checkbox"] { width: auto; margin: 0; }
+
+    /* Buttons */
+    .btn {
+      padding: 0.625rem 1.25rem; border: none; border-radius: 8px;
+      cursor: pointer; font-size: 0.875rem; font-weight: 500; transition: all 0.2s;
+    }
+    .btn-primary { background: var(--accent); color: #000; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-secondary { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: var(--border); }
+    .btn-danger { background: var(--error); color: #fff; }
+    .btn-danger:hover { opacity: 0.85; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-sm { padding: 0.375rem 0.75rem; font-size: 0.75rem; }
+
+    /* Messages */
+    .toast {
+      position: fixed; top: 1rem; right: 1rem; padding: 0.75rem 1.25rem;
+      border-radius: 8px; font-size: 0.875rem; z-index: 100;
+      animation: slideIn 0.3s ease; max-width: 400px;
+    }
+    .toast.success { background: #1b5e20; color: #a5d6a7; border: 1px solid #2e7d32; }
+    .toast.error { background: #b71c1c; color: #ef9a9a; border: 1px solid #c62828; }
+    .toast.warning { background: #e65100; color: #ffe0b2; border: 1px solid #ef6c00; }
+    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+    /* Tables */
+    table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+    th, td { padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid var(--border); }
+    th { color: var(--text-secondary); font-weight: 600; }
+    .text-success { color: var(--success); }
+    .text-error { color: var(--error); }
+
+    /* Preview table */
+    .preview-table-wrap { max-height: 400px; overflow-y: auto; margin: 1rem 0; border: 1px solid var(--border); border-radius: 8px; }
+
+    /* Cards */
+    .summary-card {
+      display: inline-flex; flex-direction: column; padding: 1.25rem 2rem;
+      background: var(--bg-secondary); border: 1px solid var(--border);
+      border-radius: 12px; margin-bottom: 1.5rem;
+    }
+    .summary-card .label { font-size: 0.75rem; color: var(--text-tertiary); text-transform: uppercase; }
+    .summary-card .value { font-size: 1.75rem; font-weight: 700; color: var(--accent); }
+
+    /* Progress */
+    .progress-bar {
+      width: 100%; height: 8px; background: var(--bg-tertiary); border-radius: 4px; margin: 1rem 0; overflow: hidden;
+    }
+    .progress-fill { height: 100%; background: var(--accent); transition: width 0.3s ease; border-radius: 4px; }
+    .progress-text { font-size: 0.8125rem; color: var(--text-secondary); text-align: center; }
+
+    /* Pagination */
+    .pagination { display: flex; align-items: center; gap: 0.5rem; margin-top: 1rem; justify-content: center; }
+    .page-btn { padding: 0.375rem 0.75rem; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary); cursor: pointer; font-size: 0.8125rem; }
+    .page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    .page-btn:hover:not(:disabled) { background: var(--border); }
+    .page-info { font-size: 0.8125rem; color: var(--text-secondary); }
+
+    /* Toggle password visibility */
+    .pwd-wrap { position: relative; }
+    .pwd-toggle {
+      position: absolute; right: 0.75rem; top: 2rem; cursor: pointer;
+      color: var(--text-tertiary); font-size: 0.875rem; background: none; border: none;
+    }
+    .pwd-toggle:hover { color: var(--text-secondary); }
+
+    /* Error detail list */
+    .error-list { margin-top: 0.5rem; font-size: 0.8125rem; }
+    .error-list summary { cursor: pointer; color: var(--error); }
+    .error-list li { color: var(--text-secondary); padding: 0.25rem 0; }
+  </style>
+</head>
+<body>
+  <div class="admin-header">
+    <button class="back-btn" onclick="goBack()">← Back</button>
+    <h1>Admin</h1>
+    <span class="token-status" id="token-status"></span>
+  </div>
+
+  <div class="tab-bar" id="tab-bar">
+    <button class="tab-btn active" data-tab="single">Single User</button>
+    <button class="tab-btn" data-tab="bulk">Bulk Upload</button>
+    <button class="tab-btn" data-tab="cost">Usage & Cost</button>
+    <button class="tab-btn" data-tab="settings">Account Settings</button>
+  </div>
+
+  <!-- Tab 1: Single User -->
+  <div class="tab-content active" id="tab-single">
+    <div style="display:flex;gap:0.5rem;margin-bottom:1.25rem">
+      <button class="btn btn-sm btn-secondary" onclick="showSingleMode('register')" id="su-mode-reg" style="background:var(--accent);color:#000">Register New</button>
+      <button class="btn btn-sm btn-secondary" onclick="showSingleMode('update')" id="su-mode-upd">Update Existing</button>
+    </div>
+
+    <!-- Register New User -->
+    <div id="su-register">
+      <div class="form-row">
+        <div><label>Username</label><input type="text" id="su-reg-username" placeholder="New username"></div>
+        <div><label>Display Name</label><input type="text" id="su-reg-displayName"></div>
+      </div>
+      <div class="form-row">
+        <div><label>Group Name</label><input type="text" id="su-reg-groupName" placeholder="e.g. IT Business Enablement"></div>
+        <div><label>Role</label><select id="su-reg-role"><option value="user">User</option><option value="admin">Admin</option></select></div>
+      </div>
+      <div class="form-row">
+        <div class="pwd-wrap"><label>Password (min 6 chars)</label><input type="password" id="su-reg-password" minlength="6"><button class="pwd-toggle" onclick="togglePwd('su-reg-password',this)">👁</button></div>
+        <div class="checkbox-row" style="align-items:flex-end;padding-bottom:0.75rem"><input type="checkbox" id="su-reg-forceReset" checked><label for="su-reg-forceReset">Force password reset</label></div>
+      </div>
+      <button class="btn btn-primary" onclick="registerSingleUser()">Create User</button>
+    </div>
+
+    <!-- Update Existing User -->
+    <div id="su-update" style="display:none">
+      <div class="form-row">
+        <div style="flex:3"><label>Username</label><input type="text" id="su-upd-username" placeholder="Enter username to edit"></div>
+        <div style="flex:1;display:flex;align-items:flex-end"><button class="btn btn-secondary" onclick="loadUpdateUser()" style="margin-bottom:0.75rem">Load</button></div>
+      </div>
+      <div id="su-upd-form" style="display:none">
+        <div class="form-row">
+          <div><label>Display Name</label><input type="text" id="su-upd-displayName"></div>
+          <div><label>Group Name</label><input type="text" id="su-upd-groupName" placeholder="e.g. IT Business Enablement"></div>
+        </div>
+        <div class="form-row">
+          <div><label>Role</label><select id="su-upd-role"><option value="user">User</option><option value="admin">Admin</option></select></div>
+          <div class="pwd-wrap"><label>New Password (leave blank to keep)</label><input type="password" id="su-upd-password" minlength="6"><button class="pwd-toggle" onclick="togglePwd('su-upd-password',this)">👁</button></div>
+        </div>
+        <div class="checkbox-row"><input type="checkbox" id="su-upd-forceReset"><label for="su-upd-forceReset">Force password reset on next login</label></div>
+        <button class="btn btn-primary" onclick="updateSingleUser()">Update User</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab 2: Bulk Upload -->
+  <div class="tab-content" id="tab-bulk">
+    <div style="display:flex;gap:0.75rem;align-items:flex-end;margin-bottom:1rem">
+      <div style="flex:1"><label>Upload JSON file</label><input type="file" id="bulk-file" accept=".json"></div>
+      <button class="btn btn-secondary" onclick="downloadTemplate()">📥 Download Template</button>
+    </div>
+    <div id="bulk-preview" style="display:none">
+      <p style="font-size:0.875rem;color:var(--text-secondary);margin-bottom:0.5rem">Preview: <span id="bulk-count"></span> users</p>
+      <div class="preview-table-wrap"><table><thead><tr><th>Username</th><th>Display Name</th><th>Group</th><th>Role</th><th>Force Reset</th></tr></thead><tbody id="bulk-preview-body"></tbody></table></div>
+      <button class="btn btn-primary" onclick="processBulk()" id="bulk-process-btn">Confirm & Process</button>
+    </div>
+    <div id="bulk-progress" style="display:none">
+      <div class="progress-text" id="bulk-progress-text">Processing...</div>
+      <div class="progress-bar"><div class="progress-fill" id="bulk-progress-fill" style="width:0%"></div></div>
+    </div>
+    <div id="bulk-result" style="display:none">
+      <p>Total: <span id="bulk-result-total"></span> &nbsp; ✅ <span class="text-success" id="bulk-result-ok"></span> &nbsp; ❌ <span class="text-error" id="bulk-result-fail"></span></p>
+      <details class="error-list" id="bulk-errors" style="display:none"><summary>Error Details</summary><ul id="bulk-error-list"></ul></details>
+    </div>
+  </div>
+
+  <!-- Tab 3: Usage & Cost -->
+  <div class="tab-content" id="tab-cost">
+    <div class="form-row">
+      <div><label>From</label><input type="date" id="cost-from"></div>
+      <div><label>To</label><input type="date" id="cost-to"></div>
+      <div style="display:flex;align-items:flex-end"><button class="btn btn-primary" onclick="loadCostReport()" style="margin-bottom:0.75rem">Search</button></div>
+    </div>
+    <div class="summary-card"><span class="label">Grand Total</span><span class="value" id="cost-grand-total">Rp 0</span></div>
+    <div style="overflow-x:auto"><table><thead><tr><th>Username</th><th>Display Name</th><th>Group</th><th>Input Tokens</th><th>Output Tokens</th><th>Requests</th><th>Cost</th></tr></thead><tbody id="cost-table-body"><tr><td colspan="7" style="text-align:center;color:var(--text-tertiary)">No data</td></tr></tbody></table></div>
+    <div class="pagination"><button class="page-btn" id="cost-prev" onclick="loadCostReport(currentPage-1)">← Prev</button><span class="page-info" id="cost-page-info">Page 1</span><button class="page-btn" id="cost-next" onclick="loadCostReport(currentPage+1)">Next →</button></div>
+  </div>
+
+  <!-- Tab 4: Account Settings -->
+  <div class="tab-content" id="tab-settings">
+    <div style="max-width:400px">
+      <div class="pwd-wrap"><label>Current Password</label><input type="password" id="set-currentPwd"><button class="pwd-toggle" onclick="togglePwd('set-currentPwd',this)">👁</button></div>
+      <div class="pwd-wrap"><label>New Password (min 6 chars)</label><input type="password" id="set-newPwd"><button class="pwd-toggle" onclick="togglePwd('set-newPwd',this)">👁</button></div>
+      <div class="pwd-wrap"><label>Confirm New Password</label><input type="password" id="set-confirmPwd"></div>
+      <button class="btn btn-primary" onclick="changePassword()">Update Password</button>
+    </div>
+  </div>
+
+  <script>
+    // ─── Auth ───────────────────────────────────────────────────────────────
+    const API_BASE = window.location.origin + '/api/v1';
+    const token = sessionStorage.getItem('admin_token');
+    const role = sessionStorage.getItem('admin_role');
+
+    if (!token) { showToast('Not authenticated — redirecting', 'error'); setTimeout(() => window.location.href = '/', 1500); }
+    document.getElementById('token-status').textContent = `Role: ${role || 'none'}`;
+    const authHeaders = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+    // ─── Helpers ─────────────────────────────────────────────────────────────
+    function showToast(msg, type = 'success') {
+      const t = document.createElement('div'); t.className = `toast ${type}`; t.textContent = msg;
+      document.body.appendChild(t); setTimeout(() => t.remove(), 4000);
+    }
+    function goBack() { window.location.href = '/'; }
+    function togglePwd(id, btn) {
+      const el = document.getElementById(id);
+      el.type = el.type === 'password' ? 'text' : 'password';
+      btn.textContent = el.type === 'password' ? '👁' : '👁‍🗨';
+    }
+    function api(url, options = {}) {
+      return fetch(url, { headers: authHeaders, ...options }).then(r => {
+        if (r.status === 401) { showToast('Session expired — redirecting', 'error'); setTimeout(() => { sessionStorage.clear(); window.location.href = '/'; }, 1500); throw new Error('Unauthorized'); }
+        return r.json().then(data => { if (!r.ok) throw Object.assign(new Error(data.message || 'Request failed'), { status: r.status, data }); return data; });
+      });
+    }
+
+    // ─── Tabs ────────────────────────────────────────────────────────────────
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+      });
+    });
+
+    // ─── Tab 1: Single User ──────────────────────────────────────────────────
+    function showSingleMode(mode) {
+      const reg = document.getElementById('su-register');
+      const upd = document.getElementById('su-update');
+      const btnReg = document.getElementById('su-mode-reg');
+      const btnUpd = document.getElementById('su-mode-upd');
+      if (mode === 'register') {
+        reg.style.display = 'block'; upd.style.display = 'none';
+        btnReg.style.background = 'var(--accent)'; btnReg.style.color = '#000';
+        btnUpd.style.background = ''; btnUpd.style.color = '';
+      } else {
+        reg.style.display = 'none'; upd.style.display = 'block';
+        btnUpd.style.background = 'var(--accent)'; btnUpd.style.color = '#000';
+        btnReg.style.background = ''; btnReg.style.color = '';
+      }
+    }
+
+    async function registerSingleUser() {
+      const username = document.getElementById('su-reg-username').value.trim();
+      const displayName = document.getElementById('su-reg-displayName').value.trim();
+      const password = document.getElementById('su-reg-password').value;
+      const role = document.getElementById('su-reg-role').value;
+      const groupName = document.getElementById('su-reg-groupName').value.trim() || undefined;
+      const forcePasswordReset = document.getElementById('su-reg-forceReset').checked;
+      if (!username || !password) return showToast('Username and password required', 'warning');
+      if (password.length < 6) return showToast('Password min 6 characters', 'warning');
+      const body = { username, displayName: displayName || username, password, role, groupName, forcePasswordReset };
+      try {
+        await api(`${API_BASE}/admin/users`, { method: 'POST', body: JSON.stringify(body) });
+        showToast(`User "${username}" created`);
+        document.getElementById('su-reg-username').value = ''; document.getElementById('su-reg-displayName').value = '';
+        document.getElementById('su-reg-groupName').value = ''; document.getElementById('su-reg-password').value = '';
+      } catch (e) { showToast(e.message, 'error'); }
+    }
+
+    async function loadUpdateUser() {
+      const username = document.getElementById('su-upd-username').value.trim();
+      if (!username) return showToast('Enter a username', 'warning');
+      document.getElementById('su-upd-form').style.display = 'block';
+      document.getElementById('su-upd-displayName').value = '';
+      document.getElementById('su-upd-groupName').value = '';
+      document.getElementById('su-upd-role').value = 'user';
+      document.getElementById('su-upd-password').value = '';
+      document.getElementById('su-upd-forceReset').checked = false;
+      showToast(`Editing user: ${username}`, 'success');
+    }
+
+    async function updateSingleUser() {
+      const username = document.getElementById('su-upd-username').value.trim();
+      const body = {};
+      const dn = document.getElementById('su-upd-displayName').value.trim(); if (dn) body.displayName = dn;
+      const gn = document.getElementById('su-upd-groupName').value.trim();
+      body.groupName = gn || null;
+      body.role = document.getElementById('su-upd-role').value;
+      const pwd = document.getElementById('su-upd-password').value; if (pwd) body.password = pwd;
+      body.forcePasswordReset = document.getElementById('su-upd-forceReset').checked;
+      try {
+        await api(`${API_BASE}/admin/users/${encodeURIComponent(username)}`, { method: 'PUT', body: JSON.stringify(body) });
+        showToast(`User "${username}" updated`);
+      } catch (e) { showToast(e.message, 'error'); }
+    }
+
+    // ─── Tab 2: Bulk Upload ──────────────────────────────────────────────────
+    let bulkData = [];
+
+    function downloadTemplate() {
+      const template = [
+        { username: 'johndoe', displayName: 'John Doe', groupName: 'IT Business Enablement', role: 'user', password: 'SecurePass123', forcePasswordReset: true },
+        { username: 'janedoe', displayName: 'Jane Doe', groupName: 'Finance', role: 'admin', password: 'AnotherPass456', forcePasswordReset: false }
+      ];
+      const blob = new Blob([JSON.stringify(template, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'bulk-users-template.json'; a.click();
+    }
+
+    document.getElementById('bulk-file').addEventListener('change', function() {
+      const file = this.files[0]; if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const data = JSON.parse(e.target.result);
+          if (!Array.isArray(data)) throw new Error('Must be a JSON array');
+          for (let i = 0; i < data.length; i++) {
+            const u = data[i];
+            if (!u.username || !u.role || !u.password) throw new Error(`Entry ${i}: username, role, and password required`);
+            if (u.role !== 'admin' && u.role !== 'user') throw new Error(`Entry ${i}: role must be admin/user`);
+            if (u.password.length < 6) throw new Error(`Entry ${i}: password min 6 chars`);
+            if (u.forcePasswordReset !== undefined && typeof u.forcePasswordReset !== 'boolean') throw new Error(`Entry ${i}: forcePasswordReset must be boolean`);
+          }
+          bulkData = data;
+          const tbody = document.getElementById('bulk-preview-body'); tbody.innerHTML = '';
+          data.slice(0, 100).forEach(u => {
+            tbody.innerHTML += `<tr><td>${esc(u.username)}</td><td>${esc(u.displayName)}</td><td>${esc(u.groupName)}</td><td>${u.role}</td><td>${u.forcePasswordReset ? '⚠️' : '—'}</td></tr>`;
+          });
+          if (data.length > 100) tbody.innerHTML += `<tr><td colspan="5" style="text-align:center;color:var(--text-tertiary)">... and ${data.length - 100} more</td></tr>`;
+          document.getElementById('bulk-count').textContent = data.length;
+          document.getElementById('bulk-preview').style.display = 'block';
+          document.getElementById('bulk-result').style.display = 'none';
+        } catch (err) { showToast('JSON error: ' + err.message, 'error'); }
+      };
+      reader.readAsText(file);
+    });
+
+    function esc(s) { return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+    async function processBulk() {
+      if (!bulkData.length) return;
+      document.getElementById('bulk-preview').style.display = 'none';
+      document.getElementById('bulk-process-btn').style.display = 'none';
+      const progress = document.getElementById('bulk-progress'); progress.style.display = 'block';
+      const fill = document.getElementById('bulk-progress-fill');
+      const text = document.getElementById('bulk-progress-text');
+      const total = bulkData.length;
+      let ok = 0, fail = 0, errors = [];
+
+      for (let i = 0; i < total; i += 5) {
+        const batch = bulkData.slice(i, i + 5);
+        const results = await Promise.allSettled(batch.map(u =>
+          api(`${API_BASE}/admin/users/${encodeURIComponent(u.username)}`, {
+            method: 'PUT',
+            body: JSON.stringify({
+              displayName: u.displayName || u.username, groupName: u.groupName,
+              role: u.role, password: u.password, forcePasswordReset: u.forcePasswordReset
+            })
+          }).then(() => ok++).catch(e => { fail++; errors.push(`${u.username}: ${e.message}`); })
+        ));
+        const pct = Math.round(((i + batch.length) / total) * 100);
+        fill.style.width = pct + '%';
+        text.textContent = `Processing ${Math.min(i + 5, total)} of ${total}...`;
+      }
+
+      progress.style.display = 'none';
+      document.getElementById('bulk-result').style.display = 'block';
+      document.getElementById('bulk-result-total').textContent = total;
+      document.getElementById('bulk-result-ok').textContent = ok;
+      document.getElementById('bulk-result-fail').textContent = fail;
+      if (errors.length) {
+        document.getElementById('bulk-errors').style.display = 'block';
+        document.getElementById('bulk-error-list').innerHTML = errors.map(e => `<li>${esc(e)}</li>`).join('');
+      }
+      document.getElementById('bulk-process-btn').style.display = 'inline-block';
+    }
+
+    // ─── Tab 3: Usage & Cost ────────────────────────────────────────────────
+    let currentPage = 1, lastCostResponse = null;
+
+    // Set default date range to current month
+    (function() {
+      const now = new Date();
+      const y = now.getFullYear(), m = String(now.getMonth() + 1).padStart(2, '0');
+      document.getElementById('cost-from').value = `${y}-${m}-01`;
+      document.getElementById('cost-to').value = `${y}-${m}-${String(now.getDate()).padStart(2, '0')}`;
+    })();
+
+    async function loadCostReport(page = 1) {
+      currentPage = page;
+      const from = document.getElementById('cost-from').value;
+      const to = document.getElementById('cost-to').value;
+      try {
+        const data = await api(`${API_BASE}/admin/usage/cost?from=${from}&to=${to}&page=${page}&pageSize=20`);
+        lastCostResponse = data;
+        // Grand total
+        const gt = data.grandTotal;
+        const totalUsd = gt.estimatedCostUsd || 0;
+        // Try to get IDR rate from sessionStorage cache
+        let rate = parseFloat(sessionStorage.getItem('idr_rate') || '0');
+        if (!rate) { try { const r = await fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json'); const j = await r.json(); rate = j?.usd?.idr || 0; if (rate) sessionStorage.setItem('idr_rate', rate.toString()); } catch {} }
+        const displayCost = rate ? `Rp ${(totalUsd * rate).toLocaleString('en-US', { minimumFractionDigits: 2 })}` : `$${totalUsd.toFixed(6)}`;
+        document.getElementById('cost-grand-total').textContent = displayCost;
+        // Table
+        const tbody = document.getElementById('cost-table-body'); tbody.innerHTML = '';
+        if (!data.users || !data.users.length) {
+          tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-tertiary)">No data</td></tr>';
+        } else {
+          data.users.forEach(u => {
+            const cost = rate ? `Rp ${(u.estimatedCostUsd * rate).toLocaleString('en-US', { minimumFractionDigits: 2 })}` : `$${(u.estimatedCostUsd || 0).toFixed(6)}`;
+            tbody.innerHTML += `<tr><td>${esc(u.username)}</td><td>${esc(u.displayName)}</td><td>${esc(u.groupName)}</td><td>${(u.totalInputTokens || 0).toLocaleString()}</td><td>${(u.totalOutputTokens || 0).toLocaleString()}</td><td>${u.requestCount || 0}</td><td>${cost}</td></tr>`;
+          });
+        }
+        document.getElementById('cost-page-info').textContent = `Page ${data.page} of ${Math.ceil(data.total / data.pageSize)}`;
+        document.getElementById('cost-prev').disabled = page <= 1;
+        document.getElementById('cost-next').disabled = !data.hasMore;
+      } catch (e) { showToast(e.message, 'error'); }
+    }
+
+    // ─── Tab 4: Account Settings ──────────────────────────────────────────────
+    async function changePassword() {
+      const current = document.getElementById('set-currentPwd').value;
+      const newPwd = document.getElementById('set-newPwd').value;
+      const confirm = document.getElementById('set-confirmPwd').value;
+      if (!current || !newPwd) return showToast('Fill all fields', 'warning');
+      if (newPwd.length < 6) return showToast('Password must be at least 6 characters', 'warning');
+      if (newPwd !== confirm) return showToast('Passwords do not match', 'error');
+      try {
+        const result = await api(`${API_BASE}/auth/change-password`, {
+          method: 'POST',
+          body: JSON.stringify({ currentPassword: current, newPassword: newPwd })
+        });
+        showToast('Password changed successfully');
+        document.getElementById('set-currentPwd').value = '';
+        document.getElementById('set-newPwd').value = '';
+        document.getElementById('set-confirmPwd').value = '';
+        // Update stored token
+        if (result.token) sessionStorage.setItem('admin_token', result.token);
+      } catch (e) { showToast(e.message, 'error'); }
+    }
+
+    // Load cost report on first render
+    setTimeout(loadCostReport, 100);
+  </script>
+</body>
+</html>

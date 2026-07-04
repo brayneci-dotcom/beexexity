@@ -232,7 +232,7 @@ describe('Auth Service', () => {
       expect(mockQuery).toHaveBeenCalledTimes(2);
       const insertCall = mockQuery.mock.calls[1];
       expect(insertCall[0]).toContain('INSERT INTO users');
-      expect(insertCall[1]).toEqual(['newuser', '$2b$12$thehash', 'user', 'New User']);
+      expect(insertCall[1]).toEqual(['newuser', '$2b$12$thehash', 'user', 'New User', null]);
     });
   });
 
