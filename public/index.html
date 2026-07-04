@@ -2197,6 +2197,8 @@ async function handleSend() {
             } else {
               assistantEl.remove();
               addMessage('error', `${data.error}: ${data.message}`);
+              setStreaming(false);
+              return;
             }
           }
           eventType = '';
