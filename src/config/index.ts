@@ -43,6 +43,34 @@ export const config = {
       process.env.ROUTING_CLASSIFIER_TIMEOUT_MS || '2000', 10
     ),
   },
+  gotenberg: {
+    /** URL of the Gotenberg sidecar service for legacy Office format conversion (.doc, .ppt). */
+    url: process.env.GOTENBERG_URL || '',
+    /** Timeout in ms for Gotenberg conversion requests. */
+    timeoutMs: parseInt(process.env.GOTENBERG_TIMEOUT_MS || '30000', 10),
+  },
+  extraction: {
+    /** Max extracted text chars below which confidence is 'low' → triggers OCR fallback */
+    lowConfidenceThreshold: parseInt(
+      process.env.EXTRACTION_LOW_CONFIDENCE_THRESHOLD || '100', 10
+    ),
+    /** Max nesting depth for JSON parsing — deeper is rejected as FILE_TOO_COMPLEX */
+    maxJsonDepth: parseInt(
+      process.env.EXTRACTION_MAX_JSON_DEPTH || '20', 10
+    ),
+    /** Max tag nesting depth for HTML — deeper is rejected as FILE_TOO_COMPLEX */
+    maxHtmlTagDepth: parseInt(
+      process.env.EXTRACTION_MAX_HTML_DEPTH || '100', 10
+    ),
+    /** Max rows for CSV — exceeded returns empty with warning logged */
+    maxCsvRows: parseInt(
+      process.env.EXTRACTION_MAX_CSV_ROWS || '100000', 10
+    ),
+    /** Max XML entries inside a PPTX ZIP — exceeded rejected as FILE_TOO_COMPLEX */
+    maxPptxEntries: parseInt(
+      process.env.EXTRACTION_MAX_PPTX_ENTRIES || '2000', 10
+    ),
+  },
   auth: {
     minPasswordLength: parseInt(process.env.MIN_PASSWORD_LENGTH || '8', 10),
     resetTokenExpiresIn: 300, // 5 minutes for password reset token

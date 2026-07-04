@@ -1,96 +1,128 @@
-# AWS Infrastructure Setup
+# Infrastructure: GCP Cloud Run + AWS Bedrock + AWS RDS
 
 ## Architecture
 
 ```
-Users → Lambda Function URL (HTTPS, response streaming)
-              ↓
-        Lambda (VPC, private subnets)
-              ↓                    ↓
-    RDS PostgreSQL           AWS Bedrock
-    (private, no public IP)  (via VPC Endpoint or NAT Gateway)
+Users → Cloud Run (HTTPS, asia-southeast2)
+              │
+              ├── AWS Bedrock Account #1 (LLM inference)
+              │     - ap-southeast-3 (Jakarta)
+              │     - All models via ConverseStream / Converse / InvokeModel API
+              │
+              └── AWS RDS Account #2 (PostgreSQL)
+                    - Private RDS instance
+                    - Accessed via credentials stored in GCP Secret Manager
+                    - Connection pool (pg Pool, max 20)
 ```
 
-## Security
+## Prerequisites
 
-- **RDS is NOT publicly accessible** — no public IP, private subnet only
-- **RDS security group** allows inbound port 5432 only from the Lambda security group
-- **Lambda in VPC** — same subnets as RDS for private connectivity
-- **Function URL** provides the public HTTPS endpoint with response streaming (for SSE)
-- **Secrets** stored in Lambda environment variables, not in code
-- **Storage encrypted** at rest (RDS)
+- GCP project with Cloud Run enabled
+- AWS Account #1 with Bedrock access in ap-southeast-3
+- AWS Account #2 with RDS PostgreSQL running
+- `gcloud` CLI installed and authenticated
+- Docker installed
+
+## One-Time Setup
+
+```bash
+# 1. Set your GCP project
+export PROJECT_ID="my-gcp-project"
+
+# 2. Run the setup script
+bash infra/gcp-setup.sh
+```
+
+This creates:
+- Enabled APIs (Cloud Run, Artifact Registry, Secret Manager)
+- Artifact Registry Docker repository
+- Secret Manager secrets for DB credentials and AWS keys
+- Cloud Run service account with secret access
+- Workload Identity Federation for GitHub Actions
+
+## Database
+
+RDS PostgreSQL is in AWS Account #2. Connection is via standard PostgreSQL wire protocol using credentials stored in Secret Manager:
+
+- `DB_HOST` — RDS endpoint (e.g. `database-1.xxxxxx.ap-southeast-3.rds.amazonaws.com`)
+- `DB_PORT` — 5432
+- `DB_NAME` — bedrock_gateway
+- `DB_USER` — postgres
+- `DB_PASSWORD` — stored in Secret Manager as `db-password`
+- `DB_SSL` — true (required for RDS)
+
+### Running Migrations
+
+Migrations are idempotent. Run after the first deploy:
+
+```bash
+gcloud run jobs execute beexexity-migrate  # if set up as a job
+# OR via Cloud Run with a one-off command:
+gcloud run deploy beexexity --source . \
+  --set-env-vars="DB_HOST=...,DB_PASSWORD=..." \
+  --command="npx tsx src/scripts/run-migrations.ts"
+```
+
+## Bedrock Access
+
+AWS Account #1 provides Bedrock access. Credentials stored in Secret Manager:
+
+| Secret | Value |
+|---|---|
+| `aws-access-key-id` | IAM user with `AmazonBedrockFullAccess` |
+| `aws-secret-access-key` | Corresponding secret key |
+
+The IAM user needs Bedrock access in `ap-southeast-3` (Jakarta) with Converse, ConverseStream, and InvokeModel permissions.
 
 ## Deploying
 
-### First Time (one-time setup)
+### Via Cloud Build (push-to-deploy)
+
+Push to `main` branch → Cloud Build trigger builds and deploys to Cloud Run automatically (configured via `cloudbuild.yaml`).
+
+### Manual deploy
 
 ```bash
-cd infra
-./deploy-setup.sh
+gcloud builds submit --config cloudbuild.yaml \
+  --substitutions=_DB_HOST="<rds-endpoint>",_DB_USER="postgres"
 ```
 
-This creates: VPC security groups, RDS (db.t3.micro free tier), ECR repo, Lambda function, Function URL.
+### Cloud Run Configuration
 
-### Subsequent Deploys (automatic via GitHub Actions)
+| Setting | Value |
+|---|---|
+| Region | `asia-southeast2` |
+| Memory | 512Mi |
+| CPU | 1 |
+| Timeout | 300s |
+| Max instances | 10 |
+| Concurrency | 80 |
+| Port | 3000 |
+| Auth | Allow unauthenticated (or use IAM) |
 
-Push to `main` branch → GitHub Actions builds Docker image → pushes to ECR → updates Lambda.
+## Environment Variables
 
-### GitHub Secrets Required
+Set via Cloud Run env vars or Secret Manager:
 
-| Secret | Description |
-|--------|-------------|
-| `AWS_ACCESS_KEY_ID` | IAM user with ECR push + Lambda update permissions |
-| `AWS_SECRET_ACCESS_KEY` | Corresponding secret key |
+| Variable | Source |
+|---|---|
+| `NODE_ENV` | Env var: `production` |
+| `AWS_REGION` | Env var: `ap-southeast-3` |
+| `DB_HOST` | Env var |
+| `DB_PORT` | Env var |
+| `DB_NAME` | Env var |
+| `DB_USER` | Env var |
+| `DB_PASSWORD` | Secret Manager: `db-password` |
+| `JWT_SECRET` | Secret Manager: `jwt-secret` |
+| `AWS_ACCESS_KEY_ID` | Secret Manager: `aws-access-key-id` |
+| `AWS_SECRET_ACCESS_KEY` | Secret Manager: `aws-secret-access-key` |
 
-## Important: Lambda VPC Internet Access
-
-When Lambda is in a VPC, it **loses internet access** by default. This affects:
-- Calls to **AWS Bedrock** (needs internet or VPC endpoint)
-- Calls to **api.budjet.org** (IDR rate fetch from frontend — this is client-side, not affected)
-
-### Option A: VPC Endpoint for Bedrock (recommended, no extra cost for the endpoint itself)
-
-```bash
-aws ec2 create-vpc-endpoint \
-  --vpc-id <vpc-id> \
-  --service-name com.amazonaws.ap-southeast-3.bedrock-runtime \
-  --vpc-endpoint-type Interface \
-  --subnet-ids <subnet-1> <subnet-2> \
-  --security-group-ids <lambda-sg-id> \
-  --region ap-southeast-3
-```
-
-### Option B: NAT Gateway (adds ~$32/month)
-
-If you need general internet access from Lambda (not just Bedrock):
-
-1. Create an Elastic IP
-2. Create a NAT Gateway in a **public** subnet
-3. Update the **private** subnet route table to route `0.0.0.0/0` through the NAT Gateway
-4. Lambda uses the private subnets
-
-## Cost Estimate (Free Tier Eligible)
+## Cost Estimate
 
 | Resource | Monthly Cost |
-|----------|-------------|
-| RDS db.t3.micro (free tier year 1) | $0 (then ~$13/mo) |
-| Lambda (free tier: 1M requests) | $0 for light use |
-| ECR (500MB free) | $0 |
-| VPC Endpoint for Bedrock | ~$7/mo (per interface) |
-| **Year 1 Total** | **~$7/month** |
-| **After free tier** | **~$20/month** |
-
-## Running Migrations
-
-Since RDS is private, you can't connect directly. Options:
-
-1. **Temporarily make RDS public** (for initial setup only):
-   ```bash
-   aws rds modify-db-instance --db-instance-identifier bedrock-gateway-db --publicly-accessible
-   # Run migrations...
-   aws rds modify-db-instance --db-instance-identifier bedrock-gateway-db --no-publicly-accessible
-   ```
-
-2. **Use AWS Session Manager** (SSM) to tunnel through an EC2 bastion
-
-3. **Add a migration Lambda** that runs migrations on deploy (advanced)
+|---|---|
+| Cloud Run (light use) | ~$0–5 |
+| Artifact Registry (500MB free) | $0 |
+| RDS db.t3.micro | ~$13/mo |
+| Bedrock (per-token) | Varies by model usage |
+| **Total** | **~$15–20/mo baseline + Bedrock usage** |

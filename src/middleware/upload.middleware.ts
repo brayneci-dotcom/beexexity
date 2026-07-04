@@ -9,11 +9,24 @@ import { ErrorResponse } from '../types/error.types.js';
  * @see Requirements 1.1, 1.3
  */
 export const ALLOWED_MIME_TYPES = [
+  // Documents
   'application/pdf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel',
+  // Images
   'image/png',
   'image/jpeg',
   'image/webp',
+  // Structured text
+  'text/html',
+  'text/markdown',
+  'application/json',
+  'text/csv',
+  'text/plain',
+  'application/xml',
+  'text/xml',
 ] as const;
 
 /** Maximum file size: 10 MB per file. @see Requirement 1.4 */

@@ -29,6 +29,10 @@ export interface ExtractionResult {
   text: string;
   filename: string;
   isEmpty: boolean;
+  /** Confidence in extraction quality. 'low' triggers OCR fallback pipeline. */
+  confidence: 'high' | 'medium' | 'low';
+  /** Normalized format label reported by the extractor, e.g. 'pdf', 'pptx', 'html' */
+  format: string;
 }
 
 export interface ImageContentBlock {

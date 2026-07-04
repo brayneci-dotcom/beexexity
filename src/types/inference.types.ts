@@ -66,4 +66,34 @@ export interface RoutingMetadataEvent {
   manualOverrideApplied: boolean;
   skill?: string;  // classified request type from hybrid router
   contract?: Record<string, unknown> | null;  // structured prompt contract
+
+  // Confidence & flags from routing decision
+  confidence?: number;
+  flags?: string[];
+
+  // Routing engine timing (ms per step)
+  routingDurationMs?: number;
+  classificationDurationMs?: number;
+  refinementDurationMs?: number;
+  scoringDurationMs?: number;
+
+  // Prompt info
+  originalPromptLength?: number;
+  promptLengthAfterRefinement?: number;
+
+  // Conversation context
+  conversationContext?: string;  // routing_payload sent to routing engine
+  historyMessageCount?: number;
+  contextTruncated?: boolean;
+
+  // Session memory state
+  memorySummary?: string;
+  memoryVersion?: number;
+  /** Structured key-value facts extracted from conversation */
+  memoryFacts?: Record<string, string>;
+
+  // Two-stage OCR info (multipart only)
+  ocrExecuted?: boolean;
+  ocrModel?: string;
+  enhanceModel?: string;
 }

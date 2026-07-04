@@ -42,17 +42,18 @@ export async function fetchIdrRate(): Promise<number | null> {
 
   idrRateFetchPromise = (async () => {
     try {
-      const response = await fetch('https://api.budjet.org/fiat/USD/IDR');
+      const response = await fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json');
       if (!response.ok) {
         console.warn(`[cost-display] IDR rate API returned ${response.status}, falling back to USD`);
         return null;
       }
       const data = await response.json();
-      if (data && typeof data.conversion_rate === 'number') {
-        cachedIdrRate = data.conversion_rate;
+      const rate = data?.usd?.idr;
+      if (typeof rate === 'number') {
+        cachedIdrRate = rate;
         return cachedIdrRate;
       }
-      console.warn('[cost-display] IDR rate API response missing conversion_rate field');
+      console.warn('[cost-display] IDR rate API response missing usd.idr field');
       return null;
     } catch (error) {
       console.warn('[cost-display] Failed to fetch IDR rate, falling back to USD:', error);

@@ -22,15 +22,20 @@
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.700.0",
     "bcrypt": "^5.1.1",
+    "cheerio": "^1.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",
     "express": "^4.21.0",
     "jsonwebtoken": "^9.0.2",
     "mammoth": "^1.12.0",
     "multer": "^2.2.0",
+    "officeparser": "^4.0.0",
     "pdf-parse": "^2.4.5",
     "pg": "^8.13.0",
-    "uuid": "^10.0.0"
+    "turndown": "^7.2.4",
+    "turndown-plugin-gfm": "^1.0.2",
+    "uuid": "^10.0.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
@@ -42,6 +47,7 @@
     "@types/node": "^22.0.0",
     "@types/pdf-parse": "^1.1.5",
     "@types/pg": "^8.11.10",
+    "@types/turndown": "^5.0.6",
     "@types/uuid": "^10.0.0",
     "eslint": "^9.0.0",
     "fast-check": "^3.22.0",

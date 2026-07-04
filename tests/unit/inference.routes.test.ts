@@ -30,6 +30,11 @@ vi.mock('../../src/middleware/upload.middleware.js', () => ({
   multerErrorHandler: vi.fn((_err: Error, _req: express.Request, _res: express.Response, _next: express.NextFunction) => {}),
 }));
 
+vi.mock('../../src/config/database.js', () => ({
+  tryAcquireSessionLock: vi.fn().mockResolvedValue(true),
+  releaseSessionLock: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock('../../src/services/pii-masker.service.js', () => ({
   mask: vi.fn((text: string) => ({
     maskedText: text,

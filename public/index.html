@@ -1587,7 +1587,7 @@
       <div class="input-container">
         <div class="input-area" id="input-area">
           <div class="drop-zone-overlay" id="drop-zone"><span>Drop files here</span></div>
-          <input type="file" id="file-input" multiple accept=".pdf,.docx,.png,.jpg,.jpeg,.webp" style="display:none" onchange="handleFilePicker(event)">
+          <input type="file" id="file-input" multiple accept=".pdf,.docx,.pptx,.xlsx,.xls,.png,.jpg,.jpeg,.webp,.html,.md,.json,.csv,.txt,.xml" style="display:none" onchange="handleFilePicker(event)">
           <button class="attach-btn" id="attach-btn" onclick="document.getElementById('file-input').click()" title="Attach files">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -1646,9 +1646,19 @@ let modelCapabilities = {}; // modelId → capability string ('text-only' | 'tex
 const ALLOWED_MIME_TYPES = [
   'application/pdf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel',
   'image/png',
   'image/jpeg',
-  'image/webp'
+  'image/webp',
+  'text/html',
+  'text/markdown',
+  'application/json',
+  'text/csv',
+  'text/plain',
+  'application/xml',
+  'text/xml'
 ];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 const MAX_FILE_COUNT = 5;
@@ -1971,6 +1981,7 @@ async function handleSend() {
         document.getElementById('viewing-banner').classList.remove('visible');
         document.getElementById('resume-bar').classList.remove('visible');
         setInputEnabled(true);
+        setStreaming(false);
         document.getElementById('prompt-input').placeholder = 'Ask anything...';
         document.getElementById('messages').innerHTML = `
           <div class="empty-state">
@@ -1981,7 +1992,6 @@ async function handleSend() {
         updateCostBar();
         loadSessions(1);
         showToast('Previous session expired. Started new session.');
-        setStreaming(false);
         return;
       }
       assistantEl.remove();
@@ -2030,6 +2040,7 @@ async function handleSend() {
             if (data.modelId) executedModelId = data.modelId;
             updateCurrentCost(executedModelId, inputTokens, outputTokens);
           } else if (eventType === 'routing') {
+            try {
             // Routing metadata event — capture executed model and display indicator
             if (data.executedModelId) executedModelId = data.executedModelId;
             const displayName = getModelDisplayName(data.executedModelId || executedModelId);
@@ -2070,6 +2081,60 @@ async function handleSend() {
             if (data.refinedPrompt && data.refinedPrompt !== data.originalPrompt) {
               details.push(`<b>Refined Prompt:</b> ${escapeHtml(data.refinedPrompt)}`);
             }
+            // Confidence
+            if (data.confidence !== undefined) {
+              details.push(`<b>Confidence:</b> ${(data.confidence * 100).toFixed(0)}%`);
+            }
+            // Flags (warnings)
+            if (data.flags && data.flags.length > 0) {
+              details.push(`<b>Flags:</b> ${data.flags.join(', ')}`);
+            }
+            // Routing timing
+            if (data.routingDurationMs !== undefined || data.classificationDurationMs !== undefined) {
+              details.push(`<hr style="border:0;border-top:1px solid var(--border);margin:4px 0">`);
+              details.push(`<b>⏱ Routing Timing:</b>`);
+              if (data.classificationDurationMs !== undefined) details.push(`&nbsp;&nbsp;Classification: ${data.classificationDurationMs}ms`);
+              if (data.refinementDurationMs !== undefined) details.push(`&nbsp;&nbsp;Refinement: ${data.refinementDurationMs}ms`);
+              if (data.scoringDurationMs !== undefined) details.push(`&nbsp;&nbsp;Scoring: ${data.scoringDurationMs}ms`);
+              if (data.routingDurationMs !== undefined) details.push(`&nbsp;&nbsp;<b>Total: ${data.routingDurationMs}ms</b>`);
+            }
+            // Prompt lengths
+            if (data.originalPromptLength !== undefined || data.promptLengthAfterRefinement !== undefined) {
+              details.push(`<hr style="border:0;border-top:1px solid var(--border);margin:4px 0">`);
+              details.push(`<b>📝 Prompt Lengths:</b>`);
+              if (data.originalPromptLength !== undefined) details.push(`&nbsp;&nbsp;Original: ${data.originalPromptLength} chars`);
+              if (data.promptLengthAfterRefinement !== undefined) details.push(`&nbsp;&nbsp;After Refinement: ${data.promptLengthAfterRefinement} chars`);
+            }
+            // Conversation context (routing payload)
+            if (data.conversationContext) {
+              details.push(`<hr style="border:0;border-top:1px solid var(--border);margin:4px 0">`);
+              details.push(`<b>💬 Conversation Context (routing payload):</b>`);
+              details.push(`<small style="color:var(--text-tertiary)">&nbsp;&nbsp;Last 2 user messages + last assistant response — fed to routing LLM for context-aware refinement</small>`);
+              details.push(`&nbsp;&nbsp;${escapeHtml(data.conversationContext)}`);
+              if (data.historyMessageCount !== undefined) details.push(`&nbsp;&nbsp;History turns: ${data.historyMessageCount}`);
+              if (data.contextTruncated) details.push(`&nbsp;&nbsp;⚠️ Context was truncated`);
+            }
+            // Session memory
+            if (data.memorySummary) {
+              details.push(`<hr style="border:0;border-top:1px solid var(--border);margin:4px 0">`);
+              details.push(`<b>🧠 Memory Summary (v${data.memoryVersion || '?'}):</b>`);
+              details.push(`&nbsp;&nbsp;${escapeHtml(data.memorySummary)}`);
+            }
+            // Structured facts
+            if (data.memoryFacts && Object.keys(data.memoryFacts).length > 0) {
+              details.push(`<hr style="border:0;border-top:1px solid var(--border);margin:4px 0">`);
+              details.push(`<b>📋 Extracted Facts:</b>`);
+              for (const [key, value] of Object.entries(data.memoryFacts)) {
+                details.push(`&nbsp;&nbsp;<b>${escapeHtml(key)}:</b> ${escapeHtml(value)}`);
+              }
+            }
+            // OCR pipeline info (multipart only)
+            if (data.ocrExecuted) {
+              details.push(`<hr style="border:0;border-top:1px solid var(--border);margin:4px 0">`);
+              details.push(`<b>🔍 Two-Stage OCR:</b>`);
+              if (data.ocrModel) details.push(`&nbsp;&nbsp;Extraction: ${data.ocrModel}`);
+              if (data.enhanceModel) details.push(`&nbsp;&nbsp;Enhancement: ${data.enhanceModel}`);
+            }
             // Show contract ambiguities if present
             if (data.contract && data.contract.ambiguities && data.contract.ambiguities.length > 0) {
               const ambIcon = data.contract.clarificationNeeded ? '🚩' : '⚠️';
@@ -2080,6 +2145,7 @@ async function handleSend() {
             // Verification placeholder (filled by verification event)
             details.push(`<div class="verification-status" style="margin-top:4px;font-style:italic;color:var(--text-tertiary)"></div>`);
             detailsEl.innerHTML = details.join('<br>');
+            } catch (e) { console.error('[ui] Routing details error:', e); }
           } else if (eventType === 'verification') {
             // Verification event — update the routing details panel
             const detailsEl = assistantEl.querySelector('.routing-details');
@@ -2091,6 +2157,17 @@ async function handleSend() {
               if (data.violations && data.violations.length > 0) {
                 verifyEl.innerHTML += '<br><b>Violations:</b><br>' +
                   data.violations.map(v => `  • [${v.severity}] ${v.field}: ${v.issue}`).join('<br>');
+              }
+            }
+          } else if (eventType === 'repair') {
+            // Auto-repair event - display repaired content
+            if (data.text) {
+              const contentDiv = assistantEl.querySelector('.assistant-content');
+              if (contentDiv && !contentDiv.innerHTML.includes('repair-notice')) {
+                contentDiv.innerHTML += `<div style="border:1px solid var(--accent);border-radius:8px;padding:12px;margin-top:8px" class="repair-notice">
+                  <small style="color:var(--accent)">🔧 Auto-repaired (${new Date().toLocaleTimeString()})</small>
+                  <div style="margin-top:4px">${escapeHtml(data.text)}</div>
+                </div>`;
               }
             }
           } else if (eventType === 'error') {
@@ -2105,6 +2182,7 @@ async function handleSend() {
               sessionTotal = 0;
               document.getElementById('viewing-banner').classList.remove('visible');
               document.getElementById('resume-bar').classList.remove('visible');
+              setStreaming(false);
               setInputEnabled(true);
               document.getElementById('prompt-input').placeholder = 'Ask anything...';
               document.getElementById('messages').innerHTML = `
@@ -2442,14 +2520,15 @@ function updateSessionDisplay() {
 
 async function fetchIdrRate() {
   try {
-    const res = await fetch('https://api.budjet.org/fiat/USD/IDR');
+    const res = await fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json');
     if (!res.ok) {
       console.warn('[cost] IDR rate API returned', res.status, '— using USD');
       return;
     }
     const data = await res.json();
-    if (data && typeof data.conversion_rate === 'number') {
-      idrRate = data.conversion_rate;
+    const rate = data?.usd?.idr;
+    if (typeof rate === 'number') {
+      idrRate = rate;
       // Re-render all cost displays with IDR
       updateCostBar();
       renderSessionList();
@@ -2692,7 +2771,7 @@ function handleFileSelection(files) {
 
   for (const file of files) {
     if (!ALLOWED_MIME_TYPES.includes(file.type)) {
-      showFileError(`"${file.name}" has an unsupported file type. Allowed: PDF, DOCX, PNG, JPG, WEBP.`);
+      showFileError(`"${file.name}" has an unsupported file type. Allowed: PDF, DOCX, PPTX, XLSX, PNG, JPG, WEBP, HTML, MD, JSON, CSV, TXT, XML.`);
       return;
     }
     if (file.size > MAX_FILE_SIZE) {
@@ -3078,8 +3157,6 @@ function setInputEnabled(enabled) {
   const sendBtn = document.getElementById('send-btn');
   const attachBtn = document.getElementById('attach-btn');
   const fileInput = document.getElementById('file-input');
-
-  if (isStreaming) return; // Don't override streaming state
 
   input.disabled = !enabled;
   sendBtn.disabled = !enabled;

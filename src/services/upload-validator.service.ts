@@ -9,6 +9,16 @@ import type { ValidatedUpload, DocumentFile, ImageFile } from '../types/upload.t
 const DOCUMENT_MIME_TYPES = [
   'application/pdf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel',
+  'text/html',
+  'text/markdown',
+  'application/json',
+  'text/csv',
+  'text/plain',
+  'application/xml',
+  'text/xml',
 ] as const;
 
 const IMAGE_MIME_TYPES = [

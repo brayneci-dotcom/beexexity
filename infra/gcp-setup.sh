@@ -2,10 +2,15 @@
 #
 # gcp-setup.sh — One-time GCP infrastructure provisioning for Cloud Run deployment.
 #
+# Architecture:
+#   Cloud Run (app) → AWS Bedrock Account #1 (LLM) → AWS RDS Account #2 (DB)
+#
 # Prerequisites:
 #   1. gcloud CLI installed and authenticated (gcloud auth login)
 #   2. A GCP project created with billing enabled
 #   3. PROJECT_ID exported or set below
+#   4. AWS Account #1 with Bedrock access in ap-southeast-3
+#   5. AWS Account #2 with RDS PostgreSQL running
 #
 # Usage:
 #   export PROJECT_ID="my-gcp-project"
@@ -14,7 +19,8 @@
 # Creates:
 #   - Enabled APIs (Cloud Run, Artifact Registry, Secret Manager, IAM)
 #   - Artifact Registry Docker repository
-#   - Secret Manager secrets (populated interactively or from env vars)
+#   - Secret Manager secrets for DB credentials (AWS RDS Account #2)
+#     and Bedrock access keys (AWS Account #1)
 #   - Cloud Run service account with required roles
 #   - Workload Identity Federation for GitHub Actions
 
@@ -90,10 +96,10 @@ create_secret() {
   echo "  Secret '$name' created."
 }
 
-create_secret "db-password"           "RDS database password"           "DB_PASSWORD"
-create_secret "jwt-secret"            "JWT signing secret"              "JWT_SECRET"
-create_secret "aws-access-key-id"     "AWS IAM access key ID"           "AWS_ACCESS_KEY_ID"
-create_secret "aws-secret-access-key" "AWS IAM secret access key"       "AWS_SECRET_ACCESS_KEY"
+create_secret "db-password"           "RDS database password (AWS Account #2)"        "DB_PASSWORD"
+create_secret "jwt-secret"            "JWT signing secret"                                  "JWT_SECRET"
+create_secret "aws-access-key-id"     "Bedrock IAM access key ID (AWS Account #1)"          "AWS_ACCESS_KEY_ID"
+create_secret "aws-secret-access-key" "Bedrock IAM secret access key (AWS Account #1)"      "AWS_SECRET_ACCESS_KEY"
 
 # ── 4. Service Account + Roles ──────────────────────────────────────────────
 

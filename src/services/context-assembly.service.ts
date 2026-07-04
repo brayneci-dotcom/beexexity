@@ -28,6 +28,8 @@ export interface ContextConfig {
   maxContextCharacters: number;
   /** Optional system prompt to prepend to inference_payload */
   systemPrompt?: string;
+  /** Session memory state for rolling summary + facts injection into context */
+  memoryState?: { summary: string | null; facts?: Record<string, string> };
 }
 
 /**
@@ -42,6 +44,8 @@ export interface ContextOutput {
   truncated: boolean;
   /** Number of history messages included */
   historyMessageCount: number;
+  /** Messages that were evicted from the window to fit the budget — candidates for summary refresh */
+  evictedMessages: StoredMessage[];
 }
 
 // ─── Error Classes ─────────────────────────────────────────────────────────────
@@ -95,7 +99,9 @@ export function buildContext(
   const windowedMessages = sessionMessages.slice(-config.maxHistoryMessages);
   const originalWindowCount = windowedMessages.length;
 
-  // Step 3: Drop oldest messages one-by-one if total chars exceed budget
+  // Step 3: Drop oldest messages one-by-one if total chars exceed budget.
+  // Evicted messages are tracked for potential summary refresh.
+  const evictedMessages: StoredMessage[] = [];
   let historyMessages = [...windowedMessages];
   while (historyMessages.length > 0) {
     const totalChars =
@@ -104,17 +110,39 @@ export function buildContext(
     if (totalChars <= config.maxContextCharacters) {
       break;
     }
-    // Drop the oldest message (first element)
-    historyMessages.shift();
+    // Drop the oldest message — capture for summary
+    const evicted = historyMessages.shift();
+    if (evicted) evictedMessages.push(evicted);
   }
 
   const truncated = historyMessages.length < originalWindowCount;
 
-  // Step 4: Build inference_payload — history messages + current user prompt
+  // Step 4: Build inference_payload — history messages + current user prompt.
+  // If a rolling summary exists, inject it into the first history message's text
+  // so the model has context about older conversation turns.
   const inferencePayload: BedrockMessage[] = historyMessages.map((msg) => ({
     role: msg.role,
     content: [{ text: msg.sanitizedContent }],
   }));
+
+  // Inject rolling summary + extracted facts into the first history message (if available)
+  if (inferencePayload.length > 0) {
+    const memoryParts: string[] = [];
+    if (config.memoryState?.summary) {
+      memoryParts.push(`[Previous conversation summary: ${config.memoryState.summary}]`);
+    }
+    const facts = config.memoryState?.facts;
+    if (facts && Object.keys(facts).length > 0) {
+      const factList = Object.entries(facts)
+        .map(([k, v]) => `${k}=${v}`)
+        .join(', ');
+      memoryParts.push(`[Extracted facts: ${factList}]`);
+    }
+    if (memoryParts.length > 0) {
+      const firstMsg = inferencePayload[0];
+      firstMsg.content[0].text = `${memoryParts.join('\n')}\n\n${firstMsg.content[0].text}`;
+    }
+  }
 
   // Append current user prompt as the final message
   inferencePayload.push({
@@ -122,17 +150,30 @@ export function buildContext(
     content: [{ text: currentPrompt }],
   });
 
-  // Step 5: Build routing_payload from selected history (NOT inference_payload)
-  // Filter to user-role messages only, take last 2, concatenate, cap at 500 chars
+  // Step 5: Build routing_payload from selected history — includes last 2 user
+  // messages AND last 1 assistant message so the refinement LLM can connect
+  // follow-up prompts (e.g. "make it in english" → knows previous response was in French).
   const userHistoryMessages = historyMessages.filter((msg) => msg.role === 'user');
+  const assistantHistoryMessages = historyMessages.filter((msg) => msg.role === 'assistant');
   let routingPayload: string | undefined = undefined;
 
   if (userHistoryMessages.length > 0) {
     const lastTwoUserMessages = userHistoryMessages.slice(-2);
-    const concatenated = lastTwoUserMessages
+    const userText = lastTwoUserMessages
       .map((msg) => msg.sanitizedContent)
       .join(' ');
-    routingPayload = concatenated.slice(0, 500);
+
+    // Include last assistant response for context continuity
+    let assistantText = '';
+    if (assistantHistoryMessages.length > 0) {
+      const lastAssistant = assistantHistoryMessages[assistantHistoryMessages.length - 1];
+      assistantText = ` [Assistant: ${lastAssistant.sanitizedContent}]`;
+    }
+
+    const concatenated = `${userText}${assistantText}`;
+    // Strip newlines — routing_payload flows into SSE event JSON, and the
+    // frontend SSE parser splits on \n. Newlines also add noise for the routing LLM.
+    routingPayload = concatenated.replace(/[\r\n]+/g, ' ').slice(0, 500);
   }
 
   return {
@@ -140,6 +181,7 @@ export function buildContext(
     routing_payload: routingPayload,
     truncated,
     historyMessageCount: historyMessages.length,
+    evictedMessages,
   };
 }
 

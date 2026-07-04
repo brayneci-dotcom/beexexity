@@ -4,7 +4,7 @@ import { forcePasswordResetMiddleware } from '../middleware/password-reset.middl
 import { inferenceRateLimit } from '../middleware/security.middleware.js';
 import { uploadMiddleware, multerErrorHandler } from '../middleware/upload.middleware.js';
 import { mask } from '../services/pii-masker.service.js';
-import { validateModelId, generate, generateNonStreaming, invokeNovaForOCR, InferenceError } from '../services/inference.service.js';
+import { validateModelId, generate, generateNonStreaming, invokeNovaForOCR, repairResponse, semanticJudge, InferenceError } from '../services/inference.service.js';
 import { validateAndClassifyFiles } from '../services/upload-validator.service.js';
 import { supportsImages, getVisionModels } from '../config/model-capabilities.js';
 import { extractDocumentText } from '../services/document-extractor.service.js';
@@ -25,6 +25,9 @@ import {
 } from '../services/session.service.js';
 import { buildContext } from '../services/context-assembly.service.js';
 import type { ContextConfig } from '../services/context-assembly.service.js';
+import { tryAcquireSessionLock, releaseSessionLock } from '../config/database.js';
+import { loadMemoryState, summarizeEvicted, extractFacts } from '../services/session-memory.service.js';
+import { getFewShotExamples } from '../services/few-shot-library.js';
 import { config } from '../config/index.js';
 import type { RoutingMetadataEvent } from '../types/inference.types.js';
 import { DEFAULT_MODEL } from '../types/inference.types.js';
@@ -41,11 +44,16 @@ import type { ConversationInferenceRequest, ConversationInferenceResult, Bedrock
  */
 
 /**
- * In-memory turn lock. Prevents concurrent turns on the same session.
- * The entire turn lifecycle is wrapped in try/finally to guarantee release.
- * Exported for testing purposes.
+ * Distributed turn lock via PostgreSQL advisory lock.
+ * Prevents concurrent turns on the same session across all Cloud Run instances
+ * sharing the same RDS. Lock is automatically released on connection close
+ * (crash-safe), but always call releaseSessionLock() in a finally block.
+ *
+ * @see database.ts → tryAcquireSessionLock / releaseSessionLock
  */
-export const activeTurns: Map<string, boolean> = new Map();
+
+/** Backward-compatible stub for tests that expect activeTurns.clear(). */
+export const activeTurns = { clear() {} };
 
 /**
  * Nova Lite uses the raw InvokeModel API (Messages schema), not Converse.
@@ -225,16 +233,15 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  // 6. Turn lock — prevent concurrent turns on the same session
-  if (activeTurns.get(sessionId)) {
+  // 6. Turn lock — prevent concurrent turns on the same session (distributed via PostgreSQL)
+  const acquired = await tryAcquireSessionLock(sessionId);
+  if (!acquired) {
     res.status(409).json({
       error: 'TURN_IN_PROGRESS',
       message: 'Please wait for the current response to finish.',
     });
     return;
   }
-
-  activeTurns.set(sessionId, true);
 
   try {
     // 7. Store user message — FAIL-FAST: if it throws, do NOT call AI
@@ -254,9 +261,13 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
     // Exclude the just-stored current user message from history
     const historyMessages = allMessages.slice(0, -1);
 
+    // Load session memory for rolling summary injection
+    const memoryState = await loadMemoryState(sessionId);
+
     const contextConfig: ContextConfig = {
       maxHistoryMessages: config.session.maxHistoryTurns * 2,
       maxContextCharacters: config.session.maxContextCharacters,
+      memoryState,
     };
 
     const contextOutput = buildContext(historyMessages, maskedPrompt, contextConfig);
@@ -353,6 +364,30 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
         manualOverrideApplied: routingDecision.manualOverrideApplied,
         skill: routingDecision.skill,
         contract: routingDecision.contract as Record<string, unknown> | null | undefined,
+
+        // Confidence & flags
+        confidence: routingDecision.confidence,
+        flags: routingDecision.flags,
+
+        // Timing (ms per routing step)
+        routingDurationMs: routingDecision.routingDurationMs,
+        classificationDurationMs: routingDecision.classificationDurationMs,
+        refinementDurationMs: routingDecision.refinementDurationMs,
+        scoringDurationMs: routingDecision.scoringDurationMs,
+
+        // Prompt info
+        originalPromptLength: maskedPrompt.length,
+        promptLengthAfterRefinement: effectivePrompt.length,
+
+        // Conversation context
+        conversationContext: contextOutput.routing_payload,
+        historyMessageCount: contextOutput.historyMessageCount,
+        contextTruncated: contextOutput.truncated,
+
+        // Session memory
+        memorySummary: memoryState.summary ?? undefined,
+        memoryVersion: memoryState.memoryVersion,
+        memoryFacts: memoryState.facts,
       };
       res.write(`event: routing\ndata: ${JSON.stringify(routingMetadata)}\n\n`);
     }
@@ -364,7 +399,9 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
       role: 'user',
       content: [{ text: effectivePrompt }],
     };
-    const conversationMessages: BedrockMessage[] = [...inferenceMessages, currentUserMessage];
+    // Inject skill-specific few-shot examples for format adherence
+    const fewShotPairs = getFewShotExamples(routingDecision?.skill || 'general');
+    const conversationMessages: BedrockMessage[] = [...inferenceMessages, ...fewShotPairs, currentUserMessage];
 
     const conversationRequest: ConversationInferenceRequest = {
       messages: conversationMessages,
@@ -389,6 +426,57 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
           const verification = verifyOutput(routingDecision.contract, result.assistantText);
           res.write(`event: verification\ndata: ${JSON.stringify(verification)}\n\n`);
           console.log(`[verification] ${verification.passed ? 'PASSED' : 'FAILED'} — ${verification.violations.length} violations`);
+
+          // Auto-repair: if verification failed, fix violated parts (fire-and-forget style)
+          if (!verification.passed && verification.violations.filter(v => v.severity === 'error').length > 0) {
+            const repairMessages = conversationMessages.map(msg => ({
+              role: msg.role as 'user' | 'assistant',
+              content: msg.content,
+            }));
+            repairResponse(
+              executedModelId,
+              repairMessages,
+              verification.violations,
+            ).then(repairText => {
+              if (repairText) {
+                const sanitizedRepair = mask(repairText).maskedText;
+                res.write(`event: repair\ndata: ${JSON.stringify({ text: sanitizedRepair })}\n\n`);
+                console.log(`[repair] Auto-repair generated: ${sanitizedRepair.length} chars`);
+              }
+            }).catch(() => { /* fire-and-forget */ });
+          }
+
+          // Semantic verification (LLM-as-a-judge) for high-stakes skills
+          const semanticVerdict = await semanticJudge(
+            maskedPrompt,
+            result.assistantText,
+            routingDecision?.skill || 'general',
+          );
+          if (semanticVerdict && !semanticVerdict.is_correct && semanticVerdict.missing_elements.length > 0) {
+            res.write(`event: semantic_verdict\ndata: ${JSON.stringify(semanticVerdict)}\n\n`);
+            console.log(`[semantic-judge] FAILED — ${semanticVerdict.missing_elements.length} missing elements`);
+
+            // Feed into repair pipeline
+            const semRepairMessages = conversationMessages.map(msg => ({
+              role: msg.role as 'user' | 'assistant',
+              content: msg.content,
+            }));
+            repairResponse(
+              executedModelId,
+              semRepairMessages,
+              semanticVerdict.missing_elements.map(m => ({
+                field: 'semantic', issue: m, severity: 'error' as const,
+              })),
+            ).then(repairText => {
+              if (repairText) {
+                const sanitizedRepair = mask(repairText).maskedText;
+                res.write(`event: repair\ndata: ${JSON.stringify({ text: sanitizedRepair })}\n\n`);
+                console.log(`[repair] Semantic repair generated: ${sanitizedRepair.length} chars`);
+              }
+            }).catch(() => { /* fire-and-forget */ });
+          } else if (semanticVerdict?.is_correct) {
+            console.log('[semantic-judge] PASSED');
+          }
         } catch (verifyErr: unknown) {
           console.warn('[verification] Verifier error:', (verifyErr as Error).message);
         }
@@ -404,6 +492,10 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
           });
           // SUCCESS — increment turn count
           await incrementTurnCount(sessionId);
+
+          // Extract structured facts from this turn (fire-and-forget)
+          extractFacts(sessionId, maskedPrompt, sanitizedAssistant, memoryState.facts)
+            .catch(() => { /* fire-and-forget */ });
         } catch (storeError: unknown) {
           // FAILURE — transition to degraded and emit SSE event
           console.error('[inference] Failed to store assistant message:', (storeError as Error).message);
@@ -436,6 +528,12 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
         contextTruncated: contextOutput.truncated,
         contextSummarized: false,
       }).catch(() => { /* fire-and-forget */ });
+
+      // 14. Memory update if messages were evicted (fire-and-forget)
+      if (contextOutput.evictedMessages.length > 0) {
+        summarizeEvicted(sessionId, contextOutput.evictedMessages, memoryState.summary)
+          .catch(() => { /* fire-and-forget */ });
+      }
 
       res.end();
     } catch (error: unknown) {
@@ -483,7 +581,7 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
     }
   } finally {
     // GUARANTEED: Release the turn lock regardless of how the function exits
-    activeTurns.delete(sessionId);
+    releaseSessionLock(sessionId).catch(() => {});
   }
 }
 
@@ -600,13 +698,14 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
   }
 
   // Step 5: Extract document text
-  const documentExtractions: Array<{ text: string; filename: string }> = [];
+  const documentExtractions: Array<{ text: string; filename: string; confidence: 'high' | 'medium' | 'low' }> = [];
   try {
     for (const doc of documents) {
       const extraction = await extractDocumentText(doc);
       documentExtractions.push({
         text: extraction.text,
         filename: extraction.filename,
+        confidence: extraction.confidence,
       });
     }
   } catch (error: unknown) {
@@ -699,16 +798,15 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
     return;
   }
 
-  // Step 9: Turn lock — prevent concurrent turns on the same session
-  if (activeTurns.get(sessionId)) {
+  // Step 9: Turn lock — prevent concurrent turns on the same session (distributed via PostgreSQL)
+  const acquired = await tryAcquireSessionLock(sessionId);
+  if (!acquired) {
     res.status(409).json({
       error: 'TURN_IN_PROGRESS',
       message: 'Please wait for the current response to finish.',
     });
     return;
   }
-
-  activeTurns.set(sessionId, true);
 
   try {
     // Step 10: Store user message — FAIL-FAST: if it throws, do NOT call AI
@@ -728,9 +826,13 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
     const allMessages = await getSessionMessages(sessionId);
     const historyMessages = allMessages.slice(0, -1); // Exclude the just-stored current user message
 
+    // Load session memory for rolling summary injection
+    const memoryState = await loadMemoryState(sessionId);
+
     const contextConfig: ContextConfig = {
       maxHistoryMessages: config.session.maxHistoryTurns * 2,
       maxContextCharacters: config.session.maxContextCharacters,
+      memoryState,
     };
 
     const contextOutput = buildContext(historyMessages, maskedPrompt, contextConfig);
@@ -816,11 +918,14 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
   // Step 7: Process images into content blocks
   const imageBlocks = processImages(images);
 
-  // Build document blocks for OCR fallback when text extraction returned empty
+  // Build document blocks for OCR fallback when extraction confidence is low.
+  // Low confidence means the extractor judged text content as too sparse (e.g.
+  // image-based PDF, PPTX with only titles, HTML with no body text).
+  // The raw document buffer is sent to Nova Lite for OCR extraction.
   const documentBlocks: DocumentContentBlock[] = [];
   for (const doc of documents) {
     const extraction = documentExtractions.find(e => e.filename === doc.originalname);
-    if (extraction && extraction.text.length === 0) {
+    if (extraction && extraction.confidence === 'low') {
       // Text extraction returned empty — include raw document for Nova OCR
       const format = doc.mimetype === 'application/pdf' ? 'pdf' as const : 'docx' as const;
       documentBlocks.push({
@@ -959,27 +1064,150 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
       manualOverrideApplied: routingDecision.manualOverrideApplied,
       skill: routingDecision.skill,
       contract: routingDecision.contract as Record<string, unknown> | null | undefined,
+
+      // Confidence & flags
+      confidence: routingDecision.confidence,
+      flags: routingDecision.flags,
+
+      // Timing (ms per routing step)
+      routingDurationMs: routingDecision.routingDurationMs,
+      classificationDurationMs: routingDecision.classificationDurationMs,
+      refinementDurationMs: routingDecision.refinementDurationMs,
+      scoringDurationMs: routingDecision.scoringDurationMs,
+
+      // Prompt info
+      originalPromptLength: maskedPrompt.length,
+      promptLengthAfterRefinement: routingEffectivePrompt.length,
+
+      // Conversation context
+      conversationContext: contextOutput.routing_payload,
+      historyMessageCount: contextOutput.historyMessageCount,
+      contextTruncated: contextOutput.truncated,
+
+      // Session memory
+      memorySummary: memoryState.summary ?? undefined,
+      memoryVersion: memoryState.memoryVersion,
+      memoryFacts: memoryState.facts,
+
+      // Two-stage OCR info
+      ocrExecuted: needsOCR || undefined,
+      ocrModel: needsOCR ? NOVA_LITE_MODEL : undefined,
+      enhanceModel: needsOCR ? ENHANCE_MODEL : undefined,
     };
     res.write(`event: routing\ndata: ${JSON.stringify(routingMetadata)}\n\n`);
   }
 
+  // Inject skill-specific few-shot examples for format adherence
+  const fewShotPairsMP = getFewShotExamples(routingDecision?.skill || 'general');
+  if (fewShotPairsMP.length > 0) {
+    // Insert before the current user message, after history + OCR output
+    const lastMsg = conversationMessages.pop()!;
+    conversationMessages.push(...fewShotPairsMP, lastMsg);
+  }
+
   // Step 15: Call generate (streams enhance model or original model)
-  const conversationRequest: ConversationInferenceRequest = {
-    messages: conversationMessages,
-    modelId: resolveModelForInvocation(finalExecutedModelId),
-    userId: user.sub,
-    ...(inferenceConfig && {
-      inferenceConfig: {
-        maxTokens: inferenceConfig.maxTokens,
-        temperature: inferenceConfig.temperature,
-        topP: inferenceConfig.topP,
-      },
-    }),
-  };
+  // If OCR switched to enhance model, fall back to original routing model on failure
+  let result: ConversationInferenceResult;
+  const targetModel = resolveModelForInvocation(finalExecutedModelId);
+  const fallbackModel = executedModelId !== finalExecutedModelId ? resolveModelForInvocation(executedModelId) : null;
 
   try {
-    // Call generate with conversation request for multi-turn support
-    const result = await generate(conversationRequest, res) as ConversationInferenceResult;
+    try {
+      const conversationRequest: ConversationInferenceRequest = {
+      messages: conversationMessages,
+      modelId: targetModel,
+      userId: user.sub,
+      ...(inferenceConfig && {
+        inferenceConfig: {
+          maxTokens: inferenceConfig.maxTokens,
+          temperature: inferenceConfig.temperature,
+          topP: inferenceConfig.topP,
+        },
+      }),
+    };
+    result = await generate(conversationRequest, res) as ConversationInferenceResult;
+  } catch (firstErr: unknown) {
+    if (fallbackModel && fallbackModel !== targetModel) {
+      console.warn(`[inference-multipart] ${targetModel} failed, falling back to ${fallbackModel}:`, (firstErr as Error).message);
+      const fallbackRequest: ConversationInferenceRequest = {
+        messages: conversationMessages,
+        modelId: fallbackModel,
+        userId: user.sub,
+        ...(inferenceConfig && {
+          inferenceConfig: {
+            maxTokens: inferenceConfig.maxTokens,
+            temperature: inferenceConfig.temperature,
+            topP: inferenceConfig.topP,
+          },
+        }),
+      };
+      result = await generate(fallbackRequest, res) as ConversationInferenceResult;
+      finalExecutedModelId = executedModelId;
+      console.log(`[inference-multipart] Fallback to ${fallbackModel} succeeded`);
+    } else {
+      throw firstErr;
+    }
+  }
+
+  // Verifier + auto-repair for multipath handler
+  if (routingDecision?.contract && result.assistantText) {
+      try {
+        const verification = verifyOutput(routingDecision.contract, result.assistantText);
+        res.write(`event: verification\ndata: ${JSON.stringify(verification)}\n\n`);
+        console.log(`[verification] ${verification.passed ? 'PASSED' : 'FAILED'} — ${verification.violations.length} violations`);
+
+        if (!verification.passed && verification.violations.filter(v => v.severity === 'error').length > 0) {
+          const repairMessages = conversationMessages.map(msg => ({
+            role: msg.role as 'user' | 'assistant',
+            content: msg.content,
+          }));
+          repairResponse(
+            finalExecutedModelId,
+            repairMessages,
+            verification.violations,
+          ).then(repairText => {
+            if (repairText) {
+              const sanitizedRepair = mask(repairText).maskedText;
+              res.write(`event: repair\ndata: ${JSON.stringify({ text: sanitizedRepair })}\n\n`);
+              console.log(`[repair] Auto-repair generated: ${sanitizedRepair.length} chars`);
+            }
+          }).catch(() => { /* fire-and-forget */ });
+        }
+
+        // Semantic verification (LLM-as-a-judge) for high-stakes skills
+        const semanticVerdict = await semanticJudge(
+          maskedPrompt,
+          result.assistantText,
+          routingDecision?.skill || 'general',
+        );
+        if (semanticVerdict && !semanticVerdict.is_correct && semanticVerdict.missing_elements.length > 0) {
+          res.write(`event: semantic_verdict\ndata: ${JSON.stringify(semanticVerdict)}\n\n`);
+          console.log(`[semantic-judge] FAILED — ${semanticVerdict.missing_elements.length} missing elements`);
+
+          const semRepairMessages = conversationMessages.map(msg => ({
+            role: msg.role as 'user' | 'assistant',
+            content: msg.content,
+          }));
+          repairResponse(
+            finalExecutedModelId,
+            semRepairMessages,
+            semanticVerdict.missing_elements.map(m => ({
+              field: 'semantic', issue: m, severity: 'error' as const,
+            })),
+          ).then(repairText => {
+            if (repairText) {
+              const sanitizedRepair = mask(repairText).maskedText;
+              res.write(`event: repair\ndata: ${JSON.stringify({ text: sanitizedRepair })}\n\n`);
+              console.log(`[repair] Semantic repair generated: ${sanitizedRepair.length} chars`);
+            }
+          }).catch(() => { /* fire-and-forget */ });
+        } else if (semanticVerdict?.is_correct) {
+          console.log('[semantic-judge] PASSED');
+        }
+      } catch (verifyErr: unknown) {
+        console.warn('[verification] Verifier error:', (verifyErr as Error).message);
+      }
+    }
 
     // Step 16: After streaming: store assistant message
     if (result.assistantText) {
@@ -991,6 +1219,10 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
         });
         // SUCCESS — increment turn count
         await incrementTurnCount(sessionId);
+
+        // Extract structured facts from this turn (fire-and-forget)
+        extractFacts(sessionId, maskedPrompt, sanitizedAssistant, memoryState.facts)
+          .catch(() => { /* fire-and-forget */ });
       } catch (storeError: unknown) {
         // FAILURE — transition to degraded and emit SSE event
         console.error('[inference-multipart] Failed to store assistant message:', (storeError as Error).message);
@@ -1031,7 +1263,12 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
       contextSummarized: false,
     }).catch(() => { /* fire-and-forget */ });
 
-    res.end();
+    // Memory update if messages were evicted (fire-and-forget)
+    if (contextOutput.evictedMessages.length > 0) {
+      summarizeEvicted(sessionId, contextOutput.evictedMessages, memoryState.summary)
+        .catch(() => { /* fire-and-forget */ });
+    }
+
   } catch (error: unknown) {
     const durationMs = Date.now() - startTime;
     let errorCategory = 'unknown';
@@ -1089,7 +1326,7 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
   }
   } finally {
     // GUARANTEED: Release the turn lock regardless of how the function exits
-    activeTurns.delete(sessionId);
+    releaseSessionLock(sessionId).catch(() => {});
   }
 }
 

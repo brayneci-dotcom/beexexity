@@ -120,20 +120,38 @@ function extractSkill(raw: string): SkillType {
  * Sends a lightweight LLM call — text-only, truncated to 1000 chars,
  * maxTokens 50, temperature 0. On any failure, returns 'general'.
  */
-async function classifyRequestType(prompt: string): Promise<SkillType> {
+async function classifyRequestType(
+  prompt: string,
+  documentText?: string,
+): Promise<SkillType> {
   const controller = new AbortController();
   const timeout = setTimeout(() => {
     controller.abort();
   }, config.routing.classifierTimeoutMs);
 
   try {
-    // Truncate long text — classifier only needs first few sentences
-    const truncated = prompt.length > 1000
+    // Build classification input from prompt + optional document snippet
+    const promptPart = prompt.length > 1000
       ? prompt.slice(0, 1000) + '...'
       : prompt;
 
+    let documentPart = '';
+    if (documentText) {
+      const snippet = documentText.length > 800
+        ? documentText.slice(0, 800) + '...'
+        : documentText;
+      documentPart = `\n\nUploaded document content (first ${snippet.length} chars):\n${snippet}`;
+    }
+
+    const userContent = `${promptPart}${documentPart}`;
+
     const systemPrompt = [
       'Classify the user request into ONE of these categories. Return ONLY the category name, no other text.',
+      '',
+      'IMPORTANT: Consider BOTH the user\'s prompt AND any uploaded document content.',
+      'If the document contains code (TypeScript, Python, JSON, etc.), classify as "code".',
+      'If it contains financial data or regulations, classify as "compliance_pre_assessment" or "data_conversion".',
+      'If it asks for document analysis or Q&A, classify as "document_qna".',
       '',
       'Categories by group:',
       '[Generation] email | creative | brainstorming | meta_prompting',
@@ -146,7 +164,7 @@ async function classifyRequestType(prompt: string): Promise<SkillType> {
     const command = new ConverseCommand({
       modelId: config.routing.scoringModelId,
       system: [{ text: systemPrompt }],
-      messages: [{ role: 'user', content: [{ text: truncated }] }],
+      messages: [{ role: 'user', content: [{ text: userContent }] }],
       inferenceConfig: {
         maxTokens: 50,
         temperature: 0,
@@ -308,7 +326,79 @@ const SKILL_PROMPTS: Record<SkillType, string> = {
     '',
     'Focus: document type, specific questions, analysis depth.',
     '',
-    '{ "role": "<document analyst>", "context": "<document type>", "task": "<analyze/answer questions about document>", "intent": "<...>", "ambiguities": ["<what is unclear>"], "clarification_needed": false }',
+    'CRITICAL: Detect the DOCUMENT TYPE from the content and set the role accordingly.',
+    '',
+    '=== Banking & Finance ===',
+    'Pitchbooks, CIMs, fairness opinions → role: "investment banking analyst"',
+    'Market commentary, trade blotter, ISDA agreements → role: "sales & trading analyst"',
+    'Financial spreading, QMRs, credit memos → role: "credit analyst"',
+    'VaR reports, Greeks, stress tests → role: "market risk analyst"',
+    'Validation reports, model docs, performance dashboards → role: "model risk validator"',
+    'LCR reports, NIM forecasts, FTP docs → role: "treasury analyst"',
+    'SWIFT/ISO messages, reconciliation breaks, DTCC instructions → role: "trade operations analyst"',
+    'Beneficial ownership, sanctions screening, source of wealth → role: "KYC/AML ops analyst"',
+    'Basel III, FR Y-14, COREP/FINREP → role: "regulatory reporting specialist"',
+    'Remediation plans, control tests, EUC inventories → role: "internal audit manager"',
+    'Restructuring proposals, forbearance, bankruptcy claims → role: "special assets / workout officer"',
+    '',
+    '=== Risk & Operational Risk ===',
+    'RCSAs, KRIs, operational loss events → role: "operational risk analyst"',
+    'BCP plans, DR test results, crisis comms → role: "business continuity manager"',
+    'Vendor assessments, TPRM reports, outsourcing registers → role: "third-party risk analyst"',
+    'Portfolio concentration, ECL models, IFRS 9 reports → role: "credit portfolio manager"',
+    'Collateral valuations, margin calls, netting agreements → role: "counterparty credit analyst"',
+    'External ratings, PD models, rating agency reports → role: "rating advisory analyst"',
+    'Aging reports, recovery rates, collections scores → role: "recoveries analyst"',
+    '',
+    '=== Fraud & Investigations ===',
+    'SARs, fraud alerts, transaction monitoring flags → role: "fraud investigations analyst"',
+    'Disputes, chargeback ratios, card fraud reports → role: "chargeback analyst"',
+    'AML alerts, sanctions hits, adverse media → role: "financial crimes investigator"',
+    'Phishing logs, account takeovers, compromise indicators → role: "cyber fraud analyst"',
+    'Payment gateway logs, velocity checks, device fingerprints → role: "payments fraud analyst"',
+    'SIU referrals, claim red flags, medical bill audits → role: "insurance fraud investigator"',
+    '',
+    '=== Technology & Security ===',
+    'Code, configs, API specs, architecture docs → role: "senior software engineer"',
+    'System design, deployment, infrastructure docs → role: "senior software engineer"',
+    'Pentest reports, SOC alerts, CVE bulletins → role: "security operations analyst"',
+    'Incident reports, SLI metrics, runbooks → role: "site reliability engineer"',
+    'Tickets, KB articles, syslog outputs → role: "IT support specialist"',
+    '',
+    '=== Healthcare & Life Sciences ===',
+    'Clinical notes, lab results, discharge summaries → role: "medical coder"',
+    'Patient intake forms, insurance verifications, prior authorizations → role: "healthcare administrator"',
+    '',
+    '=== Legal & Compliance ===',
+    'Briefs, deposition transcripts, discovery requests → role: "paralegal"',
+    'Legislative bills, FOIA responses, zoning codes → role: "policy analyst"',
+    'Regulations, compliance, legal → role: "compliance officer"',
+    '',
+    '=== Operations & Supply Chain ===',
+    'RFPs, purchase orders, vendor scorecards → role: "procurement specialist"',
+    'Work orders, blueprints, BOMs (bills of materials) → role: "manufacturing engineer"',
+    'Flight manifests, crew schedules, safety bulletins → role: "aviation operations coordinator"',
+    'Appraisals, lease agreements, inspection reports → role: "real estate analyst"',
+    '',
+    '=== Business & Strategy ===',
+    'Financial reports, budgets, accounting → role: "financial analyst"',
+    'Business strategy, plans, proposals → role: "business strategist"',
+    'Conversion funnels, ad performance, A/B test results → role: "growth analyst"',
+    'Marketing, sales, customer docs → role: "marketing analyst"',
+    'RFPs, purchase orders, vendor scorecards → role: "procurement specialist"',
+    '',
+    '=== Quality & Risk ===',
+    'QA logs, non-conformance reports, CAPA forms → role: "quality assurance engineer"',
+    'Actuarial tables, claims reports, policy binders → role: "underwriting analyst"',
+    '',
+    '=== Education & Research ===',
+    'Academic papers, research → role: "research analyst"',
+    'Syllabi, lesson plans, accreditation standards → role: "instructional designer"',
+    '',
+    '=== Fallback ===',
+    'General documents (no clear domain) → role: "document analyst"',
+    '',
+    '{ "role": "<detected role>", "context": "<document type>", "task": "<analyze/answer questions about document>", "intent": "<...>", "ambiguities": ["<what is unclear>"], "clarification_needed": false }',
   ].join('\n'),
 
   // ── Enterprise ──────────────────────────────────────────────────
@@ -384,6 +474,7 @@ export async function refinePrompt(
   originalPrompt: string,
   documentContext?: string,
   skill: SkillType = 'general',
+  conversationContext?: string,
 ): Promise<{ flowingText: string | null; contract: PromptContract | null }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => {
@@ -393,9 +484,14 @@ export async function refinePrompt(
   try {
     const systemPrompt = SKILL_PROMPTS[skill];
 
-    const userContent = documentContext
-      ? `Original request: ${originalPrompt}\n\nDocument context: ${documentContext}`
-      : `Original request: ${originalPrompt}`;
+    const parts: string[] = [`Original request: ${originalPrompt}`];
+    if (documentContext) {
+      parts.push(`Document context: ${documentContext}`);
+    }
+    if (conversationContext) {
+      parts.push(`Recent conversation history: ${conversationContext}`);
+    }
+    const userContent = parts.join('\n\n');
 
     const command = new ConverseCommand({
       modelId: config.routing.scoringModelId,
@@ -693,6 +789,10 @@ export async function routeRequest(input: RoutingInput): Promise<RoutingDecision
   let complexityScore: number = config.routing.defaultFallbackScore;
   let confidence: number = 0.5;
   let skill: SkillType = 'general';
+  const routingStart = Date.now();
+  let classificationDurationMs: number | undefined;
+  let refinementDurationMs: number | undefined;
+  let scoringDurationMs: number | undefined;
 
   // Step 0: Classify request type (skip classifier for silent uploads)
   const hasEmptyPrompt = !input.originalPrompt.trim();
@@ -703,30 +803,30 @@ export async function routeRequest(input: RoutingInput): Promise<RoutingDecision
   } else {
     // Normal: run classifier (text-only, truncated)
     const classificationStart = Date.now();
-    skill = await classifyRequestType(input.originalPrompt);
-    const classificationDuration = Date.now() - classificationStart;
-    console.log(`[routing] Request classified as: ${skill} in ${classificationDuration}ms`);
+    skill = await classifyRequestType(input.originalPrompt, input.maskedDocumentText);
+    classificationDurationMs = Date.now() - classificationStart;
+    console.log(`[routing] Request classified as: ${skill} in ${classificationDurationMs}ms`);
   }
 
   // Step 1: Prompt refinement (skill-aware)
   const refinementStart = Date.now();
-  const refinementResult = await refinePrompt(input.originalPrompt, input.maskedDocumentText, skill);
-  const refinementDuration = Date.now() - refinementStart;
+  const refinementResult = await refinePrompt(input.originalPrompt, input.maskedDocumentText, skill, input.conversationContext);
+  refinementDurationMs = Date.now() - refinementStart;
   let contract: PromptContract | null = null;
   if (refinementResult.flowingText !== null) {
     refinedPrompt = refinementResult.flowingText;
     contract = refinementResult.contract;
-    console.log(`[routing] Prompt refinement (${skill}) succeeded in ${refinementDuration}ms`);
+    console.log(`[routing] Prompt refinement (${skill}) succeeded in ${refinementDurationMs}ms`);
   } else {
     // Refinement failed: use original prompt and flag
     flags.push('refinement-failed');
-    console.warn(`[routing] Prompt refinement failed after ${refinementDuration}ms, using original prompt`);
+    console.warn(`[routing] Prompt refinement failed after ${refinementDurationMs}ms, using original prompt`);
   }
 
   // Step 2: Complexity scoring (skill-calibrated, includes conversation context if available)
   const scoringStart = Date.now();
   const scoringResult = await scoreComplexity(refinedPrompt, input.maskedDocumentText, input.conversationContext, skill);
-  const scoringDuration = Date.now() - scoringStart;
+  scoringDurationMs = Date.now() - scoringStart;
   if (input.conversationContext) {
     console.log(`[routing] Conversation context included in scoring (${input.conversationContext.length} chars), reason=routing-context-enrichment`);
     flags.push('routing-context-used');
@@ -734,13 +834,13 @@ export async function routeRequest(input: RoutingInput): Promise<RoutingDecision
   if (scoringResult !== null) {
     complexityScore = scoringResult.score;
     confidence = scoringResult.confidence;
-    console.log(`[routing] Complexity scoring: score=${complexityScore}, confidence=${confidence} in ${scoringDuration}ms`);
+    console.log(`[routing] Complexity scoring: score=${complexityScore}, confidence=${confidence} in ${scoringDurationMs}ms`);
   } else {
     // Scoring failed: use default score
     complexityScore = config.routing.defaultFallbackScore;
     confidence = 0.5;
     flags.push('scoring-failed');
-    console.warn(`[routing] Complexity scoring failed after ${scoringDuration}ms, defaulting to score ${complexityScore}`);
+    console.warn(`[routing] Complexity scoring failed after ${scoringDurationMs}ms, defaulting to score ${complexityScore}`);
   }
 
   // Step 3: Determine long context
@@ -778,7 +878,7 @@ export async function routeRequest(input: RoutingInput): Promise<RoutingDecision
   }
   const reasoningSummary = reasoningParts.join(', ');
 
-  // Step 7: Return complete routing decision
+  // Step 7: Return complete routing decision with per-step timing
   return {
     executedModelId: policyResult.modelId,
     routingState: 'auto',
@@ -793,6 +893,10 @@ export async function routeRequest(input: RoutingInput): Promise<RoutingDecision
     flags,
     skill,
     contract,
+    routingDurationMs: Date.now() - routingStart,
+    classificationDurationMs,
+    refinementDurationMs,
+    scoringDurationMs,
   };
 }
 

@@ -89,6 +89,12 @@ export interface RoutingDecision {
   flags: string[];                  // e.g. ['refinement-failed']
   skill: SkillType;                 // classified request type for transparency
   contract: PromptContract | null;  // structured contract from refinement
+
+  // Per-step timing (ms) — populated by routeRequest()
+  routingDurationMs?: number;
+  classificationDurationMs?: number;
+  refinementDurationMs?: number;
+  scoringDurationMs?: number;
 }
 
 /** Result of a deterministic verification check. */

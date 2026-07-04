@@ -365,6 +365,132 @@ export async function generateNonStreaming(
 }
 
 /**
+ * Repair a response that failed verification.
+ * Calls Bedrock Converse with a repair system prompt targeting specific violations.
+ * Non-streaming — returns the repaired full text, or null on failure.
+ *
+ * @param modelId     The model that generated the original response.
+ * @param messages    The original conversation messages array.
+ * @param violations  Verification violations to fix.
+ * @param maxTokens   Max tokens for the repair response.
+ */
+export async function repairResponse(
+  modelId: string,
+  messages: Message[],
+  violations: Array<{ field: string; issue: string; severity: 'error' | 'warn' }>,
+  maxTokens: number = 4096,
+): Promise<string | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60_000);
+
+  try {
+    const violationDetails = violations
+      .filter(v => v.severity === 'error')
+      .map(v => `- [${v.field}] ${v.issue}`)
+      .join('\n');
+
+    const systemPrompt = [
+      'The previous response had the following issues that MUST be fixed:',
+      '',
+      violationDetails,
+      '',
+      'Revise your response to fix ONLY these specific issues. Keep the original intent, facts, and tone.',
+      'If a required section is missing, add it. If prohibited content exists, remove or replace it.',
+      'Return ONLY the fixed response. No meta-commentary, no explanations, no markdown.',
+      'Preserve ALL other content exactly as-is.',
+    ].join('\n');
+
+    const command = new ConverseCommand({
+      modelId,
+      system: [{ text: systemPrompt }],
+      messages,
+      inferenceConfig: { maxTokens, temperature: 0.1 },
+    });
+
+    const response = await bedrockClient.send(command, {
+      abortSignal: controller.signal,
+    });
+
+    const text = response.output?.message?.content?.[0]?.text?.trim();
+    return text && text.length > 0 ? text : null;
+  } catch (error) {
+    console.error('[repair] Repair generation failed:', (error as Error).message);
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+// ─── Semantic Verification ─────────────────────────────────────────────────────────
+
+/** Skills that get LLM-as-a-judge semantic verification after inference. */
+const SEMANTIC_VERIFY_SKILLS = ['compliance_pre_assessment', 'logic_math', 'document_qna', 'code'];
+
+/**
+ * Lightweight LLM-as-a-judge — checks whether the assistant response is
+ * semantically correct and complete for the original prompt.
+ *
+ * Only runs for high-stakes skills (compliance, math, doc Q&A, code).
+ * Uses qwen3-32b with a strict judge prompt, maxTokens=256.
+ *
+ * @returns { is_correct, missing_elements } or null on failure (graceful degradation).
+ */
+export async function semanticJudge(
+  originalPrompt: string,
+  assistantText: string,
+  skill: string,
+): Promise<{ is_correct: boolean; missing_elements: string[] } | null> {
+  if (!SEMANTIC_VERIFY_SKILLS.includes(skill)) return null;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+
+  try {
+    const judgePrompt = [
+      'You are a strict judge evaluating an AI response. Your task: determine if the response accurately and completely answers the user\'s original request.',
+      '',
+      'Rules:',
+      '- Mark is_correct=true ONLY if the response correctly addresses the core request without hallucination.',
+      '- If the response misses important elements, list them in missing_elements.',
+      '- Be strict about factual accuracy for numbers, regulations, and code.',
+      '- Be lenient about phrasing and style — only flag substantive omissions.',
+      '',
+      'Original request:',
+      originalPrompt,
+      '',
+      'AI response:',
+      assistantText,
+      '',
+      'Output ONLY valid JSON: { "is_correct": boolean, "missing_elements": string[] }',
+    ].join('\n');
+
+    const command = new ConverseCommand({
+      modelId: 'qwen.qwen3-32b-v1:0',
+      system: [{ text: 'You are a factual accuracy judge. Reply with JSON only.' }],
+      messages: [{ role: 'user', content: [{ text: judgePrompt }] }],
+      inferenceConfig: { maxTokens: 256, temperature: 0 },
+    });
+
+    const response = await bedrockClient.send(command, { abortSignal: controller.signal });
+    const raw = response.output?.message?.content?.[0]?.text?.trim();
+    if (!raw) return null;
+
+    const jsonStr = raw.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+    const parsed = JSON.parse(jsonStr);
+
+    return {
+      is_correct: parsed.is_correct === true,
+      missing_elements: Array.isArray(parsed.missing_elements) ? parsed.missing_elements : [],
+    };
+  } catch (error) {
+    console.error('[semantic-judge] Judge call failed:', (error as Error).message);
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
  * Invoke Nova Lite via raw InvokeModel API with Messages schema.
  * Nova Lite does not support the Converse API — it requires the raw
  * InvokeModel endpoint with schemaVersion: "messages-v1".
