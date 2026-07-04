@@ -2174,6 +2174,11 @@ async function handleSend() {
                 </div>`;
               }
             }
+          } else if (eventType === 'done') {
+            // Inference complete — clear streaming flag immediately without
+            // waiting for the HTTP connection to close (which Cloud Run may delay).
+            setStreaming(false);
+            // Don't return — let the while loop finish reading remaining data
           } else if (eventType === 'error') {
             if (data.error === 'SESSION_EXPIRED' || data.error === 'SESSION_NOT_FOUND') {
               // Clear chat UI and reset session
