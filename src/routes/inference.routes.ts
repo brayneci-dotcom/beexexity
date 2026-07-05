@@ -25,13 +25,15 @@ import {
 } from '../services/session.service.js';
 import { buildContext } from '../services/context-assembly.service.js';
 import type { ContextConfig } from '../services/context-assembly.service.js';
-import { tryAcquireSessionLock, releaseSessionLock } from '../config/database.js';
+import { tryAcquireSessionLock } from '../config/database.js';
 import { loadMemoryState, summarizeEvicted, extractFacts } from '../services/session-memory.service.js';
 import { getFewShotExamples } from '../services/few-shot-library.js';
 import { config } from '../config/index.js';
 import type { RoutingMetadataEvent } from '../types/inference.types.js';
 import { DEFAULT_MODEL } from '../types/inference.types.js';
 import type { RoutingInput, RoutingDecision } from '../types/routing.types.js';
+import { orchestrate } from '../services/subagent-orchestrator.service.js';
+import type { OrchestrationMeta } from '../types/subagent.types.js';
 import type { ContentBlock, DocumentContentBlock } from '../types/upload.types.js';
 import type { ConversationInferenceRequest, ConversationInferenceResult, BedrockMessage } from '../types/session.types.js';
 
@@ -234,7 +236,7 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
   }
 
   // 6. Turn lock — prevent concurrent turns on the same session (distributed via PostgreSQL)
-  const acquired = await tryAcquireSessionLock(sessionId);
+  const { locked: acquired, release } = await tryAcquireSessionLock(sessionId);
   if (!acquired) {
     res.status(409).json({
       error: 'TURN_IN_PROGRESS',
@@ -416,9 +418,44 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
       }),
     };
 
+    let orchestrationMeta: OrchestrationMeta | undefined;
+
     try {
       console.log(`[inference] Calling generate() with model=${resolveModelForInvocation(executedModelId)}, prompt length=${effectivePrompt.length}, history messages=${contextOutput.historyMessageCount}`);
-      const result = await generate(conversationRequest, res) as ConversationInferenceResult;
+
+      // ── Orchestration Branch ─────────────────────────────────────────
+      // If routing engine determined multi-step orchestration is needed,
+      // route to the sub-agent orchestrator instead of standard generate().
+      let result: ConversationInferenceResult;
+
+      if (routingDecision?.multiStep) {
+        const orchestratorOutput = await orchestrate({
+          originalPrompt: maskedPrompt,
+          conversationContext: contextOutput.routing_payload,
+          routingDecision,
+          sessionId,
+          userId: user.sub,
+          username: user.username,
+        }, res);
+
+        if (orchestratorOutput.optedOut) {
+          // Planner decided orchestration unnecessary — fall back
+          console.log('[inference] Orchestrator opted out, falling back to single-shot generate()');
+          result = await generate(conversationRequest, res) as ConversationInferenceResult;
+        } else {
+          console.log(`[inference] Orchestration complete: ${orchestratorOutput.orchestrationMeta.specs.length} agents, ${orchestratorOutput.assistantText.length} chars`);
+          orchestrationMeta = orchestratorOutput.orchestrationMeta;
+          result = {
+            assistantText: orchestratorOutput.assistantText,
+            inputTokens: orchestrationMeta.totalInputTokens,
+            outputTokens: orchestrationMeta.totalOutputTokens,
+            modelId: 'qwen.qwen3-235b-a22b-2507-v1:0',
+            status: 'success',
+          };
+        }
+      } else {
+        result = await generate(conversationRequest, res) as ConversationInferenceResult;
+      }
 
       // 12. Run verifier if we have a contract
       if (routingDecision?.contract && result.assistantText) {
@@ -527,6 +564,7 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
         replayedMessageCount: contextOutput.historyMessageCount,
         contextTruncated: contextOutput.truncated,
         contextSummarized: false,
+        orchestrationMeta,
       }).catch(() => { /* fire-and-forget */ });
 
       // 14. Memory update if messages were evicted (fire-and-forget)
@@ -577,11 +615,12 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
         replayedMessageCount: contextOutput.historyMessageCount,
         contextTruncated: contextOutput.truncated,
         contextSummarized: false,
+        orchestrationMeta,
       }).catch(() => { /* fire-and-forget */ });
     }
   } finally {
     // GUARANTEED: Release the turn lock regardless of how the function exits
-    releaseSessionLock(sessionId).catch(() => {});
+    await release().catch(() => {});
   }
 }
 
@@ -799,7 +838,7 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
   }
 
   // Step 9: Turn lock — prevent concurrent turns on the same session (distributed via PostgreSQL)
-  const acquired = await tryAcquireSessionLock(sessionId);
+  const { locked: acquired, release } = await tryAcquireSessionLock(sessionId);
   if (!acquired) {
     res.status(409).json({
       error: 'TURN_IN_PROGRESS',
@@ -1107,31 +1146,49 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
 
   // Step 15: Call generate (streams enhance model or original model)
   // If OCR switched to enhance model, fall back to original routing model on failure
-  let result: ConversationInferenceResult;
+  let result: ConversationInferenceResult | undefined;
+  let orchestrationMeta: OrchestrationMeta | undefined;
   const targetModel = resolveModelForInvocation(finalExecutedModelId);
   const fallbackModel = executedModelId !== finalExecutedModelId ? resolveModelForInvocation(executedModelId) : null;
 
-  try {
+  try {  // middle try — wraps generate, verifier, storage, audit; catch is main error handler below
+
+  // ── Orchestration Branch ─────────────────────────────────────────
+  // Check if routing engine determined multi-step orchestration is needed
+  if (routingDecision?.multiStep) {
+    const orchestratorOutput = await orchestrate({
+      originalPrompt: maskedPrompt,
+      maskedDocumentText: maskedDocTextCombined || undefined,
+      conversationContext: contextOutput.routing_payload,
+      routingDecision,
+      sessionId,
+      userId: user.sub,
+      username: user.username,
+    }, res);
+
+    if (orchestratorOutput.optedOut) {
+      // Planner decided orchestration unnecessary — fall back to standard flow
+      console.log('[inference-multipart] Orchestrator opted out, falling back to single-shot generate()');
+      orchestrationMeta = undefined;
+    } else {
+      console.log(`[inference-multipart] Orchestration complete: ${orchestratorOutput.orchestrationMeta.specs.length} agents, ${orchestratorOutput.assistantText.length} chars`);
+      orchestrationMeta = orchestratorOutput.orchestrationMeta;
+      result = {
+        assistantText: orchestratorOutput.assistantText,
+        inputTokens: orchestrationMeta.totalInputTokens,
+        outputTokens: orchestrationMeta.totalOutputTokens,
+        modelId: 'qwen.qwen3-235b-a22b-2507-v1:0',
+        status: 'success',
+      };
+      // Skip standard generate block below
+    }
+  }
+
+  if (!result) {
     try {
       const conversationRequest: ConversationInferenceRequest = {
-      messages: conversationMessages,
-      modelId: targetModel,
-      userId: user.sub,
-      ...(inferenceConfig && {
-        inferenceConfig: {
-          maxTokens: inferenceConfig.maxTokens,
-          temperature: inferenceConfig.temperature,
-          topP: inferenceConfig.topP,
-        },
-      }),
-    };
-    result = await generate(conversationRequest, res) as ConversationInferenceResult;
-  } catch (firstErr: unknown) {
-    if (fallbackModel && fallbackModel !== targetModel) {
-      console.warn(`[inference-multipart] ${targetModel} failed, falling back to ${fallbackModel}:`, (firstErr as Error).message);
-      const fallbackRequest: ConversationInferenceRequest = {
         messages: conversationMessages,
-        modelId: fallbackModel,
+        modelId: targetModel,
         userId: user.sub,
         ...(inferenceConfig && {
           inferenceConfig: {
@@ -1141,11 +1198,28 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
           },
         }),
       };
-      result = await generate(fallbackRequest, res) as ConversationInferenceResult;
-      finalExecutedModelId = executedModelId;
-      console.log(`[inference-multipart] Fallback to ${fallbackModel} succeeded`);
-    } else {
-      throw firstErr;
+      result = await generate(conversationRequest, res) as ConversationInferenceResult;
+    } catch (firstErr: unknown) {
+      if (fallbackModel && fallbackModel !== targetModel) {
+        console.warn(`[inference-multipart] ${targetModel} failed, falling back to ${fallbackModel}:`, (firstErr as Error).message);
+        const fallbackRequest: ConversationInferenceRequest = {
+          messages: conversationMessages,
+          modelId: fallbackModel,
+          userId: user.sub,
+          ...(inferenceConfig && {
+            inferenceConfig: {
+              maxTokens: inferenceConfig.maxTokens,
+              temperature: inferenceConfig.temperature,
+              topP: inferenceConfig.topP,
+            },
+          }),
+        };
+        result = await generate(fallbackRequest, res) as ConversationInferenceResult;
+        finalExecutedModelId = executedModelId;
+        console.log(`[inference-multipart] Fallback to ${fallbackModel} succeeded`);
+      } else {
+        throw firstErr;
+      }
     }
   }
 
@@ -1261,6 +1335,7 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
       replayedMessageCount: contextOutput.historyMessageCount,
       contextTruncated: contextOutput.truncated,
       contextSummarized: false,
+      orchestrationMeta,
     }).catch(() => { /* fire-and-forget */ });
 
     // Memory update if messages were evicted (fire-and-forget)
@@ -1315,6 +1390,7 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
       replayedMessageCount: contextOutput.historyMessageCount,
       contextTruncated: contextOutput.truncated,
       contextSummarized: false,
+      orchestrationMeta,
     }).catch(() => { /* fire-and-forget */ });
   } finally {
     // Memory cleanup: release file buffers
@@ -1326,7 +1402,7 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
   }
   } finally {
     // GUARANTEED: Release the turn lock regardless of how the function exits
-    releaseSessionLock(sessionId).catch(() => {});
+    await release().catch(() => {});
   }
 }
 

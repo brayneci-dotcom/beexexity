@@ -27,6 +27,7 @@ export interface AuditEntry {
   reasoningSummary?: string;
   executedModelId?: string;
   manualOverrideApplied?: boolean;
+  modalityFlags?: { textOnly: boolean; documentText: boolean; image: boolean; mixed: boolean };
   routingFlags?: string[];
 
   // Session memory fields
@@ -41,4 +42,24 @@ export interface AuditEntry {
 
   // Pricing snapshot for historical cost accuracy
   modelPricingSnapshot?: Record<string, number> | null;
+
+  // Sub-agent orchestration metadata (only present when orchestrator runs)
+  orchestrationMeta?: {
+    specs: Array<{ agentId: string; skill: string; prompt: string; targetModel?: string }>;
+    results: Array<{
+      agentId: string;
+      status: 'success' | 'failed' | 'timeout';
+      text: string;
+      inputTokens: number;
+      outputTokens: number;
+      durationMs: number;
+    }>;
+    totalInputTokens: number;
+    totalOutputTokens: number;
+    plannerDurationMs: number;
+    executeDurationMs: number;
+    synthesisDurationMs: number;
+    synthesizeUsed: boolean;
+    summarizeTriggered: boolean;
+  };
 }

@@ -31,7 +31,7 @@ vi.mock('../../src/middleware/upload.middleware.js', () => ({
 }));
 
 vi.mock('../../src/config/database.js', () => ({
-  tryAcquireSessionLock: vi.fn().mockResolvedValue(true),
+  tryAcquireSessionLock: vi.fn().mockResolvedValue({ locked: true, release: vi.fn().mockResolvedValue(undefined) }),
   releaseSessionLock: vi.fn().mockResolvedValue(undefined),
 }));
 

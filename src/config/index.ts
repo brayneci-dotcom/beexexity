@@ -75,6 +75,16 @@ export const config = {
     minPasswordLength: parseInt(process.env.MIN_PASSWORD_LENGTH || '8', 10),
     resetTokenExpiresIn: 300, // 5 minutes for password reset token
   },
+  subagent: {
+    /** Max concurrent sub-agents running in parallel. */
+    concurrency: parseInt(process.env.SUBAGENT_CONCURRENCY || '3', 10),
+    /** Max attempts per sub-agent before marking failed. */
+    maxAttempts: parseInt(process.env.SUBAGENT_MAX_ATTEMPTS || '2', 10),
+    /** Timeout per sub-agent execution in ms (120s). */
+    timeoutMs: parseInt(process.env.SUBAGENT_TIMEOUT_MS || '120000', 10),
+    /** Max tokens per agent before per-agent summarization is triggered. */
+    tokenBudget: parseInt(process.env.SUBAGENT_TOKEN_BUDGET || '30000', 10),
+  },
   session: {
     expiryHours: parseInt(process.env.SESSION_EXPIRY_HOURS || '24', 10),
     tokenBudget: parseInt(process.env.SESSION_TOKEN_BUDGET || '200000', 10),

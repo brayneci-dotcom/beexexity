@@ -50,6 +50,14 @@ describe('AuditService', () => {
           null, // fileMimeTypes is undefined → null
           null, // totalFileSize is undefined → null
           false, // isMultimodal is undefined → false
+          null, // routingState is undefined → null
+          null, // complexityScore is undefined → null
+          null, // routingReasonCode is undefined → null
+          null, // reasoningSummary is undefined → null
+          null, // executedModelId is undefined → null
+          false, // manualOverrideApplied is undefined → false
+          null, // modalityFlags is undefined → null
+          null, // routingFlags is undefined → null
           null, // sessionId is undefined → null
           null, // replayedMessageCount is undefined → null
           false, // contextTruncated is undefined → false
@@ -57,6 +65,7 @@ describe('AuditService', () => {
           null, // sessionState is undefined → null
           null, // turnCount is undefined → null
           JSON.stringify({ inputPricePer1MTokens: 0.16, outputPricePer1MTokens: 0.62 }), // modelPricingSnapshot for qwen3-32b
+          null, // orchestrationMeta is undefined → null
         ],
       );
     });
@@ -146,7 +155,7 @@ describe('AuditService', () => {
 
       // Verify the params array only contains the expected metadata fields
       const params = mockedQuery.mock.calls[0][1] as unknown[];
-      expect(params).toHaveLength(20);
+      expect(params).toHaveLength(29);
       expect(params).toEqual([
         validEntry.timestamp,
         validEntry.userId,
@@ -161,6 +170,14 @@ describe('AuditService', () => {
         null,
         null,
         false,
+        null, // routingState
+        null, // complexityScore
+        null, // routingReasonCode
+        null, // reasoningSummary
+        null, // executedModelId
+        false, // manualOverrideApplied
+        null, // modalityFlags
+        null, // routingFlags
         null, // sessionId
         null, // replayedMessageCount
         false, // contextTruncated
@@ -168,6 +185,7 @@ describe('AuditService', () => {
         null, // sessionState
         null, // turnCount
         JSON.stringify({ inputPricePer1MTokens: 0.16, outputPricePer1MTokens: 0.62 }), // modelPricingSnapshot
+          null, // orchestrationMeta is undefined → null
       ]);
     });
 
@@ -198,15 +216,15 @@ describe('AuditService', () => {
 
       const params = mockedQuery.mock.calls[0][1] as unknown[];
       // Session fields are at indices 13-16
-      expect(params[13]).toBe('660e8400-e29b-41d4-a716-446655440001'); // sessionId
-      expect(params[14]).toBe(5); // replayedMessageCount
-      expect(params[15]).toBe(true); // contextTruncated
-      expect(params[16]).toBe(false); // contextSummarized
+      expect(params[21]).toBe('660e8400-e29b-41d4-a716-446655440001'); // sessionId
+      expect(params[22]).toBe(5); // replayedMessageCount
+      expect(params[23]).toBe(true); // contextTruncated
+      expect(params[24]).toBe(false); // contextSummarized
       // Session continuity fields at indices 17-18
-      expect(params[17]).toBe('active'); // sessionState
-      expect(params[18]).toBe(3); // turnCount
+      expect(params[25]).toBe('active'); // sessionState
+      expect(params[26]).toBe(3); // turnCount
       // Pricing snapshot at index 19 (from actual pricing-config.json)
-      expect(params[19]).toBe(JSON.stringify({ inputPricePer1MTokens: 0.16, outputPricePer1MTokens: 0.62 }));
+      expect(params[27]).toBe(JSON.stringify({ inputPricePer1MTokens: 0.16, outputPricePer1MTokens: 0.62 }));
     });
 
     it('should not include any raw message content in audit fields', async () => {
@@ -236,18 +254,18 @@ describe('AuditService', () => {
       // Verify params contain only IDs, counts, and booleans — no strings that could be content
       const params = mockedQuery.mock.calls[0][1] as unknown[];
       // sessionId is a UUID string, not content
-      expect(typeof params[13]).toBe('string');
-      expect((params[13] as string).match(/^[0-9a-f-]+$/)).toBeTruthy();
+      expect(typeof params[21]).toBe('string');
+      expect((params[21] as string).match(/^[0-9a-f-]+$/)).toBeTruthy();
       // replayedMessageCount is a number
-      expect(typeof params[14]).toBe('number');
+      expect(typeof params[22]).toBe('number');
       // contextTruncated and contextSummarized are booleans
-      expect(typeof params[15]).toBe('boolean');
-      expect(typeof params[16]).toBe('boolean');
+      expect(typeof params[23]).toBe('boolean');
+      expect(typeof params[24]).toBe('boolean');
       // sessionState is null (not provided), turnCount is null (not provided)
-      expect(params[17]).toBeNull();
-      expect(params[18]).toBeNull();
+      expect(params[25]).toBeNull();
+      expect(params[26]).toBeNull();
       // modelPricingSnapshot (from actual pricing-config.json for qwen3-32b)
-      expect(params[19]).toBe(JSON.stringify({ inputPricePer1MTokens: 0.16, outputPricePer1MTokens: 0.62 }));
+      expect(params[27]).toBe(JSON.stringify({ inputPricePer1MTokens: 0.16, outputPricePer1MTokens: 0.62 }));
     });
   });
 });

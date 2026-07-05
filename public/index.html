@@ -5,39 +5,40 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>beexexity</title>
   <style>
+    @import url("https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap");
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     :root {
-      --bg-primary: #0f0f0f;
-      --bg-secondary: #1a1a1a;
-      --bg-tertiary: #262626;
-      --text-primary: #ffffff;
-      --text-secondary: #a0a0a0;
-      --text-tertiary: #666666;
-      --accent: #b5e4f7;
-      --accent-hover: #9bd0e6;
-      --border: #2a2a2a;
-      --shadow: 0 4px 24px rgba(0,0,0,0.4);
-      --login-gradient: linear-gradient(135deg, #0f0f0f 0%, #1a1a2e 100%);
+      --bg-primary: #1d3557;
+      --bg-secondary: #2a3a5c;
+      --bg-tertiary: #3d5278;
+      --text-primary: #f1faee;
+      --text-secondary: #a8dadc;
+      --text-tertiary: #8ba0b8;
+      --accent: #e63946;
+      --accent-hover: #c92e3a;
+      --border: #3d5278;
+      --shadow: 0 4px 24px rgba(0,0,0,0.3);
+      --login-gradient: linear-gradient(135deg, #1d3557 0%, #2a3a5c 100%);
     }
 
     /* Light mode */
     [data-theme="light"] {
-      --bg-primary: #f5f5f5;
+      --bg-primary: #f1faee;
       --bg-secondary: #ffffff;
-      --bg-tertiary: #e8e8e8;
-      --text-primary: #1a1a1a;
-      --text-secondary: #555555;
-      --text-tertiary: #999999;
-      --accent: #1a6b8a;
-      --accent-hover: #155570;
-      --border: #dddddd;
-      --shadow: 0 4px 24px rgba(0,0,0,0.08);
-      --login-gradient: linear-gradient(135deg, #e8edf2 0%, #d0dce8 100%);
+      --bg-tertiary: #e8f0f0;
+      --text-primary: #1d3557;
+      --text-secondary: #457b9d;
+      --text-tertiary: #8ba0b8;
+      --accent: #e63946;
+      --accent-hover: #c92e3a;
+      --border: #d0e0e0;
+      --shadow: 0 4px 24px rgba(0,0,0,0.06);
+      --login-gradient: linear-gradient(135deg, #f1faee 0%, #e8f0f0 100%);
     }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      font-family: 'DM Sans', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
       background: var(--bg-primary);
       color: var(--text-primary);
       height: 100vh;
@@ -91,7 +92,7 @@
     .login-box input:focus {
       outline: none;
       border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(181, 228, 247, 0.1);
+      box-shadow: 0 0 0 3px rgba(230, 57, 70, 0.15);
     }
 
     .login-box button {
@@ -113,7 +114,7 @@
     }
 
     .login-error {
-      color: #ef4444;
+      color: #e63946;
       font-size: 0.875rem;
       margin-bottom: 1rem;
       text-align: center;
@@ -176,7 +177,7 @@
     .password-reset-box input:focus {
       outline: none;
       border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(181, 228, 247, 0.1);
+      box-shadow: 0 0 0 3px rgba(230, 57, 70, 0.15);
     }
 
     .password-reset-box button {
@@ -198,7 +199,7 @@
     }
 
     .password-reset-error {
-      color: #ef4444;
+      color: #e63946;
       font-size: 0.875rem;
       margin-bottom: 1rem;
       text-align: center;
@@ -256,9 +257,10 @@
     }
 
     .logo {
-      font-size: 1.25rem;
+      font-size: 1.35rem;
       font-weight: 700;
-      background: linear-gradient(135deg, var(--accent) 0%, #7cbfe0 100%);
+      letter-spacing: -0.02em;
+      background: linear-gradient(135deg, #e63946 0%, #457b9d 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
@@ -365,27 +367,6 @@
       color: var(--text-primary);
     }
 
-    .new-chat-btn {
-      display: flex;
-      align-items: center;
-      gap: 0.4rem;
-      background: var(--accent);
-      color: #0f0f0f;
-      border: none;
-      padding: 0.5rem 1rem;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 0.8125rem;
-      font-weight: 600;
-      transition: all 0.2s;
-      white-space: nowrap;
-    }
-
-    .new-chat-btn:hover {
-      background: var(--accent-hover);
-      transform: translateY(-1px);
-      box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2);
-    }
 
     .header-divider {
       width: 1px;
@@ -531,7 +512,7 @@
     }
 
     .copy-btn.copied {
-      color: #22c55e;
+      color: #457b9d;
       opacity: 1;
     }
 
@@ -637,7 +618,7 @@
     .message.error {
       align-self: center;
       background: rgba(239, 68, 68, 0.1);
-      color: #ef4444;
+      color: #e63946;
       padding: 1rem 1.5rem;
       border-radius: 12px;
       border: 1px solid rgba(239, 68, 68, 0.2);
@@ -708,7 +689,7 @@
     }
 
     .input-area:focus-within {
-      border-color: #3b82f6;
+      border-color: #457b9d;
       box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
     }
 
@@ -812,7 +793,7 @@
     #send-btn {
       padding: 0.5rem;
       background: var(--accent);
-      color: #0f0f0f;
+      color: var(--text-primary);
       border: none;
       border-radius: 12px;
       cursor: pointer;
@@ -824,7 +805,7 @@
 
     [data-theme="light"] #send-btn {
       color: #ffffff;
-      background: #3b82f6;
+      background: #457b9d;
     }
 
     #send-btn:hover:not(:disabled) {
@@ -834,7 +815,7 @@
     }
 
     [data-theme="light"] #send-btn:hover:not(:disabled) {
-      background: #2563eb;
+      background: #1d3557;
     }
 
     #send-btn:disabled {
@@ -947,7 +928,7 @@
       flex-shrink: 0;
     }
 
-    .file-preview-item .file-remove:hover { color: #ef4444; }
+    .file-preview-item .file-remove:hover { color: #e63946; }
 
     /* Disclaimer */
     .input-disclaimer {
@@ -963,7 +944,7 @@
       display: none;
       padding: 0.4rem 0.6rem;
       font-size: 0.75rem;
-      color: #ef4444;
+      color: #e63946;
       background: rgba(239, 68, 68, 0.1);
       border: 1px solid rgba(239, 68, 68, 0.2);
       border-radius: 6px;
@@ -1126,7 +1107,7 @@
       justify-content: center;
       gap: 0.4rem;
       background: var(--accent);
-      color: #0f0f0f;
+      color: var(--text-primary);
       border: none;
       padding: 0.5rem;
       border-radius: 8px;
@@ -1138,7 +1119,7 @@
     }
 
     [data-theme="light"] .sidebar-new-chat {
-      background: #3b82f6;
+      background: #457b9d;
       color: #ffffff;
     }
 
@@ -1148,7 +1129,7 @@
     }
 
     [data-theme="light"] .sidebar-new-chat:hover {
-      background: #2563eb;
+      background: #1d3557;
     }
 
     .sidebar-toggle {
@@ -1163,6 +1144,29 @@
     }
 
     .sidebar-toggle:hover { color: var(--text-primary); background: var(--bg-tertiary); }
+
+    .new-chat-toggle {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 1.5px dashed var(--text-tertiary);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      font-size: 1.2rem;
+      font-weight: 400;
+      line-height: 1;
+      color: var(--text-tertiary);
+      background: transparent;
+    }
+
+    .new-chat-toggle:hover {
+      border-style: solid;
+      color: var(--text-primary);
+      border-color: var(--text-secondary);
+      background: var(--bg-tertiary);
+    }
 
     .sidebar-list {
       flex: 1;
@@ -1182,18 +1186,22 @@
     .session-row {
       padding: 0.75rem 1rem;
       border-radius: 8px;
-      margin: 0.125rem 0.5rem;
-      border-bottom: none;
+      margin: 0 0.5rem;
+      border-bottom: 1px solid var(--border);
       cursor: pointer;
       transition: background 0.15s;
       position: relative;
     }
 
+    .session-row:last-child {
+      border-bottom: none;
+    }
+
     .session-row:hover { background: var(--bg-tertiary); }
 
     .session-row.active {
-      background: rgba(59, 130, 246, 0.08);
-      border: 1px solid rgba(59, 130, 246, 0.15);
+      background: rgba(230, 57, 70, 0.06);
+      border: 1px solid rgba(230, 57, 70, 0.12);
       position: relative;
       overflow: hidden;
     }
@@ -1205,7 +1213,7 @@
       top: 4px;
       bottom: 4px;
       width: 3px;
-      background: #3b82f6;
+      background: #457b9d;
       border-radius: 0 3px 3px 0;
     }
 
@@ -1308,7 +1316,7 @@
 
     .sidebar-error {
       font-size: 0.75rem;
-      color: #ef4444;
+      color: #e63946;
       text-align: center;
     }
 
@@ -1331,35 +1339,8 @@
     }
 
     /* Resume button in chat area */
-    .resume-bar {
-      display: none;
-      padding: 0.75rem 2rem;
-      background: var(--bg-secondary);
-      border-bottom: 1px solid var(--border);
-      text-align: center;
-    }
+    
 
-    .resume-bar.visible { display: block; }
-
-    .resume-btn {
-      padding: 0.6rem 1.5rem;
-      background: var(--accent);
-      color: var(--bg-primary);
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 0.875rem;
-      font-weight: 600;
-      transition: all 0.2s;
-    }
-
-    .resume-btn:hover { background: var(--accent-hover); }
-
-    .resume-btn:disabled {
-      background: var(--bg-tertiary);
-      color: var(--text-tertiary);
-      cursor: not-allowed;
-    }
 
     /* Viewing-history banner */
     .viewing-banner {
@@ -1382,8 +1363,6 @@
       .input-wrapper { padding: 1rem; }
       .login-box { width: 90%; padding: 2rem; }
       .password-reset-box { width: 90%; padding: 2rem; }
-      .new-chat-btn { font-size: 0; padding: 0.5rem; }
-      .new-chat-btn svg { margin: 0; }
       .stats-pill { display: none; }
       .cost-bar { display: flex; }
       .header-divider { display: none; }
@@ -1516,6 +1495,7 @@
     <div class="header">
       <div class="header-left">
         <button class="sidebar-toggle" id="sidebar-toggle-header" onclick="toggleSidebar()" title="Toggle sidebar">☰</button>
+        <button class="sidebar-toggle new-chat-toggle" id="new-chat-toggle" onclick="handleNewChat()" title="New Chat" style="display:none">+</button>
         <div class="logo">beexexity</div>
       </div>
       <div class="header-center">
@@ -1543,13 +1523,6 @@
             <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
           </svg>
         </button>
-        <button class="new-chat-btn" onclick="handleNewChat()">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19"></line>
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-          </svg>
-          New Chat
-        </button>
         <div class="user-info" id="user-info" onclick="handleUserInfoClick()">
           <div class="user-avatar" id="user-avatar"></div>
           <span id="user-badge"></span>
@@ -1559,20 +1532,17 @@
     </div>
 
     <div class="cost-bar">
-      <div class="cost-bar-group"><span class="cost-label">Session:</span> <span class="cost-value" id="session-cost">Rp 0.00</span></div>
+      <div class="cost-bar-group"><span class="cost-label">Session:</span> <span class="cost-value" id="session-cost-bar">Rp 0.00</span></div>
       <div class="cost-dot"></div>
-      <div class="cost-bar-group"><span class="cost-label">Current:</span> <span class="cost-value" id="current-cost">Rp 0.00</span></div>
+      <div class="cost-bar-group"><span class="cost-label">Current:</span> <span class="cost-value" id="current-cost-bar">Rp 0.00</span></div>
       <div class="cost-dot"></div>
-      <div class="cost-bar-group"><span class="cost-label">Tokens:</span> <span class="cost-value" id="tokens-in">0</span> / <span class="cost-value" id="tokens-out">0</span></div>
+      <div class="cost-bar-group"><span class="cost-label">Tokens:</span> <span class="cost-value" id="tokens-in-bar">0</span> / <span class="cost-value" id="tokens-out-bar">0</span></div>
       <div class="cost-dot"></div>
       <div class="cost-bar-group"><span class="cost-label">Requests:</span> <span class="cost-value" id="request-count">0</span></div>
     </div>
 
     <div class="viewing-banner" id="viewing-banner">📋 Viewing past conversation</div>
 
-    <div class="resume-bar" id="resume-bar">
-      <button class="resume-btn" id="resume-btn" onclick="handleResumeSession()">Resume Conversation</button>
-    </div>
 
     <div class="degraded-banner" id="degraded-banner">Chat history save failed. Future context may be lost.</div>
 
@@ -1891,7 +1861,6 @@ async function handleSend() {
         currentSessionId = resumeData.session.id;
         currentViewingSessionId = null;
         document.getElementById('viewing-banner').classList.remove('visible');
-        document.getElementById('resume-bar').classList.remove('visible');
         document.getElementById('prompt-input').placeholder = 'Ask anything...';
         updateCostBar();
         loadSessions(1);
@@ -1916,11 +1885,23 @@ async function handleSend() {
   // Create assistant message placeholder with thinking indicator
   const assistantEl = addMessage('assistant', '');
   const modelLabel = modelId ? getModelDisplayName(modelId) : 'Auto';
-  assistantEl.querySelector('.assistant-content').innerHTML = `<span style="color: var(--text-tertiary); font-size: 0.875rem;">⏳ ${modelId ? 'Sending to ' + modelLabel + '...' : 'Routing & refining prompt...'}</span>`;
+  // Status panel — collapsible, default closed. Shows background progress.
+  assistantEl.querySelector('.assistant-content').innerHTML =
+    `<details id="status-panel" style="font-size:0.85em;color:var(--text-tertiary)">
+      <summary style="cursor:pointer;user-select:none;font-weight:500">🧠 Background Process</summary>
+      <div id="step-status" style="margin-top:6px;line-height:1.6"><span style="color:var(--accent)">⏳ Initializing...</span></div>
+      <div id="tech-details" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);display:none"></div>
+    </details>
+    <div class="assistant-text-content"></div>`;
   let fullText = '';
   let inputTokens = 0;
   let outputTokens = 0;
   let executedModelId = modelId; // track which model actually ran
+  let startTime = Date.now();
+  let startedGenerating = false;
+  let subAgentTotal = 0;
+  let subAgentDone = 0;
+  let subAgentSpecs = {};
 
   try {
     let res;
@@ -1983,7 +1964,6 @@ async function handleSend() {
         sessionTotal = 0;
         assistantEl.remove();
         document.getElementById('viewing-banner').classList.remove('visible');
-        document.getElementById('resume-bar').classList.remove('visible');
         setInputEnabled(true);
         setStreaming(false);
         document.getElementById('prompt-input').placeholder = 'Ask anything...';
@@ -2026,7 +2006,12 @@ async function handleSend() {
 
           if (eventType === 'delta') {
             fullText += data.content;
-            assistantEl.querySelector('.assistant-content').innerHTML = formatMessage(fullText);
+            if (!startedGenerating) {
+              startedGenerating = true;
+              const step = document.getElementById('step-status');
+              if (step) step.innerHTML = '<span style=\'color:var(--accent)\'>🤖 Generating response...</span>';
+            }
+            assistantEl.querySelector('.assistant-text-content').innerHTML = formatMessage(fullText);
             scrollToBottom();
           } else if (eventType === 'session') {
             // Store the session ID from the server
@@ -2045,115 +2030,114 @@ async function handleSend() {
             updateCurrentCost(executedModelId, inputTokens, outputTokens);
           } else if (eventType === 'routing') {
             try {
-            // Routing metadata event — capture executed model and display indicator
+            // Routing metadata — populate tech-details inside status panel
             if (data.executedModelId) executedModelId = data.executedModelId;
-            const displayName = getModelDisplayName(data.executedModelId || executedModelId);
-            const scoreBand = data.scoreBand || (data.routingState === 'manual' ? 'manual-override' : '');
-            const skillLabel = data.skill && data.skill !== 'general' ? ` • ${data.skill}` : '';
-            const indicatorText = scoreBand
-              ? `⚡ ${displayName}${skillLabel} • ${scoreBand}`
-              : `⚡ ${displayName}${skillLabel}`;
-            // Insert routing indicator above the assistant content
-            let routingEl = assistantEl.querySelector('.routing-indicator');
-            if (!routingEl) {
-              routingEl = document.createElement('div');
-              routingEl.className = 'routing-indicator';
-              assistantEl.insertBefore(routingEl, assistantEl.firstChild);
-            }
-            routingEl.innerHTML = `${indicatorText} <span class="toggle-details" onclick="this.parentElement.nextElementSibling.classList.toggle('visible')">▶ details</span>`;
-
-            // Add routing details panel
-            let detailsEl = assistantEl.querySelector('.routing-details');
-            if (!detailsEl) {
-              detailsEl = document.createElement('div');
-              detailsEl.className = 'routing-details';
-              routingEl.after(detailsEl);
-            }
-            const details = [];
-            details.push(`<b>Thought Process:</b> ${data.reasoningSummary || 'auto-routed'}`);
-            details.push(`<hr style="border:0;border-top:1px solid var(--border);margin:4px 0">`);
-            if (data.skill) details.push(`<b>Skill:</b> ${data.skill}`);
-            details.push(`<b>Routing State:</b> ${data.routingState || 'auto'}`);
-            details.push(`<b>Executed Model:</b> ${data.executedModelId || 'unknown'}`);
-            if (data.complexityScore) details.push(`<b>Complexity Score:</b> ${data.complexityScore}/5 (${data.scoreBand})`);
-            if (data.routingReasonCode) details.push(`<b>Reason:</b> ${data.routingReasonCode}`);
+            const techDetails = document.getElementById('tech-details');
+            if (!techDetails) { return; }
+            techDetails.style.display = 'block';
+            const d = [];
+            d.push(`<b>🧠 Thought Process:</b> ${data.reasoningSummary || 'auto-routed'}`);
+            d.push(`<hr style="border:0;border-top:1px solid var(--border);margin:4px 0">`);
+            if (data.skill) d.push(`<b>Skill:</b> ${data.skill}`);
+            d.push(`<b>Model:</b> ${data.executedModelId || 'unknown'}`);
+            if (data.complexityScore) d.push(`<b>Complexity:</b> ${data.complexityScore}/5 (${data.scoreBand})`);
+            if (data.routingReasonCode) d.push(`<b>Reason:</b> ${data.routingReasonCode}`);
             if (data.modalityFlags) {
               const mf = data.modalityFlags;
-              const modality = mf.mixed ? 'mixed' : mf.image ? 'image' : mf.documentText ? 'document+text' : 'text-only';
-              details.push(`<b>Modality:</b> ${modality}`);
+              d.push(`<b>Modality:</b> ${mf.mixed ? 'mixed' : mf.image ? 'image' : mf.documentText ? 'document+text' : 'text-only'}`);
             }
-            if (data.refinedPrompt && data.refinedPrompt !== data.originalPrompt) {
-              details.push(`<b>Refined Prompt:</b> ${escapeHtml(data.refinedPrompt)}`);
-            }
-            // Confidence
             if (data.confidence !== undefined) {
-              details.push(`<b>Confidence:</b> ${(data.confidence * 100).toFixed(0)}%`);
+              d.push(`<b>Confidence:</b> ${(data.confidence * 100).toFixed(0)}%`);
             }
-            // Flags (warnings)
             if (data.flags && data.flags.length > 0) {
-              details.push(`<b>Flags:</b> ${data.flags.join(', ')}`);
+              d.push(`<b>Flags:</b> ${data.flags.join(', ')}`);
             }
-            // Routing timing
             if (data.routingDurationMs !== undefined || data.classificationDurationMs !== undefined) {
-              details.push(`<hr style="border:0;border-top:1px solid var(--border);margin:4px 0">`);
-              details.push(`<b>⏱ Routing Timing:</b>`);
-              if (data.classificationDurationMs !== undefined) details.push(`&nbsp;&nbsp;Classification: ${data.classificationDurationMs}ms`);
-              if (data.refinementDurationMs !== undefined) details.push(`&nbsp;&nbsp;Refinement: ${data.refinementDurationMs}ms`);
-              if (data.scoringDurationMs !== undefined) details.push(`&nbsp;&nbsp;Scoring: ${data.scoringDurationMs}ms`);
-              if (data.routingDurationMs !== undefined) details.push(`&nbsp;&nbsp;<b>Total: ${data.routingDurationMs}ms</b>`);
+              d.push(`<hr style="border:0;border-top:1px solid var(--border);margin:4px 0">`);
+              d.push(`<b>⏱ Timing:</b>`);
+              if (data.classificationDurationMs !== undefined) d.push(`&nbsp;&nbsp;Classification: ${data.classificationDurationMs}ms`);
+              if (data.refinementDurationMs !== undefined) d.push(`&nbsp;&nbsp;Refinement: ${data.refinementDurationMs}ms`);
+              if (data.scoringDurationMs !== undefined) d.push(`&nbsp;&nbsp;Scoring: ${data.scoringDurationMs}ms`);
+              if (data.routingDurationMs !== undefined) d.push(`&nbsp;&nbsp;<b>Total: ${data.routingDurationMs}ms</b>`);
             }
-            // Prompt lengths
             if (data.originalPromptLength !== undefined || data.promptLengthAfterRefinement !== undefined) {
-              details.push(`<hr style="border:0;border-top:1px solid var(--border);margin:4px 0">`);
-              details.push(`<b>📝 Prompt Lengths:</b>`);
-              if (data.originalPromptLength !== undefined) details.push(`&nbsp;&nbsp;Original: ${data.originalPromptLength} chars`);
-              if (data.promptLengthAfterRefinement !== undefined) details.push(`&nbsp;&nbsp;After Refinement: ${data.promptLengthAfterRefinement} chars`);
+              d.push(`<hr style="border:0;border-top:1px solid var(--border);margin:4px 0">`);
+              d.push(`<b>📝 Prompt:</b>`);
+              if (data.originalPromptLength !== undefined) d.push(`&nbsp;&nbsp;Original: ${data.originalPromptLength} chars`);
+              if (data.promptLengthAfterRefinement !== undefined) d.push(`&nbsp;&nbsp;Refined: ${data.promptLengthAfterRefinement} chars`);
             }
-            // Conversation context (routing payload)
             if (data.conversationContext) {
-              details.push(`<hr style="border:0;border-top:1px solid var(--border);margin:4px 0">`);
-              details.push(`<b>💬 Conversation Context (routing payload):</b>`);
-              details.push(`<small style="color:var(--text-tertiary)">&nbsp;&nbsp;Last 2 user messages + last assistant response — fed to routing LLM for context-aware refinement</small>`);
-              details.push(`&nbsp;&nbsp;${escapeHtml(data.conversationContext)}`);
-              if (data.historyMessageCount !== undefined) details.push(`&nbsp;&nbsp;History turns: ${data.historyMessageCount}`);
-              if (data.contextTruncated) details.push(`&nbsp;&nbsp;⚠️ Context was truncated`);
+              d.push(`<hr style="border:0;border-top:1px solid var(--border);margin:4px 0">`);
+              d.push(`<b>💬 Conversation Context:</b>`);
+              d.push(`&nbsp;&nbsp;${escapeHtml(data.conversationContext)}`);
+              if (data.historyMessageCount !== undefined) d.push(`&nbsp;&nbsp;History turns: ${data.historyMessageCount}`);
+              if (data.contextTruncated) d.push(`&nbsp;&nbsp;⚠️ Context was truncated`);
             }
-            // Session memory
             if (data.memorySummary) {
-              details.push(`<hr style="border:0;border-top:1px solid var(--border);margin:4px 0">`);
-              details.push(`<b>🧠 Memory Summary (v${data.memoryVersion || '?'}):</b>`);
-              details.push(`&nbsp;&nbsp;${escapeHtml(data.memorySummary)}`);
+              d.push(`<hr style="border:0;border-top:1px solid var(--border);margin:4px 0">`);
+              d.push(`<b>🧠 Memory:</b>&nbsp;&nbsp;${escapeHtml(data.memorySummary)}`);
             }
-            // Structured facts
             if (data.memoryFacts && Object.keys(data.memoryFacts).length > 0) {
-              details.push(`<hr style="border:0;border-top:1px solid var(--border);margin:4px 0">`);
-              details.push(`<b>📋 Extracted Facts:</b>`);
+              d.push(`<br><b>📋 Facts:</b>`);
               for (const [key, value] of Object.entries(data.memoryFacts)) {
-                details.push(`&nbsp;&nbsp;<b>${escapeHtml(key)}:</b> ${escapeHtml(value)}`);
+                d.push(`&nbsp;&nbsp;${escapeHtml(key)}: ${escapeHtml(value)}`);
               }
             }
-            // OCR pipeline info (multipart only)
             if (data.ocrExecuted) {
-              details.push(`<hr style="border:0;border-top:1px solid var(--border);margin:4px 0">`);
-              details.push(`<b>🔍 Two-Stage OCR:</b>`);
-              if (data.ocrModel) details.push(`&nbsp;&nbsp;Extraction: ${data.ocrModel}`);
-              if (data.enhanceModel) details.push(`&nbsp;&nbsp;Enhancement: ${data.enhanceModel}`);
+              d.push(`<hr style="border:0;border-top:1px solid var(--border);margin:4px 0">`);
+              d.push(`<b>🔍 OCR Pipeline:</b>`);
+              if (data.ocrModel) d.push(`&nbsp;&nbsp;Extraction: ${data.ocrModel}`);
+              if (data.enhanceModel) d.push(`&nbsp;&nbsp;Enhance: ${data.enhanceModel}`);
             }
-            // Show contract ambiguities if present
-            if (data.contract && data.contract.ambiguities && data.contract.ambiguities.length > 0) {
-              const ambIcon = data.contract.clarificationNeeded ? '🚩' : '⚠️';
-              details.push(`<hr style="border:0;border-top:1px solid var(--border);margin:4px 0">`);
-              details.push(`<b>${ambIcon} Ambiguities${data.contract.clarificationNeeded ? ' (clarification needed)' : ''}:</b>`);
-              data.contract.ambiguities.forEach(a => { details.push(`  • ${escapeHtml(a)}`); });
+            d.push(`<div class="verification-status" style="margin-top:4px;font-style:italic;color:var(--text-tertiary)"></div>`);
+            techDetails.innerHTML = d.join('<br>');
+            const step = document.getElementById('step-status');
+            if (step) step.innerHTML = '<span style=\'color:var(--accent)\'>🔍 Analyzing request...</span>';
+            } catch (e) { console.error('[ui] Tech details error:', e); }
+          } else if (eventType === 'orchestration_plan') {
+            // Sub-agent plan received — show agent assignments with tasks
+            const stepStatus = document.getElementById('step-status');
+            if (stepStatus && data.specs) {
+              subAgentTotal = data.specs.length;
+              subAgentSpecs = {};
+              let html = '<span style=\'color:var(--accent)\'>🧩 Breaking into ' + subAgentTotal + ' sub-agents</span>';
+              for (const spec of data.specs) {
+                subAgentSpecs[spec.agentId] = spec;
+                const name = spec.agentId.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                const task = spec.skill.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                html += '<br><span style=\'color:var(--text-tertiary)\'>  • ' + escapeHtml(name) + ': <i>' + escapeHtml(task) + '</i></span>';
+              }
+              stepStatus.innerHTML = html;
             }
-            // Verification placeholder (filled by verification event)
-            details.push(`<div class="verification-status" style="margin-top:4px;font-style:italic;color:var(--text-tertiary)"></div>`);
-            detailsEl.innerHTML = details.join('<br>');
-            } catch (e) { console.error('[ui] Routing details error:', e); }
+          } else if (eventType === 'subagent_delta') {
+            // Per-agent progress update
+            if (data.status === 'done' || data.status === 'failed') {
+              subAgentDone++;
+              const icon = data.status === 'done' ? '✅' : '❌';
+              const stepStatus = document.getElementById('step-status');
+              if (stepStatus) {
+                const spec = subAgentSpecs[data.agentId];
+                const task = spec ? spec.skill.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '';
+                const taskSuffix = task ? ' (' + escapeHtml(task) + ')' : '';
+                stepStatus.innerHTML += '<br><span style=\'color:var(--text-tertiary)\'>' + icon + ' ' + escapeHtml(data.agentId.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())) + taskSuffix + ' (' + subAgentDone + '/' + subAgentTotal + ')</span>';
+              }
+            }
+          } else if (eventType === 'synthesis_delta') {
+            // Synthesis streaming — treat same as delta for rendering
+            if (data.content) {
+              fullText += data.content;
+              if (!startedGenerating) {
+                startedGenerating = true;
+                const stepStatus = document.getElementById('step-status');
+                if (stepStatus) stepStatus.innerHTML += '<br><span style=\'color:var(--accent)\'>🔄 Combining results...</span>';
+              }
+              assistantEl.querySelector('.assistant-text-content').innerHTML = formatMessage(fullText);
+              scrollToBottom();
+            }
           } else if (eventType === 'verification') {
-            // Verification event — update the routing details panel
-            const detailsEl = assistantEl.querySelector('.routing-details');
-            const verifyEl = detailsEl ? detailsEl.querySelector('.verification-status') : null;
+            // Verification event — update tech-details inside status panel
+            const techDetails = document.getElementById('tech-details');
+            const verifyEl = techDetails ? techDetails.querySelector('.verification-status') : null;
             if (verifyEl && data.checks) {
               const icon = data.passed ? '✓' : '✗';
               verifyEl.innerHTML = `<hr style="border:0;border-top:1px solid var(--border);margin:4px 0"><b>${icon} Verification (${data.checks.filter(c => c.passed).length}/${data.checks.length} passed):</b><br>` +
@@ -2164,19 +2148,25 @@ async function handleSend() {
               }
             }
           } else if (eventType === 'repair') {
-            // Auto-repair event - display repaired content
+            // Auto-repair event - display repaired content (collapsible, default closed)
             if (data.text) {
-              const contentDiv = assistantEl.querySelector('.assistant-content');
+              const contentDiv = assistantEl.querySelector('.assistant-text-content');
               if (contentDiv && !contentDiv.innerHTML.includes('repair-notice')) {
-                contentDiv.innerHTML += `<div style="border:1px solid var(--accent);border-radius:8px;padding:12px;margin-top:8px" class="repair-notice">
-                  <small style="color:var(--accent)">🔧 Auto-repaired (${new Date().toLocaleTimeString()})</small>
-                  <div style="margin-top:4px">${escapeHtml(data.text)}</div>
-                </div>`;
+                contentDiv.innerHTML += `<details style="margin-top:8px" class="repair-notice">
+                  <summary style="cursor:pointer;color:var(--accent);font-size:0.85em;user-select:none">
+                    🔧 Auto-repaired (${new Date().toLocaleTimeString()})
+                  </summary>
+                  <div style="border:1px solid var(--accent);border-radius:8px;padding:12px;margin-top:4px">${escapeHtml(data.text)}</div>
+                </details>`;
               }
             }
           } else if (eventType === 'done') {
-            // Inference complete — clear streaming flag immediately without
-            // waiting for the HTTP connection to close (which Cloud Run may delay).
+            // Inference complete
+            const step = document.getElementById('step-status');
+            if (step) {
+              const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+              step.innerHTML = '<span style=\'color:var(--text-tertiary)\'>✅ Done (' + elapsed + 's)</span>';
+            }
             setStreaming(false);
             // Don't return — let the while loop finish reading remaining data
           } else if (eventType === 'error') {
@@ -2190,7 +2180,6 @@ async function handleSend() {
               sessionCosts = [];
               sessionTotal = 0;
               document.getElementById('viewing-banner').classList.remove('visible');
-              document.getElementById('resume-bar').classList.remove('visible');
               setStreaming(false);
               setInputEnabled(true);
               document.getElementById('prompt-input').placeholder = 'Ask anything...';
@@ -2518,10 +2507,16 @@ function formatCost(usdAmount) {
 }
 
 function updateCurrentCost(modelId, inputTokens, outputTokens) {
-  const cost = calculateCost(modelId, inputTokens, outputTokens);
-  document.getElementById('current-cost').textContent = formatCost(cost);
-  document.getElementById('tokens-in').textContent = inputTokens.toLocaleString();
-  document.getElementById('tokens-out').textContent = outputTokens.toLocaleString();
+  const cost = formatCost(calculateCost(modelId, inputTokens, outputTokens));
+  const tokensIn = inputTokens.toLocaleString();
+  const tokensOut = outputTokens.toLocaleString();
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  set('current-cost', cost);
+  set('current-cost-bar', cost);
+  set('tokens-in', tokensIn);
+  set('tokens-out', tokensOut);
+  set('tokens-in-bar', tokensIn);
+  set('tokens-out-bar', tokensOut);
 }
 
 function updateSessionDisplay() {
@@ -2677,7 +2672,6 @@ function handleLogout() {
     </div>
   `;
   document.getElementById('viewing-banner').classList.remove('visible');
-  document.getElementById('resume-bar').classList.remove('visible');
   setInputEnabled(true);
   document.getElementById('prompt-input').placeholder = 'Ask anything...';
   document.getElementById('password').value = '';
@@ -2724,7 +2718,6 @@ async function handleNewChat() {
   sessionTotal = 0;
   hideDegradedBanner();
   document.getElementById('viewing-banner').classList.remove('visible');
-  document.getElementById('resume-bar').classList.remove('visible');
   setInputEnabled(true);
   document.getElementById('prompt-input').placeholder = 'Ask anything...';
   document.getElementById('messages').innerHTML = `
@@ -2955,10 +2948,13 @@ function showToast(message) {
 function toggleSidebar() {
   sidebarCollapsed = !sidebarCollapsed;
   const sidebar = document.getElementById('sidebar');
+  const newChatToggle = document.getElementById('new-chat-toggle');
   if (sidebarCollapsed) {
     sidebar.classList.add('collapsed');
+    if (newChatToggle) newChatToggle.style.display = 'inline-flex';
   } else {
     sidebar.classList.remove('collapsed');
+    if (newChatToggle) newChatToggle.style.display = 'none';
   }
 }
 
@@ -3004,11 +3000,10 @@ function renderSessionList() {
   }
 
   listEl.innerHTML = sessionList.map(s => {
-    const isActive = s.id === currentSessionId;
     const isViewing = s.id === currentViewingSessionId;
     const isDegraded = s.status === 'degraded';
     const cls = ['session-row'];
-    if (isActive || isViewing) cls.push('active');
+    if (isViewing) cls.push('active');
 
     const preview = s.preview || '(no messages)';
     const time = formatRelativeTime(s.lastActivityAt);
@@ -3017,7 +3012,7 @@ function renderSessionList() {
     const cost = sessionListCost(s);
 
     const costBadge = cost
-      ? `<span class="session-cost-badge${isActive ? ' active' : ''}">${cost}</span>`
+      ? `<span class="session-cost-badge${isViewing ? ' active' : ''}">${cost}</span>`
       : '';
 
     return `
@@ -3041,12 +3036,13 @@ function renderSessionList() {
 
 /** Compute approximate cost for a session row from token counts. */
 function sessionListCost(session) {
+  // Prefer server-calculated cost (uses actual model pricing, matches stats pill)
+  if (session.estimatedCost !== null && session.estimatedCost !== undefined) {
+    return formatCompactCost(session.estimatedCost);
+  }
+  // Fallback for very old sessions without pricing data
   if (!pricingConfig || session.totalInputTokens === 0 && session.totalOutputTokens === 0) return null;
-  // Use a blended rate: average of default model pricing across all models
-  // This is an approximation for the sidebar row; the cost bar shows precise values
-  const avgInputPrice = 0.20;   // ~average input price per 1M tokens
-  const avgOutputPrice = 0.70;  // ~average output price per 1M tokens
-  const usd = (session.totalInputTokens * avgInputPrice + session.totalOutputTokens * avgOutputPrice) / 1_000_000;
+  const usd = (session.totalInputTokens * 0.20 + session.totalOutputTokens * 0.70) / 1_000_000;
   return formatCompactCost(usd);
 }
 
@@ -3063,7 +3059,6 @@ async function viewSession(sessionId) {
   if (sessionId === currentSessionId) {
     currentViewingSessionId = null;
     document.getElementById('viewing-banner').classList.remove('visible');
-    document.getElementById('resume-bar').classList.remove('visible');
     setInputEnabled(true);
     document.getElementById('prompt-input').placeholder = 'Ask anything...';
     updateCostBar();
@@ -3124,20 +3119,7 @@ async function viewSession(sessionId) {
     // Update UI for viewing mode
     document.getElementById('viewing-banner').classList.add('visible');
 
-    // Show resume bar if session is not active
-    const session = msgData.session;
-    const isActive = session && session.status === 'active';
-
-    if (!isActive) {
-      const resumeBar = document.getElementById('resume-bar');
-      const resumeBtn = document.getElementById('resume-btn');
-      resumeBar.classList.add('visible');
-      resumeBtn.disabled = false;
-      resumeBtn.textContent = 'Resume Conversation';
-      resumeBtn.title = '';
-    } else {
-      document.getElementById('resume-bar').classList.remove('visible');
-    }
+    // Auto-resume handled by handleSend on message send — no resume-bar needed
 
     // Keep input enabled — typing auto-resumes the session
     setInputEnabled(true);
@@ -3181,7 +3163,6 @@ async function handleResumeSession() {
     sessionTotal = 0;
 
     document.getElementById('viewing-banner').classList.remove('visible');
-    document.getElementById('resume-bar').classList.remove('visible');
     setInputEnabled(true);
     document.getElementById('prompt-input').placeholder = 'Continue conversation…';
     updateCostBar();
@@ -3208,26 +3189,34 @@ function setInputEnabled(enabled) {
 
 /** Update cost bar based on current viewing state. */
 function updateCostBar() {
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
   if (currentViewingSessionId && currentViewingSessionId !== currentSessionId) {
-    // Viewing a past session → show persisted stats
-    document.getElementById('session-cost').textContent = formatCost(savedSessionCost);
-    document.getElementById('current-cost').textContent = formatCost(0);
-    document.getElementById('tokens-in').textContent = savedSessionTokens.in.toLocaleString();
-    document.getElementById('tokens-out').textContent = savedSessionTokens.out.toLocaleString();
-    document.getElementById('request-count').textContent = savedSessionTokens.requests;
+    const sin = savedSessionTokens.in.toLocaleString();
+    const sout = savedSessionTokens.out.toLocaleString();
+    set('session-cost', formatCost(savedSessionCost));
+    set('current-cost', formatCost(0));
+    set('tokens-in', sin);
+    set('tokens-out', sout);
+    set('session-cost-bar', formatCost(savedSessionCost));
+    set('current-cost-bar', formatCost(0));
+    set('tokens-in-bar', sin);
+    set('tokens-out-bar', sout);
+    set('request-count', savedSessionTokens.requests);
   } else if (currentSessionId) {
-    // Active session → show saved baseline + live additions
-    const totalCost = savedSessionCost + sessionTotal;
-    document.getElementById('session-cost').textContent = formatCost(totalCost);
-    document.getElementById('request-count').textContent = (savedSessionTokens.requests + sessionCosts.length).toLocaleString();
-    // current-cost and tokens-in/out still updated by SSE metadata events via updateCurrentCost()
+    const totalCost = formatCost(savedSessionCost + sessionTotal);
+    set('session-cost', totalCost);
+    set('session-cost-bar', totalCost);
+    set('request-count', (savedSessionTokens.requests + sessionCosts.length).toLocaleString());
   } else {
-    // No session → all zeros
-    document.getElementById('session-cost').textContent = formatCost(0);
-    document.getElementById('current-cost').textContent = formatCost(0);
-    document.getElementById('tokens-in').textContent = '0';
-    document.getElementById('tokens-out').textContent = '0';
-    document.getElementById('request-count').textContent = '0';
+    set('session-cost', formatCost(0));
+    set('current-cost', formatCost(0));
+    set('tokens-in', '0');
+    set('tokens-out', '0');
+    set('session-cost-bar', formatCost(0));
+    set('current-cost-bar', formatCost(0));
+    set('tokens-in-bar', '0');
+    set('tokens-out-bar', '0');
+    set('request-count', '0');
   }
 }
 

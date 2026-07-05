@@ -345,6 +345,7 @@ interface SessionListRow extends SessionRow {
   total_input_tokens: string | null;
   total_output_tokens: string | null;
   request_count: string | null;
+  estimated_cost: string | null;
 }
 
 /**
@@ -374,7 +375,7 @@ export async function listUserSessions(
     `SELECT
        s.id, s.user_id, s.status, s.turn_count,
        s.created_at, s.updated_at, s.last_activity_at, s.expires_at,
-       LEFT(pv.sanitized_content, 60) AS preview,
+       LEFT(REGEXP_REPLACE(pv.sanitized_content, '[*#_]', '', 'g'), 60) AS preview,
        COALESCE(st.total_input_tokens, '0')  AS total_input_tokens,
        COALESCE(st.total_output_tokens, '0') AS total_output_tokens,
        COALESCE(st.request_count, '0')       AS request_count
@@ -382,7 +383,7 @@ export async function listUserSessions(
      LEFT JOIN LATERAL (
        SELECT sanitized_content
        FROM messages
-       WHERE session_id = s.id AND role = 'user'
+       WHERE session_id = s.id AND role = 'assistant'
        ORDER BY created_at ASC, id ASC
        LIMIT 1
      ) pv ON true
@@ -390,7 +391,16 @@ export async function listUserSessions(
        SELECT
          COALESCE(SUM(input_tokens), 0)  AS total_input_tokens,
          COALESCE(SUM(output_tokens), 0) AS total_output_tokens,
-         COUNT(*)::integer                AS request_count
+         COUNT(*)::integer                AS request_count,
+         COALESCE(SUM(
+           CASE
+             WHEN model_pricing_snapshot IS NOT NULL
+                  AND model_pricing_snapshot->>'inputPricePer1MTokens' IS NOT NULL
+             THEN input_tokens * (model_pricing_snapshot->>'inputPricePer1MTokens')::numeric
+                + output_tokens * (model_pricing_snapshot->>'outputPricePer1MTokens')::numeric
+             ELSE input_tokens * 0.20 + output_tokens * 0.70
+           END
+         ), 0) / 1000000.0 AS estimated_cost
        FROM audit_logs
        WHERE session_id = s.id AND status = 'success'
      ) st ON true
@@ -400,12 +410,25 @@ export async function listUserSessions(
     [userId, pageSize, offset],
   );
 
+  // Strip markdown formatting from preview — keep only meaningful text
+  const stripMarkdown = (s: string): string =>
+    s
+      .replace(/\*\*(.+?)\*\*/g, '$1')      // **bold** → text
+      .replace(/__(.+?)__/g, '$1')           // __underline__ → text
+      .replace(/`{1,3}[^`]*`{1,3}/g, '')     // inline/block code → remove
+      .replace(/^#{1,6}\s+/gm, '')           // # headings → remove
+      .replace(/^\s*[-*+]\s+/gm, '')         // bullet lists → remove
+      .replace(/\*{1,2}(.+?)\*{1,2}/g, '$1') // *italic* → text
+      .replace(/\s+/g, ' ')                  // collapse whitespace
+      .trim();
+
   const sessions: SessionWithStats[] = result.rows.map((row) => ({
     ...mapSessionRow(row),
-    preview: row.preview || null,
+    preview: row.preview ? stripMarkdown(row.preview) : null,
     totalInputTokens: parseInt(row.total_input_tokens ?? '0', 10),
     totalOutputTokens: parseInt(row.total_output_tokens ?? '0', 10),
     requestCount: parseInt(row.request_count ?? '0', 10),
+    estimatedCost: row.estimated_cost ? parseFloat(row.estimated_cost) : null,
   }));
 
   return { sessions, total };
@@ -462,10 +485,15 @@ export async function getSessionStats(sessionId: string): Promise<SessionStats |
 
     let estimatedCostUsd: number | null = null;
     if (snapshot && typeof snapshot.inputPricePer1MTokens === 'number' && typeof snapshot.outputPricePer1MTokens === 'number') {
+      // Use actual model pricing from snapshot (most accurate)
       estimatedCostUsd = (inputTokens * snapshot.inputPricePer1MTokens + outputTokens * snapshot.outputPricePer1MTokens) / 1_000_000;
     } else {
-      totalCostUsd = null; // If any row lacks pricing, total cost becomes unknown
+      // Fallback to blended average (matches sidebar sessionListCost calculation)
+      // Used for historical sessions that predate the pricing snapshot column
+      estimatedCostUsd = (inputTokens * 0.20 + outputTokens * 0.70) / 1_000_000;
     }
+
+    totalCostUsd += estimatedCostUsd;
 
     breakdown.push({
       modelId: row.model_id,

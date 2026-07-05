@@ -51,7 +51,7 @@ src/
 │   └── upload.middleware.ts         # Multer config, MIME whitelist, error handler
 ├── routes/
 │   ├── auth.routes.ts        # POST /login, POST /change-password
-│   ├── admin.routes.ts       # POST|PUT /users, GET /usage/cost
+│   ├── admin.routes.ts       # POST|PUT /users, GET /usage/cost, POST /users/bulk
 │   ├── models.routes.ts      # GET / (available models)
 │   ├── inference.routes.ts   # POST /generate (JSON + multipart), GET /sessions/active, POST /sessions/reset
 │   └── session.routes.ts     # GET /, GET /:id/messages, GET /:id/stats, POST /:id/resume
@@ -72,6 +72,8 @@ src/
 │   ├── audit.service.ts                # Fire-and-forget audit logs + pricing snapshots
 │   ├── cost-reporting.service.ts       # Per-user cost aggregation
 ├── few-shot-library.ts             # Per-skill golden examples for format adherence
+├── session-memory.service.ts       # Load memory state, summarize evicted, extract facts
+├── gotenberg.service.ts            # Legacy Office (.doc, .ppt) → PDF → text via Gotenberg
 └── file-signature-validator.ts     # Magic byte heuristic gate
 ├── frontend/
 │   ├── cost-display.ts          # IDR rate fetch, session cost tracking
@@ -97,14 +99,16 @@ migrations/
 ├── 005_session_hardening.sql
 ├── 006_audit_pricing_snapshot.sql
 ├── 007_session_memory.sql          # rolling_summary, memory_version
-└── 008_session_facts.sql           # extracted_facts JSONB
+├── 008_session_facts.sql           # extracted_facts JSONB
+└── 009_add_group_name.sql          # group_name on users
 tests/
 └── unit/                           # ~20 test files mirror src/ structure
 scripts/
 ├── seed-admin.ts                   # Creates admin/admin123
 └── (vendor scripts)
 public/
-└── index.html                      # SPA frontend (no framework)
+├── index.html                      # SPA frontend (inference chat)
+└── admin.html                      # Admin dashboard (user mgmt, cost, settings)
 infra/
 ├── README.md                       # Architecture docs (Cloud Run → Bedrock → RDS)
 └── gcp-setup.sh                    # One-time GCP Cloud Run provisioning
@@ -403,7 +407,7 @@ const memoryState = await loadMemoryState(sessionId);
 | `semantic_verdict` | After semantic judge | `{ is_correct, missing_elements[] }` |
 | `repair` | After verification/judge failure | `{ text: "<repaired content>" }` |
 | `session_status` | On storage failure | `{ sessionId, is_degraded: true }` |
-| `done` | End of stream | `{}` |
+| `done` | End of stream — clears streaming flag immediately | `{}` |
 | `error` | On failure | `{ error, message }` |
 
 ---
@@ -589,6 +593,7 @@ If `GOTENBERG_URL` is not configured or the service is unreachable, returns `{ c
 | role | VARCHAR(50) | 'admin' \| 'user' |
 | display_name | VARCHAR(255) | |
 | force_password_reset | BOOLEAN | Default false |
+| group_name | VARCHAR(255) | Organizational group, e.g. "IT Business Enablement" |
 | created_at / updated_at | TIMESTAMPTZ | |
 
 ### `sessions`
@@ -724,3 +729,7 @@ tests/unit/
 - **Dynamic document_qa persona**: The `document_qna` refinement prompt includes 60+ document type → role mappings (code → senior software engineer, pitchbook → investment banking analyst, etc.), selected by the refinement LLM based on document content.
 - **Markdown output standardization**: Document extractors output Markdown where possible (DOCX → turndown GFM, CSV/XLSX → Markdown tables, JSON → fenced code block). LLMs perform better with structured Markdown than raw text. Markdown symbols (`|`, `-`, `#`, `` ` ``) do not trigger PII masker patterns.
 - **Gotenberg legacy conversion**: Binary Office formats (.doc, .ppt) are converted via Gotenberg's LibreOffice endpoint → PDF → text extraction. Deployed as a separate Cloud Run service with independent scaling. Falls back gracefully if unreachable.
+- **Admin dashboard**: Separate `/admin.html` page with 4 tabs — Single User (register/update), Bulk Upload (JSON file with validation/preview/5-concurrent processing/result summary), Usage & Cost (date range, grand total, paginated table), Account Settings (change password). Token shared via `sessionStorage`. Session restored on back navigation.
+- **Bulk user upsert**: `POST /api/v1/admin/users/bulk` — accepts array of users, validates schema, processes sequentially (create if missing, update if exists), returns per-item results with `{ username, action, success, error }`.
+- **groupName field**: Users have an optional `group_name` column for organizational grouping (e.g. "IT Business Enablement"). Supported in create, update, bulk upload, and cost reporting.
+- **Session restore**: `sessionStorage` shares JWT token between `/` and `/admin.html`. On page load, if token exists, it's verified via `GET /api/v1/models` and session is restored without re-login.

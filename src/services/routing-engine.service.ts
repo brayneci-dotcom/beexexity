@@ -188,6 +188,38 @@ async function classifyRequestType(
   }
 }
 
+/**
+ * Global rules prepended to ALL skill refinement prompts.
+ * Prevents refinement drift — models must preserve user's original wording
+ * and resolve conversational references (e.g. "translate this" → previous response).
+ */
+const GLOBAL_REFINEMENT_RULES = [
+  '### CRITICAL: Conversational Follow-Up Handling',
+  'Users often give short, context-dependent follow-ups (e.g., "translate this",',
+  '"make it shorter", "summarize the above", "convert that to JSON").',
+  'DO NOT rewrite these into generic standalone tasks.',
+  '',
+  '1. TASK FIELD: Output the user\'s original prompt VERBATIM in the user\'s',
+  '   original language. Do not alter or translate it.',
+  '2. CONTEXT FIELD: You MUST explicitly resolve what the user is referring to.',
+  '   - If they say "translate this" after a long output, set context to:',
+  '     "Source: The immediately preceding assistant response."',
+  '   - If they say "make it shorter" or "summarize", set context to:',
+  '     "Target: The immediately preceding assistant response."',
+  '   - If they say "convert that" or "fix it", set context to:',
+  '     "Target: The immediately preceding assistant response."',
+  '',
+  '### CRITICAL: Scope Control',
+  'Match the response depth to the user\'s prompt length and specificity.',
+  'A short, general question ("tell me about X") should get a concise answer,',
+  'not a comprehensive essay. Do NOT expand scope beyond what the user asked.',
+  'The INTENT field must reflect the ACTUAL question scope, not an expanded version.',
+  'Examples:',
+  '  - Prompt: "kamu tahu apa tentang k8s?" → intent: "answer concisely about k8s"',
+  '  - Prompt: "Explain Kubernetes architecture with component diagram" → intent: "detailed explanation"',
+  '  - Prompt: "evaluasi dokumen ini" → intent: "evaluate the uploaded document"',
+].join('\n');
+
 /** Skill-specific refinement prompts. Keyed by SkillType. */
 const SKILL_PROMPTS: Record<SkillType, string> = {
   // ── Generation ──────────────────────────────────────────────────
@@ -482,7 +514,7 @@ export async function refinePrompt(
   }, config.routing.refinementTimeoutMs);
 
   try {
-    const systemPrompt = SKILL_PROMPTS[skill];
+    const systemPrompt = GLOBAL_REFINEMENT_RULES + '\n\n' + SKILL_PROMPTS[skill];
 
     const parts: string[] = [`Original request: ${originalPrompt}`];
     if (documentContext) {
@@ -651,15 +683,13 @@ export function verifyOutput(
   }
   checks.push({ name: 'Empty output', passed: true, detail: `${assistantText.length} chars` });
 
-  // 2. PII leakage check — placeholder residues
-  const piiPattern = /\[(NIK|NO_HP|NO_REKENING|NAMA|NAMA_BANK)_\d+\]/g;
-  const piiMatches = assistantText.match(piiPattern);
-  if (piiMatches && piiMatches.length > 0) {
-    violations.push({ field: 'pii', issue: `PII placeholders leaked: ${piiMatches.join(', ')}`, severity: 'error' });
-    checks.push({ name: 'PII leakage', passed: false, detail: `${piiMatches.length} placeholders found` });
-  } else {
-    checks.push({ name: 'PII leakage', passed: true, detail: 'No placeholders' });
-  }
+  // 2. PII placeholder check — intentionally SKIPPED.
+  // PII placeholders ([NIK_1], [NAMA_2]) in output are CORRECT — they mean
+  // the PII masker worked. Flagging them as "leaks" causes false-positive
+  // repairs (e.g. translated output preserving masked references).
+  // PII masking is fail-closed at input — if real PII reaches the model,
+  // that's a masker bug, not a post-hoc verifier concern.
+  checks.push({ name: 'PII leakage', passed: true, detail: 'Check disabled — placeholders in output are expected' });
 
   // 3. Word count check from contract constraints
   if (contract.constraints) {
@@ -781,6 +811,7 @@ export async function routeRequest(input: RoutingInput): Promise<RoutingDecision
       flags,
       skill: 'general',
       contract: null,
+      multiStep: false,
     };
   }
 
@@ -867,6 +898,22 @@ export async function routeRequest(input: RoutingInput): Promise<RoutingDecision
   // Step 5: Map score to band
   const scoreBand = scoreToBand(complexityScore);
 
+  // Step 5b: Determine if sub-agent orchestration should be triggered
+  // Triggers only for high-stakes skills at high complexity
+  // AND when the prompt is long enough to warrant orchestration.
+  // Short follow-up prompts (< 80 chars, no document) are conversation
+  // continuations, not complex multi-step requests — skip orchestration.
+  const ORCHESTRATOR_SKILLS: Set<SkillType> = new Set([
+    'compliance_pre_assessment',
+    'requirement_generation',
+    'document_qna',
+  ]);
+  const promptTooShort = input.originalPrompt.length < 120 && !input.hasImages;
+  const multiStep = ORCHESTRATOR_SKILLS.has(skill) && complexityScore >= 4 && !promptTooShort;
+  if (multiStep) {
+    flags.push('multi-step-triggered');
+  }
+
   // Step 6: Generate reasoning summary
   const reasoningParts = [`skill=${skill} → complexity band ${scoreBand}`];
   if (isLongContext) {
@@ -893,6 +940,7 @@ export async function routeRequest(input: RoutingInput): Promise<RoutingDecision
     flags,
     skill,
     contract,
+    multiStep,
     routingDurationMs: Date.now() - routingStart,
     classificationDurationMs,
     refinementDurationMs,

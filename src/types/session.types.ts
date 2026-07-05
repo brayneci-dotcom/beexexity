@@ -75,6 +75,7 @@ export interface SessionWithStats extends Session {
   totalInputTokens: number;     // SUM from audit_logs (success only)
   totalOutputTokens: number;
   requestCount: number;
+  estimatedCost: number | null;  // Calculated USD cost using actual model pricing or blended average
 }
 
 /** Per-model token/cost breakdown for a session. */

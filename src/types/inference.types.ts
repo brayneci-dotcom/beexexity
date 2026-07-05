@@ -4,6 +4,7 @@
  */
 
 import type { ContentBlock } from './upload.types.js';
+import type { SubAgentSpec } from './subagent.types.js';
 
 export interface InferenceRequest {
   maskedPrompt: string;
@@ -96,4 +97,34 @@ export interface RoutingMetadataEvent {
   ocrExecuted?: boolean;
   ocrModel?: string;
   enhanceModel?: string;
+}
+
+/**
+ * SSE event emitted after the Planner LLM produces a plan.
+ * data: { specs: SubAgentSpec[], reasoning: string }
+ */
+export interface OrchestrationPlanEvent {
+  specs: SubAgentSpec[];
+  reasoning: string;
+}
+
+/**
+ * SSE event emitted per sub-agent during execution.
+ * When status=running, text contains incremental token stream (not accumulated).
+ * Frontend should buffer per-agent to reconstruct full text.
+ */
+export interface SubAgentDeltaEvent {
+  agentId: string;
+  status: 'running' | 'done' | 'failed';
+  /** Incremental token when running; final text when done; error message when failed. */
+  text?: string;
+}
+
+/**
+ * SSE event emitted during synthesis streaming.
+ * Reuses the same delta format as the main inference stream.
+ */
+export interface SynthesisDeltaEvent {
+  type: 'text';
+  content: string;
 }

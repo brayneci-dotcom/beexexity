@@ -27,17 +27,17 @@ const FEW_SHOTS: Partial<Record<SkillType, FewShotEntry[]>> = {
 
   email: [
     {
-      user: 'draft a meeting reminder for tomorrow at 10am',
+      user: 'draft a {type} for {recipient} about {topic}',
       assistant:
-        'Subject: Meeting Reminder — Tomorrow 10:00 AM\n\nHi Team,\n\nJust a quick reminder about our meeting tomorrow at 10:00 AM. Please come prepared with your weekly updates.\n\nBest,\n[Your Name]',
+        'Subject: {subject_line}\n\nDear {recipient},\n\n{body}\n\nBest regards,\n[Your Name]',
     },
   ],
 
   brainstorming: [
     {
-      user: 'ideas for improving customer onboarding',
+      user: 'ideas for {topic}',
       assistant:
-        'Here are several ideas for improving customer onboarding:\n\n1. **Welcome Sequence**: Send a 3-email drip over the first week\n2. **Interactive Tutorial**: In-app walkthrough for key features\n3. **Personalized Setup**: Let users pick their goals on signup\n4. **Quick Wins**: Highlight the most valuable action on day 1\n5. **Feedback Loop**: Ask "what almost made you leave?" after week 1',
+        'Here are several ideas for {topic}:\n\n1. **{Idea 1}**: {Description}\n2. **{Idea 2}**: {Description}\n3. **{Idea 3}**: {Description}\n4. **{Idea 4}**: {Description}\n5. **{Idea 5}**: {Description}',
     },
   ],
 
@@ -45,33 +45,27 @@ const FEW_SHOTS: Partial<Record<SkillType, FewShotEntry[]>> = {
 
   summarization: [
     {
-      user: 'summarize this: The Q3 results show revenue grew 12% to 50M IDR. Operating costs increased 8% due to infrastructure upgrades. Net profit margin improved to 18%. The board approved a 5B IDR budget for Q4 expansion.',
+      user: 'summarize this: {source_text}',
       assistant:
-        '**Q3 Financial Summary**\n\n- Revenue: 50M IDR (+12% YoY)\n- Operating costs: +8% (infrastructure upgrades)\n- Net profit margin: 18% (improved)\n- Q4 outlook: 5B IDR expansion budget approved',
+        '**Summary**\n\n- Key point 1\n- Key point 2\n- Key point 3\n- Key point 4',
     },
   ],
 
-  translation: [
-    {
-      user: 'translate to Indonesian: The system will be deployed to production next week.',
-      assistant:
-        'Sistem akan digunakan ke produksi minggu depan.',
-    },
-  ],
+  translation: [],  // Empty — refinement prompt + global rules handle translation. Few-shot caused contamination (model regurgitated example content).
 
   data_conversion: [
     {
-      user: 'convert this JSON to CSV: {"users":[{"name":"Alice","age":30,"role":"Engineer"},{"name":"Bob","age":25,"role":"Designer"}]}',
+      user: 'convert this {format}: {source_data}',
       assistant:
-        'name,age,role\nAlice,30,Engineer\nBob,25,Designer',
+        '{target_format_output}',
     },
   ],
 
   editing_critique: [
     {
-      user: 'improve this sentence: "The system, which is very good, was implemented by the team who worked hard."',
+      user: 'improve this {text_type}: "{original_text}"',
       assistant:
-        '**Original**: The system, which is very good, was implemented by the team who worked hard.\n\n**Revised**: The team implemented a robust system through dedicated effort.\n\n**Changes**:\n- Removed unnecessary clause ("which is very good")\n- Changed passive to active voice\n- Replaced "worked hard" with "dedicated effort" for formality',
+        '**Original**: {original_text}\n\n**Revised**: {revised_text}\n\n**Changes**:\n- {change_1}\n- {change_2}\n- {change_3}',
     },
   ],
 
@@ -79,9 +73,9 @@ const FEW_SHOTS: Partial<Record<SkillType, FewShotEntry[]>> = {
 
   document_qna: [
     {
-      user: 'what does section 3 say about data retention?',
+      user: '{question_about_document}',
       assistant:
-        '**Section 3: Data Retention**\n\nSection 3 states that personal data will be retained for a maximum of 5 years after the end of the business relationship. After this period, all data must be securely deleted or anonymized.\n\n**Key requirements:**\n- Retention period: 5 years max\n- Action after period: Secure deletion or anonymization\n- Applies to: All personal data collected during the business relationship',
+        '**Answer**\n\n{answer_text}\n\n**Supporting details:**\n- {detail_1}\n- {detail_2}',
     },
   ],
 
@@ -89,9 +83,9 @@ const FEW_SHOTS: Partial<Record<SkillType, FewShotEntry[]>> = {
 
   code: [
     {
-      user: 'write a function to validate email format in TypeScript',
+      user: 'write a {function_name} to {task_description}',
       assistant:
-        '```typescript\nfunction isValidEmail(email: string): boolean {\n  const emailRegex = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;\n  return emailRegex.test(email);\n}\n```\n\nThis function:\n- Returns `true` for valid emails like `user@example.com`\n- Returns `false` for invalid formats like `user@`, `@domain`, or plain text\n- Uses a regex that checks for the required `@` and domain structure',
+        '```{language}\n{code_snippet}\n```\n\nThis function:\n- {behavior_1}\n- {behavior_2}\n- {behavior_3}',
     },
   ],
 
@@ -99,9 +93,9 @@ const FEW_SHOTS: Partial<Record<SkillType, FewShotEntry[]>> = {
 
   compliance_pre_assessment: [
     {
-      user: 'assess this for OJK compliance: a mobile banking app that stores user biometric data on-device with no cloud backup',
+      user: 'assess this for {regulation} compliance: {scenario_description}',
       assistant:
-        '## OJK Compliance Pre-Assessment\n\n**Scope**: Mobile banking app with on-device biometric storage\n\n**Risk Level**: Medium\n\n**Findings:**\n\n| Area | Status | Notes |\n|---|---|---|\n| Data Localization | ✅ Compliant | On-device storage meets OJK data residency requirements |\n| Encryption | ⚠️ Needs Review | Verify AES-256 for stored biometric templates |\n| User Consent | ✅ Compliant | Assumed consent obtained at enrollment |\n| Breach Notification | ✅ Compliant | On-device = reduced breach surface |\n\n**Recommendations:**\n1. Implement AES-256 encryption for biometric template storage\n2. Add remote wipe capability for lost devices\n3. Document the consent flow in the compliance register',
+        '## {Regulation} Compliance Pre-Assessment\n\n**Scope**: {scope}\n\n**Risk Level**: {risk_level}\n\n**Findings:**\n\n| Area | Status | Notes |\n|---|---|---|\n| {Area 1} | ✅ {status} | {notes} |\n| {Area 2} | ⚠️ {status} | {notes} |\n| {Area 3} | ❌ {status} | {notes} |\n\n**Recommendations:**\n1. {recommendation_1}\n2. {recommendation_2}\n3. {recommendation_3}',
     },
   ],
 };

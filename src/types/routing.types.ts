@@ -89,6 +89,8 @@ export interface RoutingDecision {
   flags: string[];                  // e.g. ['refinement-failed']
   skill: SkillType;                 // classified request type for transparency
   contract: PromptContract | null;  // structured contract from refinement
+  /** True when sub-agent orchestration is triggered (skill+complexity gate). */
+  multiStep?: boolean;
 
   // Per-step timing (ms) — populated by routeRequest()
   routingDurationMs?: number;

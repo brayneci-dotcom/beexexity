@@ -1,4 +1,4 @@
-import { Pool, QueryResult, QueryResultRow } from 'pg';
+import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
 import { config } from './index.js';
 
 /**
@@ -54,34 +54,46 @@ function uuidToLockKey(uuid: string): number {
 
 /**
  * Try to acquire a PostgreSQL advisory lock for a session.
- * Non-blocking — returns false immediately if another instance holds the lock.
+ * Uses a dedicated connection so acquire and release happen on the same
+ * connection — advisory locks are per-connection in PostgreSQL.
  *
- * @returns true if lock acquired, false if already locked by another instance.
+ * Non-blocking — returns false immediately if another instance holds the lock.
+ * Returns a release function that must be called in a finally block.
+ *
+ * @returns { locked, release } — locked=true if acquired, release() to unlock.
  */
-export async function tryAcquireSessionLock(sessionId: string): Promise<boolean> {
+export async function tryAcquireSessionLock(sessionId: string): Promise<{ locked: boolean; release: () => Promise<void> }> {
   const key = uuidToLockKey(sessionId);
+  let client: PoolClient | undefined;
+
   try {
-    const result = await query<{ locked: boolean }>(
+    client = await pool.connect();
+    const result = await client.query<{ locked: boolean }>(
       'SELECT pg_try_advisory_lock($1) AS locked',
       [key],
     );
-    return result.rows[0]?.locked === true;
-  } catch (error) {
-    console.error('[database] Failed to acquire session lock:', (error as Error).message);
-    return false; // Fail-open: allow the request to proceed if DB is down
-  }
-}
+    const locked = result.rows[0]?.locked === true;
 
-/**
- * Release a PostgreSQL advisory lock for a session.
- * Must be called in a finally block paired with tryAcquireSessionLock().
- */
-export async function releaseSessionLock(sessionId: string): Promise<void> {
-  const key = uuidToLockKey(sessionId);
-  try {
-    await query('SELECT pg_advisory_unlock($1)', [key]);
+    if (!locked) {
+      client.release();
+      return { locked: false, release: async () => {} };
+    }
+
+    return {
+      locked: true,
+      release: async () => {
+        try {
+          await client!.query('SELECT pg_advisory_unlock($1)', [key]);
+        } catch (error) {
+          console.error('[database] Failed to release session lock:', (error as Error).message);
+        } finally {
+          client!.release();
+        }
+      },
+    };
   } catch (error) {
-    // Log but never throw — lock release is best-effort cleanup
-    console.error('[database] Failed to release session lock:', (error as Error).message);
+    if (client) client.release();
+    console.error('[database] Failed to acquire session lock:', (error as Error).message);
+    return { locked: false, release: async () => {} }; // Fail-open
   }
 }
