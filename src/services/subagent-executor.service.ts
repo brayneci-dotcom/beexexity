@@ -77,7 +77,13 @@ async function executeOne(
 ): Promise<SubAgentResult> {
   const startTime = Date.now();
   const agentId = spec.agentId;
-  const modelId = spec.targetModel || 'qwen.qwen3-235b-a22b-2507-v1:0';
+  // Validate model ID — planner may output incomplete IDs (e.g. "qwen.qwen3-235b" without version)
+  const DEFAULT_MODEL = 'qwen.qwen3-235b-a22b-2507-v1:0';
+  let modelId = spec.targetModel || DEFAULT_MODEL;
+  if (!modelId.includes(':0')) {
+    console.warn(`[executor] Invalid model ID "${modelId}" for agent "${agentId}" — falling back to ${DEFAULT_MODEL}`);
+    modelId = DEFAULT_MODEL;
+  }
 
   // Emit running event (no text for running — frontend knows to wait)
   writeSubAgentDelta(res, agentId, 'running');

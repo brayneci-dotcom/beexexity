@@ -18,7 +18,8 @@ Rules:
 - Keep total sub-agents to 2-4 maximum. Prefer fewer.
 - Each sub-agent must have a unique agentId (kebab-case).
 - For simple sub-tasks (data extraction, simple lookup, summarization), you may specify "targetModel": "qwen.qwen3-32b-v1:0" or "openai.gpt-oss-120b-1:0" to save cost.
-- For complex reasoning, analysis, or writing tasks, do not set targetModel (defaults to qwen3-235b).
+- For complex reasoning, analysis, or writing tasks, do NOT set targetModel (defaults to the full ID: "qwen.qwen3-235b-a22b-2507-v1:0").
+- **WARNING:** If you set targetModel, you MUST use the EXACT full model ID including version suffix (e.g. "-v1:0"). Partial IDs like "qwen.qwen3-235b" without the version WILL FAIL.
 - **CRITICAL: NO SINGLE AGENTS.** If you can only identify one sub-task, output [] instead — a single agent with orchestration overhead is strictly worse than a direct LLM call. Only output specs when the task genuinely needs 2+ parallel agents.
 
 Output format (strict JSON):
