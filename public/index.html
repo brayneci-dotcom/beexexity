@@ -1432,6 +1432,7 @@
   </style>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 
@@ -1445,6 +1446,12 @@
       <input type="password" id="password" placeholder="Password" autocomplete="current-password">
       <button type="submit">Continue</button>
     </form>
+    <div style="display:flex;align-items:center;gap:0.75rem;margin-top:1rem">
+      <hr style="flex:1;border:0;border-top:1px solid var(--border)">
+      <span style="font-size:0.75rem;color:var(--text-tertiary)">or</span>
+      <hr style="flex:1;border:0;border-top:1px solid var(--border)">
+    </div>
+    <div id="google-button" style="margin-top:0.75rem;width:100%;display:flex;justify-content:center;min-height:40px"></div>
   </div>
 </div>
 
@@ -1672,6 +1679,7 @@ async function handleLogin() {
       user = data.user;
       sessionStorage.setItem('admin_token', token);
       sessionStorage.setItem('admin_role', user.role);
+      sessionStorage.setItem('auth_provider', user.authProvider || 'local');
       showChatScreen();
     }
   } catch (e) {
@@ -2210,6 +2218,13 @@ async function handleSend() {
       sessionCosts.push({ modelId: executedModelId, inputTokens, outputTokens, cost });
       sessionTotal += cost;
       updateSessionDisplay();
+      // Keep sidebar badge in sync by updating the cached session's estimatedCost
+      const currentSession = sessionList.find(s => s.id === currentSessionId);
+      if (currentSession) {
+        const totalCost = savedSessionCost + sessionTotal;
+        currentSession.estimatedCost = totalCost;
+      }
+      renderSessionList();
     }
 
   } catch (e) {
@@ -2694,6 +2709,72 @@ function handleUserInfoClick() {
   }
 }
 
+// --- Google Login ---
+async function handleGoogleLogin(response) {
+  const credential = response?.credential;
+  if (!credential) {
+    showToast('Google sign-in failed: no credential received');
+    return;
+  }
+  const errorEl = document.getElementById('login-error');
+  errorEl.style.display = 'none';
+  try {
+    const res = await fetch(`${API_BASE}/auth/google`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ credential }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      errorEl.textContent = data.message || 'Google login failed';
+      errorEl.style.display = 'block';
+      return;
+    }
+    token = data.token;
+    user = data.user;
+    sessionStorage.setItem('admin_token', token);
+    sessionStorage.setItem('admin_role', user.role);
+    sessionStorage.setItem('auth_provider', user.authProvider || 'google');
+    showChatScreen();
+  } catch (e) {
+    errorEl.textContent = 'Cannot reach server';
+    errorEl.style.display = 'block';
+  }
+}
+
+// Initialize Google Sign-In button
+let googleSignInInitialized = false;
+async function initGoogleSignIn() {
+  if (googleSignInInitialized) return;
+  if (typeof google === 'undefined' || typeof google.accounts === 'undefined') {
+    setTimeout(initGoogleSignIn, 500);
+    return;
+  }
+  if (!document.getElementById('google-button')) return;
+  try {
+    const res = await fetch(`${API_BASE}/auth/google/config`);
+    const data = await res.json();
+    if (!data.clientId) return;
+    google.accounts.id.initialize({
+      client_id: data.clientId,
+      callback: handleGoogleLogin,
+      auto_select: false,
+      cancel_on_tap_outside: false,
+    });
+    google.accounts.id.renderButton(
+      document.getElementById('google-button'),
+      { type: 'standard', shape: 'rectangular', theme: 'outline', text: 'sign_in_with', size: 'large', logo_alignment: 'left' }
+    );
+  } catch (e) {
+    // Config endpoint unavailable — Google login not available
+  }
+}
+
+// Initialize Google Sign-In on page load
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(initGoogleSignIn, 1000);
+});
+
 // --- New Chat ---
 async function handleNewChat() {
   if (isStreaming) return;
@@ -3111,6 +3192,12 @@ async function viewSession(sessionId) {
         out: statsData.totalOutputTokens,
         requests: statsData.requestCount,
       };
+      // Sync sidebar badge with accurate server cost
+      const sessionRow = sessionList.find(s => s.id === sessionId);
+      if (sessionRow) {
+        sessionRow.estimatedCost = savedSessionCost;
+        renderSessionList();
+      }
     } else {
       savedSessionCost = 0;
       savedSessionTokens = { in: 0, out: 0, requests: 0 };

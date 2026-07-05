@@ -71,6 +71,9 @@ export const config = {
       process.env.EXTRACTION_MAX_PPTX_ENTRIES || '2000', 10
     ),
   },
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID || '',
+  },
   auth: {
     minPasswordLength: parseInt(process.env.MIN_PASSWORD_LENGTH || '8', 10),
     resetTokenExpiresIn: 300, // 5 minutes for password reset token

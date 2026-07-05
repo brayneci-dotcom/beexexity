@@ -44,7 +44,7 @@ steps:
       - '80'
       - '--allow-unauthenticated'
       - '--set-env-vars'
-      - 'NODE_ENV=production,AWS_REGION=ap-southeast-3,DB_HOST=${_DB_HOST},DB_PORT=5432,DB_NAME=bedrock_gateway,DB_USER=${_DB_USER},DB_SSL=true'
+      - 'NODE_ENV=production,AWS_REGION=ap-southeast-3,DB_HOST=${_DB_HOST},DB_PORT=5432,DB_NAME=bedrock_gateway,DB_USER=${_DB_USER},DB_SSL=true,GOOGLE_CLIENT_ID=${_GOOGLE_CLIENT_ID}'
       - '--set-secrets'
       - 'DB_PASSWORD=db-password:latest,JWT_SECRET=jwt-secret:latest,AWS_ACCESS_KEY_ID=aws-access-key-id:latest,AWS_SECRET_ACCESS_KEY=aws-secret-access-key:latest'
 
@@ -54,6 +54,7 @@ substitutions:
   _ARTIFACT_REGISTRY: asia-southeast2-docker.pkg.dev
   _DB_HOST: ''     # set in Cloud Build trigger → Variables
   _DB_USER: ''     # set in Cloud Build trigger → Variables
+  _GOOGLE_CLIENT_ID: ''  # set in Cloud Build trigger → Variables
 
 images:
   - '${_ARTIFACT_REGISTRY}/${PROJECT_ID}/${_SERVICE_NAME}/${_SERVICE_NAME}:$COMMIT_SHA'

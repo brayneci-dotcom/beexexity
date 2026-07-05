@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
-import { login, changePassword } from '../services/auth.service.js';
+import { login, loginWithGoogle, changePassword } from '../services/auth.service.js';
 import { authMiddleware } from '../middleware/auth.middleware.js';
+import { config } from '../config/index.js';
 import { ErrorResponse } from '../types/error.types.js';
 import { loginRateLimit } from '../middleware/security.middleware.js';
 
@@ -48,6 +49,46 @@ router.post('/login', loginRateLimit, async (req: Request, res: Response): Promi
       message: 'Authentication failed',
     };
     res.status(401).json(error);
+  }
+});
+
+/**
+ * GET /api/v1/auth/google/config
+ * Returns Google OAuth config for the frontend (client ID).
+ */
+router.get('/google/config', (_req: Request, res: Response): void => {
+  res.json({ clientId: config.google.clientId });
+});
+
+/**
+ * POST /api/v1/auth/google
+ * Authenticate with Google OAuth ID token (OIDC).
+ * JIT-provisions new users, links existing by email.
+ * Returns standard JWT + user profile (same shape as login).
+ *
+ * Body: { credential: string }  — Google ID token from GIS
+ */
+router.post('/google', async (req: Request, res: Response): Promise<void> => {
+  const { credential } = req.body;
+
+  if (!credential || typeof credential !== 'string') {
+    res.status(400).json({ error: 'VALIDATION_ERROR', message: 'Google credential is required' });
+    return;
+  }
+
+  if (!config.google.clientId) {
+    console.error('[auth] GOOGLE_CLIENT_ID not configured');
+    res.status(500).json({ error: 'CONFIG_ERROR', message: 'Google authentication is not configured' });
+    return;
+  }
+
+  try {
+    const result = await loginWithGoogle(credential);
+    res.status(200).json(result);
+  } catch (err: unknown) {
+    const statusCode = (err as any).statusCode || 401;
+    const message = (err as Error).message || 'Google authentication failed';
+    res.status(statusCode).json({ error: 'GOOGLE_AUTH_FAILED', message });
   }
 });
 

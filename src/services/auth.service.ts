@@ -1,5 +1,6 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import { OAuth2Client } from 'google-auth-library';
 import { query } from '../config/database.js';
 import { config } from '../config/index.js';
 import {
@@ -33,15 +34,16 @@ export async function login(username: string, password: string): Promise<LoginRe
     result = await query<{
       id: string;
       username: string;
-      password: string;
+      password: string | null;
       role: 'admin' | 'user';
       display_name: string;
       group_name: string | null;
       force_password_reset?: boolean;
+      auth_provider: string;
       created_at: string;
       updated_at: string;
     }>(
-      'SELECT id, username, password, role, display_name, group_name, force_password_reset, created_at, updated_at FROM users WHERE username = $1',
+      'SELECT id, username, password, role, display_name, group_name, force_password_reset, auth_provider, created_at, updated_at FROM users WHERE username = $1',
       [username],
     );
   } catch (dbError: unknown) {
@@ -61,7 +63,13 @@ export async function login(username: string, password: string): Promise<LoginRe
     throw new Error('Authentication failed');
   }
 
-  const isPasswordValid = await bcrypt.compare(password, user.password);
+  // Google-only user trying local login — fail closed
+  if (user.auth_provider === 'google') {
+    console.warn('[auth] Login failed: Google-linked user attempted password login', { username });
+    throw new Error('This account uses Google Sign-In. Please sign in with Google.');
+  }
+
+  const isPasswordValid = await bcrypt.compare(password, user.password ?? '');
 
   if (!isPasswordValid) {
     console.warn('[auth] Login failed: password mismatch', { username });
@@ -79,6 +87,7 @@ export async function login(username: string, password: string): Promise<LoginRe
     createdAt: user.created_at,
     updatedAt: user.updated_at,
     forcePasswordReset: user.force_password_reset ?? false,
+    authProvider: user.auth_provider as 'local' | 'google',
   };
 
   // If force_password_reset is true, return a short-lived reset token instead of a session token
@@ -150,10 +159,11 @@ export async function changePassword(
       display_name: string;
       group_name: string | null;
       force_password_reset: boolean;
+      auth_provider: string;
       created_at: string;
       updated_at: string;
     }>(
-      'SELECT id, username, password, role, display_name, group_name, force_password_reset, created_at, updated_at FROM users WHERE id = $1',
+      'SELECT id, username, password, role, display_name, group_name, force_password_reset, auth_provider, created_at, updated_at FROM users WHERE id = $1',
       [userId],
     );
   } catch (dbError: unknown) {
@@ -172,6 +182,14 @@ export async function changePassword(
   if (!user) {
     console.warn('[auth] Change-password failed: user not found', { userId });
     throw new Error('Authentication failed');
+  }
+
+  // Google-linked users cannot change password
+  if (user.auth_provider === 'google') {
+    console.warn('[auth] Change-password rejected: Google-linked user', { userId });
+    const error = new Error('Password management is not available for Google-linked accounts');
+    (error as Error & { statusCode: number }).statusCode = 400;
+    throw error;
   }
 
   // Validate current password against stored hash
@@ -244,6 +262,7 @@ export async function changePassword(
     createdAt: updatedUser.created_at,
     updatedAt: updatedUser.updated_at,
     forcePasswordReset: updatedUser.force_password_reset,
+    authProvider: 'local',
   };
 
   return {
@@ -304,6 +323,7 @@ export async function createUser(_admin: TokenPayload, data: CreateUserDto): Pro
     groupName: user.group_name ?? undefined,
     createdAt: user.created_at,
     updatedAt: user.updated_at,
+    authProvider: 'local',
     forcePasswordReset: user.force_password_reset ?? true,
   };
 }
@@ -384,6 +404,7 @@ export async function updateUser(_admin: TokenPayload, username: string, data: U
     groupName: user.group_name ?? undefined,
     createdAt: user.created_at,
     updatedAt: user.updated_at,
+    authProvider: 'local',
     forcePasswordReset: user.force_password_reset ?? false,
   };
 }
@@ -437,4 +458,159 @@ export async function upsertUser(data: BulkUserEntry): Promise<{ action: 'create
   };
   const user = await createUser(mockAdmin, createData);
   return { action: 'created', user };
+}
+
+/**
+ * Authenticate via Google OAuth ID token (OIDC).
+ * JIT-provisions new users, links existing users by email,
+ * and returns the standard HS256 JWT.
+ *
+ * Max 3 retries on duplicate google_id (race condition guard).
+ */
+export async function loginWithGoogle(credential: string): Promise<LoginResult> {
+  const client = new OAuth2Client(config.google.clientId);
+
+  // 1. Verify Google ID token
+  let payload: { email?: string; sub?: string; name?: string };
+  try {
+    const ticket = await client.verifyIdToken({
+      idToken: credential,
+      audience: config.google.clientId,
+    });
+    payload = ticket.getPayload() ?? {};
+  } catch (error: unknown) {
+    console.error('[auth] Google token verification failed:', (error as Error).message);
+    const err = new Error('Google authentication failed');
+    (err as any).statusCode = 401;
+    throw err;
+  }
+
+  const email = payload.email ?? '';
+  const googleId = payload.sub ?? '';
+  const displayName = payload.name ?? email;
+
+  if (!email || !googleId) {
+    const err = new Error('Google authentication failed: missing email or sub');
+    (err as any).statusCode = 401;
+    throw err;
+  }
+
+  // 2. JIT provisioning with max 3 retries (race condition guard)
+  let user: {
+    id: string;
+    username: string;
+    role: 'admin' | 'user';
+    display_name: string;
+    group_name: string | null;
+    auth_provider: string;
+    created_at: string;
+    updated_at: string;
+  } | null = null;
+  const MAX_RETRIES = 3;
+
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    // Step 1: Find by google_id
+    const existing = await query<{
+      id: string;
+      username: string;
+      role: 'admin' | 'user';
+      display_name: string;
+      group_name: string | null;
+      auth_provider: string;
+      created_at: string;
+      updated_at: string;
+    }>(
+      'SELECT id, username, role, display_name, group_name, auth_provider, created_at, updated_at FROM users WHERE google_id = $1',
+      [googleId],
+    );
+
+    if (existing.rows[0]) {
+      user = existing.rows[0];
+      break;
+    }
+
+    // Step 2: Find by email (existing local user → link)
+    const byEmail = await query<{
+      id: string;
+      username: string;
+      role: 'admin' | 'user';
+      display_name: string;
+      group_name: string | null;
+      auth_provider: string;
+      created_at: string;
+      updated_at: string;
+    }>(
+      'SELECT id, username, role, display_name, group_name, auth_provider, created_at, updated_at FROM users WHERE username = $1',
+      [email],
+    );
+
+    if (byEmail.rows[0]) {
+      // Link google_id to existing account
+      await query(
+        'UPDATE users SET google_id = $1, auth_provider = $2, updated_at = NOW() WHERE id = $3',
+        [googleId, 'google', byEmail.rows[0].id],
+      );
+      user = { ...byEmail.rows[0], auth_provider: 'google' };
+      break;
+    }
+
+    // Step 3: Create new user
+    try {
+      const created = await query<{
+        id: string;
+        username: string;
+        role: 'admin' | 'user';
+        display_name: string;
+        group_name: string | null;
+        auth_provider: string;
+        created_at: string;
+        updated_at: string;
+      }>(
+        `INSERT INTO users (username, password, role, display_name, google_id, auth_provider)
+         VALUES ($1, NULL, 'user', $2, $3, 'google')
+         RETURNING id, username, role, display_name, group_name, auth_provider, created_at, updated_at`,
+        [email, displayName, googleId],
+      );
+      user = created.rows[0];
+      break;
+    } catch (insertError: unknown) {
+      // UNIQUE constraint violation on google_id — race condition, retry
+      if ((insertError as any)?.code === '23505' && attempt < MAX_RETRIES - 1) {
+        console.warn('[auth] Google JIT race condition, retrying...', { attempt: attempt + 1 });
+        continue;
+      }
+      throw insertError;
+    }
+  }
+
+  if (!user) {
+    throw new Error('Google authentication failed: could not provision user');
+  }
+
+  // 3. Build JWT with authProvider claim
+  const tokenPayload: TokenPayload = {
+    sub: user.id,
+    username: user.username,
+    role: user.role,
+    authProvider: 'google',
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + config.jwt.expiresIn,
+  };
+
+  const token = jwt.sign(tokenPayload, config.jwt.secret);
+
+  const userProfile: UserProfile = {
+    id: user.id,
+    username: user.username,
+    role: user.role,
+    displayName: user.display_name,
+    groupName: user.group_name ?? undefined,
+    createdAt: user.created_at,
+    updatedAt: user.updated_at,
+    forcePasswordReset: false,
+    authProvider: 'google',
+  };
+
+  console.log('[auth] Google login succeeded', { username: user.username });
+  return { token, user: userProfile };
 }

@@ -26,6 +26,7 @@ describe('Auth Service', () => {
       password: '$2b$10$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ012', // bcrypt hash
       role: 'user' as const,
       display_name: 'Test User',
+      auth_provider: 'local',
       created_at: '2024-01-01T00:00:00.000Z',
       updated_at: '2024-01-01T00:00:00.000Z',
     };
@@ -46,6 +47,7 @@ describe('Auth Service', () => {
         createdAt: mockUser.created_at,
         updatedAt: mockUser.updated_at,
         forcePasswordReset: false,
+        authProvider: 'local',
       });
 
       // Verify the JWT contains the correct claims
@@ -150,6 +152,7 @@ describe('Auth Service', () => {
       username: 'newuser',
       role: 'user' as const,
       display_name: 'New User',
+      auth_provider: 'local',
       created_at: '2024-01-15T10:00:00.000Z',
       updated_at: '2024-01-15T10:00:00.000Z',
     };
@@ -176,6 +179,7 @@ describe('Auth Service', () => {
         createdAt: mockCreatedUser.created_at,
         updatedAt: mockCreatedUser.updated_at,
         forcePasswordReset: true,
+        authProvider: 'local',
       });
       // Ensure password is not in the result
       expect(result).not.toHaveProperty('password');
@@ -250,6 +254,7 @@ describe('Auth Service', () => {
       username: 'existinguser',
       role: 'admin' as const,
       display_name: 'Updated Name',
+      auth_provider: 'local',
       created_at: '2024-01-10T10:00:00.000Z',
       updated_at: '2024-01-16T12:00:00.000Z',
     };
@@ -267,6 +272,7 @@ describe('Auth Service', () => {
         createdAt: mockUpdatedUser.created_at,
         updatedAt: mockUpdatedUser.updated_at,
         forcePasswordReset: false,
+        authProvider: 'local',
       });
       expect(result).not.toHaveProperty('password');
     });

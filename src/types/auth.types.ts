@@ -15,6 +15,7 @@ export interface TokenPayload {
   sub: string;       // user ID
   username: string;
   role: 'admin' | 'user';
+  authProvider?: 'local' | 'google';  // present for Google-authenticated users
   iat: number;
   exp: number;
 }
@@ -28,6 +29,7 @@ export interface UserProfile {
   createdAt: string;
   updatedAt: string;
   forcePasswordReset: boolean;       // Exposed to client
+  authProvider: 'local' | 'google';  // Authentication method
 }
 
 export interface CreateUserDto {
