@@ -16,7 +16,7 @@
 | Bedrock SDK | `@aws-sdk/client-bedrock-runtime` | ^3.700 |
 | Document parsing | `pdf-parse`, `mammoth`, `officeparser`, `cheerio`, `xlsx`, `turndown` + GFM | PDF, DOCX, PPTX, XLSX, HTML, Markdown output |
 | Office conversion | Gotenberg (sidecar Cloud Run service) | .doc, .ppt → PDF → text |
-| Auth | JWT (`jsonwebtoken`) + bcrypt | HS256, configurable expiry |
+| Auth | JWT (`jsonwebtoken`) + bcrypt + Google OAuth (`google-auth-library`) | HS256, local + Google sign-in |
 | File uploads | `multer` | Memory storage, 10MB/file, max 5 files |
 | Testing | Vitest | `@/` alias → `./src/*` |
 | Linting | ESLint 9 + `typescript-eslint` | Flat config |
@@ -50,13 +50,16 @@ src/
 │   ├── security.middleware.ts       # Security headers, rate limiters (login/API/inference)
 │   └── upload.middleware.ts         # Multer config, MIME whitelist, error handler
 ├── routes/
-│   ├── auth.routes.ts        # POST /login, POST /change-password
+│   ├── auth.routes.ts        # POST /login, POST /google, GET /google/config, POST /change-password
 │   ├── admin.routes.ts       # POST|PUT /users, GET /usage/cost, POST /users/bulk
 │   ├── models.routes.ts      # GET / (available models)
 │   ├── inference.routes.ts   # POST /generate (JSON + multipart), GET /sessions/active, POST /sessions/reset
 │   └── session.routes.ts     # GET /, GET /:id/messages, GET /:id/stats, POST /:id/resume
 ├── services/
-│   ├── auth.service.ts           # Login, JWT sign/verify, user CRUD
+│   ├── auth.service.ts           # Login, JWT sign/verify, user CRUD, Google OAuth (loginWithGoogle)
+│   ├── subagent-orchestrator.service.ts  # Plan → execute → synthesize multi-agent pipeline
+│   ├── subagent-executor.service.ts      # Parallel sub-agent execution with concurrency limit
+│   ├── subagent-synthesizer.service.ts   # Merge sub-agent results, per-agent token budget guard
 │   ├── session.service.ts        # Session lifecycle, messages CRUD, stats
 │   ├── inference.service.ts      # Bedrock ConverseStream/Converse/InvokeModel, retry, SSE, OCR, repair
 │   ├── routing-engine.service.ts # 17-skill classifier, refinement, scoring, policy, verification
@@ -67,7 +70,10 @@ src/
 │   ├── content-builder.service.ts      # Ordered content blocks for Bedrock Converse
 │   ├── document-extractor.service.ts   # PDF, DOCX, PPTX, XLSX, HTML, JSON, CSV, TXT, MD, XML (output: Markdown)
 ├── gotenberg.service.ts            # Legacy Office (.doc, .ppt) → PDF → text via Gotenberg
-│   ├── image-processor.service.ts      # Image buffer → base64 content block
+│   ├── prompts/
+│   ├── subagent-planner.prompt.ts    # Planner LLM system prompt (opt-out contract)
+│   └── subagent-synthesis.prompt.ts  # Synthesis LLM system prompt
+├── image-processor.service.ts      # Image buffer → base64 content block
 │   ├── upload-validator.service.ts     # Classify files → documents/images, MIME checks
 │   ├── audit.service.ts                # Fire-and-forget audit logs + pricing snapshots
 │   ├── cost-reporting.service.ts       # Per-user cost aggregation
@@ -85,6 +91,7 @@ src/
 │   ├── routing.types.ts         # RoutingInput, RoutingDecision, PromptContract, PolicyInput, SkillType
 │   ├── pii.types.ts
 │   ├── upload.types.ts          # DocumentFile, ImageFile, ExtractionResult, ContentBuildInput, ContentBlock
+│   ├── subagent.types.ts       # SubAgentSpec, SubAgentResult, OrchestrationMeta
 │   ├── audit.types.ts
 │   ├── pricing.types.ts
 │   ├── reporting.types.ts
@@ -102,7 +109,7 @@ migrations/
 ├── 008_session_facts.sql           # extracted_facts JSONB
 └── 009_add_group_name.sql          # group_name on users
 tests/
-└── unit/                           # ~20 test files mirror src/ structure
+└── unit/                           # 24 test files mirror src/ structure
 scripts/
 ├── seed-admin.ts                   # Creates admin/admin123
 └── (vendor scripts)
@@ -585,6 +592,9 @@ If `GOTENBERG_URL` is not configured or the service is unreachable, returns `{ c
 ## 12. Database Schema
 
 ### `users`
+- `google_id VARCHAR(255) UNIQUE` — Google OIDC sub claim (nullable)
+- `auth_provider VARCHAR(16)` — `'local'` or `'google'`, default `'local'`
+- `password` is now nullable — null for Google-authenticated users
 | Column | Type | Notes |
 |---|---|---|
 | id | UUID | PK |
@@ -619,6 +629,8 @@ If `GOTENBERG_URL` is not configured or the service is unreachable, returns `{ c
 | created_at | TIMESTAMPTZ | |
 
 ### `audit_logs`
+- `orchestration_meta JSONB` — sub-agent orchestration metadata (specs, results, timing)
+  — Only present when orchestrator runs (multiStep triggered)
 | Column | Type | Notes |
 |---|---|---|
 | id | UUID | PK |
@@ -675,7 +687,7 @@ If `GOTENBERG_URL` is not configured or the service is unreachable, returns `{ c
 - **Pure function tests**: `context-assembly`, `content-builder`, `pii-masker` — no mocking needed
 - **Route tests**: use `vi.mock` for all dependencies
 
-### Test files (23 total)
+### Test files (24 total)
 ```
 tests/unit/
 ├── admin.middleware.test.ts
@@ -733,3 +745,12 @@ tests/unit/
 - **Bulk user upsert**: `POST /api/v1/admin/users/bulk` — accepts array of users, validates schema, processes sequentially (create if missing, update if exists), returns per-item results with `{ username, action, success, error }`.
 - **groupName field**: Users have an optional `group_name` column for organizational grouping (e.g. "IT Business Enablement"). Supported in create, update, bulk upload, and cost reporting.
 - **Session restore**: `sessionStorage` shares JWT token between `/` and `/admin.html`. On page load, if token exists, it's verified via `GET /api/v1/models` and session is restored without re-login.
+
+- **Dedicated PG connection for locks**: `tryAcquireSessionLock()` uses `pool.connect()` to grab a dedicated client. The lock is acquired AND released on that same client via a returned `release()` closure. Fixes per-connection advisory lock issue where acquire/release could land on different pool connections.
+- **Google OAuth JIT provisioning**: `loginWithGoogle()` verifies Google ID token server-side (`google-auth-library`), then JIT-provisions via 3-step process: (1) find by `google_id`, (2) find by email and link, (3) INSERT. Max 3 retries on UNIQUE violation race condition.
+- **Sub-agent orchestration trigger guard**: Only triggers when skill IN `[compliance_pre_assessment, requirement_generation, document_qna]` AND complexity >= 4 AND prompt >= 120 chars (unless images present). Minimum 2 specs — single agent falls back to single-shot.
+- **Global refinement rules**: `GLOBAL_REFINEMENT_RULES` prepended to all 17 skill prompts at single injection point in `refinePrompt()`. Prevents refinement drift — outputs original prompt verbatim in `task` field, resolves conversational references in `context`.
+- **Session preview from assistant message**: Sidebar shows first assistant response (not user message), truncated to 60 chars. Markdown chars (`*`, `#`, `_`) stripped via SQL `REGEXP_REPLACE` before truncation.
+- **Sidebar cost synced with stats pill**: Session list query includes `estimated_cost` using actual model pricing from `model_pricing_snapshot` with blended average fallback. Frontend syncs cached cost after each turn and after viewing stats.
+- **Auth provider discriminator**: `users.auth_provider` (`'local'` | `'google'`). Google users have `password = NULL`. Local login and changePassword reject Google-linked accounts early.
+- **Few-shot contamination guard**: Translation few-shot removed (caused model regurgitation). All other entries use structural `{placeholders}` instead of realistic text to prevent memorization.
