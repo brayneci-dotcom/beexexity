@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>beexexity</title>
+  <title>be.ex.ex.ity</title>
   <style>
     @import url("https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap");
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -243,10 +243,12 @@
     }
 
     .header-center {
-      flex: 1;
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
       display: flex;
       justify-content: center;
-      min-width: 0;
+      align-items: center;
     }
 
     .header-right {
@@ -312,12 +314,32 @@
     .user-info {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
-      padding: 0.5rem 1rem;
-      background: var(--bg-secondary);
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .user-info:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    [data-theme="light"] .user-info {
+      width: auto;
+      height: auto;
       border-radius: 20px;
+      gap: 0.5rem;
+      padding: 0.25rem 0.75rem;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
       font-size: 0.875rem;
       color: var(--text-secondary);
+    }
+
+    [data-theme="light"] .user-info:hover {
+      background: var(--bg-tertiary);
     }
 
     .user-avatar {
@@ -1439,7 +1461,7 @@
 <!-- Login Screen -->
 <div id="login-screen">
   <div class="login-box">
-    <h1>beexexity</h1>
+    <h1>be.ex.ex.ity</h1>
     <div id="login-error" class="login-error" style="display:none"></div>
     <form onsubmit="event.preventDefault(); handleLogin();">
       <input type="text" id="username" placeholder="Username" autocomplete="username">
@@ -1503,7 +1525,7 @@
       <div class="header-left">
         <button class="sidebar-toggle" id="sidebar-toggle-header" onclick="toggleSidebar()" title="Toggle sidebar">☰</button>
         <button class="sidebar-toggle new-chat-toggle" id="new-chat-toggle" onclick="handleNewChat()" title="New Chat" style="display:none">+</button>
-        <div class="logo">beexexity</div>
+        <div class="logo">be.ex.ex.ity</div>
       </div>
       <div class="header-center">
         <div class="stats-pill">
@@ -1532,9 +1554,9 @@
         </button>
         <div class="user-info" id="user-info" onclick="handleUserInfoClick()">
           <div class="user-avatar" id="user-avatar"></div>
-          <span id="user-badge"></span>
+
         </div>
-        <button class="logout-btn" onclick="handleLogout()">Logout</button>
+
       </div>
     </div>
 
@@ -1555,7 +1577,7 @@
 
     <div class="messages" id="messages">
       <div class="empty-state">
-        <h2>How can I help you today?</h2>
+        <h2 id="greeting">Hi, Ask me anything</h2>
         <p>Ask anything. Your data is automatically masked for compliance before processing.</p>
       </div>
     </div>
@@ -1572,7 +1594,7 @@
             </svg>
           </button>
 
-          <textarea id="prompt-input" placeholder="Ask anything..." rows="1" onkeydown="handleKeyDown(event)"></textarea>
+          <textarea id="prompt-input" placeholder="Ask be.ex.ex.ity" rows="1" onkeydown="handleKeyDown(event)"></textarea>
 
           <div class="input-controls">
             <div class="model-select-wrapper">
@@ -1743,9 +1765,12 @@ async function showChatScreen() {
   document.getElementById('password-reset-screen').style.display = 'none';
   document.getElementById('chat-screen').style.display = 'flex';
 
-  const userInitial = user.displayName.charAt(0).toUpperCase();
+  const userInitial = user.displayName?.charAt(0).toUpperCase() || 'U';
   document.getElementById('user-avatar').textContent = userInitial;
-  document.getElementById('user-badge').textContent = user.displayName;
+  const greetingEl = document.getElementById('greeting');
+  if (greetingEl && user.displayName) {
+    greetingEl.textContent = 'Hi ' + user.displayName + ', Ask me anything';
+  }
 
   // Load models from API
   try {
@@ -1977,7 +2002,7 @@ async function handleSend() {
         document.getElementById('prompt-input').placeholder = 'Ask anything...';
         document.getElementById('messages').innerHTML = `
           <div class="empty-state">
-            <h2>How can I help you today?</h2>
+            <h2 id="greeting">Hi, Ask me anything</h2>
             <p>Ask anything. Your data is automatically masked for compliance before processing.</p>
           </div>
         `;
@@ -2193,8 +2218,8 @@ async function handleSend() {
               document.getElementById('prompt-input').placeholder = 'Ask anything...';
               document.getElementById('messages').innerHTML = `
                 <div class="empty-state">
-                  <h2>How can I help you today?</h2>
-                  <p>Ask anything. Your data is automatically masked for compliance before processing.</p>
+                  <h2 id="greeting">Hi, Ask me anything</h2>
+                  <p>Ask me anything. Your request will be processed by LLM, Locally</p>
                 </div>
               `;
               updateCostBar();
@@ -2682,7 +2707,7 @@ function handleLogout() {
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('messages').innerHTML = `
     <div class="empty-state">
-      <h2>How can I help you today?</h2>
+      <h2 id="greeting">Hi, Ask me anything</h2>
       <p>Ask anything. Your data is automatically masked for compliance before processing.</p>
     </div>
   `;
@@ -2803,7 +2828,7 @@ async function handleNewChat() {
   document.getElementById('prompt-input').placeholder = 'Ask anything...';
   document.getElementById('messages').innerHTML = `
     <div class="empty-state">
-      <h2>How can I help you today?</h2>
+      <h2 id="greeting">Hi, Ask me anything</h2>
       <p>Ask anything. Your data is automatically masked for compliance before processing.</p>
     </div>
   `;
