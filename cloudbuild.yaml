@@ -7,7 +7,7 @@
 #   3. Deploy to Cloud Run with secrets from Secret Manager
 
 steps:
-  # Build and push the container image
+  # Build the container image
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
@@ -16,6 +16,12 @@ steps:
       - '-t'
       - '${_ARTIFACT_REGISTRY}/${PROJECT_ID}/${_SERVICE_NAME}/${_SERVICE_NAME}:latest'
       - '.'
+
+  # Push to Artifact Registry (explicit — images section alone may not resolve vars)
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - '${_ARTIFACT_REGISTRY}/${PROJECT_ID}/${_SERVICE_NAME}/${_SERVICE_NAME}:$COMMIT_SHA'
 
   # Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
