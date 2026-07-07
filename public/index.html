@@ -2516,14 +2516,18 @@ function formatMarkdown(text) {
       continue;
     }
 
-    // Close list if line is not a list item
+    // Close list if line is not a list item — instead treat as continuation
     const isUnorderedItem = /^[\-\*]\s+/.test(line);
     const isOrderedItem = /^\d+\.\s+/.test(line);
-    
+
     if (inList && !isUnorderedItem && !isOrderedItem && line.trim() !== '') {
-      html += listType === 'ul' ? '</ul>' : '</ol>';
-      inList = false;
-      listType = '';
+      // Append non-list line as continuation inside current <li>.
+      // Without this, LLM multi-line items ("1. Item
+   Detail
+2. Next")
+      // close </ol> prematurely and every item starts a new list at 1.
+      html += '<div style="margin:0 0 0.5rem 1.5rem">' + inlineFormat(line) + '</div>';
+      continue;
     }
     
     // Headers
