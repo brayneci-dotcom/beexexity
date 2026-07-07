@@ -65,10 +65,11 @@ export interface RoutingInput {
   maskedDocumentText?: string;      // Extracted + masked doc text
   hasImages: boolean;
   imageModelRequired: boolean;
-  routingState: 'auto' | 'manual';
+  routingState: 'auto' | 'auto_v2' | 'manual';
   manualModelId?: string;           // Set when routingState = 'manual'
   userId: string;
   conversationContext?: string;     // Compact recent-turns text for scoring (prior user messages, capped)
+  isAutoV2?: boolean;               // True when user selected auto_v2 mode (sent as modelId)
 }
 
 /**
@@ -77,7 +78,7 @@ export interface RoutingInput {
  */
 export interface RoutingDecision {
   executedModelId: string;
-  routingState: 'auto' | 'manual';
+  routingState: 'auto' | 'auto_v2' | 'manual';
   complexityScore: number;          // 1-5
   scoreBand: 'direct-answer' | 'moderate-reasoning' | 'advanced-reasoning';
   confidence: number;               // 0.0-1.0
@@ -91,6 +92,8 @@ export interface RoutingDecision {
   contract: PromptContract | null;  // structured contract from refinement
   /** True when sub-agent orchestration is triggered (skill+complexity gate). */
   multiStep?: boolean;
+  /** True when user selected auto_v2 mode in dropdown. */
+  isAutoV2?: boolean;
 
   // Per-step timing (ms) — populated by routeRequest()
   routingDurationMs?: number;
@@ -130,7 +133,7 @@ export interface PolicyInput {
   complexityScore: number;
   hasImages: boolean;
   isLongContext: boolean;
-  routingState: 'auto' | 'manual';
+  routingState: 'auto' | 'auto_v2' | 'manual';
   manualModelId?: string;
 }
 

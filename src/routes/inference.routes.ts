@@ -33,6 +33,7 @@ import type { RoutingMetadataEvent } from '../types/inference.types.js';
 import { DEFAULT_MODEL } from '../types/inference.types.js';
 import type { RoutingInput, RoutingDecision } from '../types/routing.types.js';
 import { orchestrate } from '../services/subagent-orchestrator.service.js';
+import { sequentialReasoner } from '../services/sequential-reasoning.service.js';
 import type { OrchestrationMeta } from '../types/subagent.types.js';
 import type { ContentBlock, DocumentContentBlock } from '../types/upload.types.js';
 import type { ConversationInferenceRequest, ConversationInferenceResult, BedrockMessage } from '../types/session.types.js';
@@ -275,13 +276,14 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
     const contextOutput = buildContext(historyMessages, maskedPrompt, contextConfig);
 
     // 9. Determine routing state and execute routing logic
-    const routingState: 'auto' | 'manual' = (!modelId || modelId.trim().length === 0) ? 'auto' : 'manual';
+    const isAutoV2 = validatedModelId === 'auto_v2';
+    const routingState: 'auto' | 'auto_v2' | 'manual' = isAutoV2 ? 'auto_v2' : (!modelId || modelId.trim().length === 0) ? 'auto' : 'manual';
 
     let executedModelId: string = validatedModelId;
     let effectivePrompt: string = maskedPrompt;
     let routingDecision: RoutingDecision | undefined;
 
-    if (routingState === 'auto') {
+    if (routingState === 'auto' || routingState === 'auto_v2') {
       // Use routing_payload from contextOutput as conversation context
       const conversationContext = contextOutput.routing_payload;
 
@@ -290,9 +292,10 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
         originalPrompt: maskedPrompt,
         hasImages: false,
         imageModelRequired: false,
-        routingState: 'auto',
+        routingState: isAutoV2 ? 'auto_v2' : 'auto',
         userId: user.sub,
         conversationContext,
+        isAutoV2,
       };
 
       try {
@@ -423,12 +426,40 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
     try {
       console.log(`[inference] Calling generate() with model=${resolveModelForInvocation(executedModelId)}, prompt length=${effectivePrompt.length}, history messages=${contextOutput.historyMessageCount}`);
 
-      // ── Orchestration Branch ─────────────────────────────────────────
-      // If routing engine determined multi-step orchestration is needed,
-      // route to the sub-agent orchestrator instead of standard generate().
+      // ── Orchestration / Sequential Reasoning Branch ────────────────
       let result: ConversationInferenceResult;
 
-      if (routingDecision?.multiStep) {
+      // auto_v2 mode: trigger sequential reasoning when complexity >= 4
+      if (routingDecision?.isAutoV2 && (routingDecision.complexityScore ?? 0) >= 4) {
+        const seqInput = {
+          originalPrompt: maskedPrompt,
+          refinedPrompt: effectivePrompt,
+          maskedDocumentText: undefined,
+          conversationHistory: inferenceMessages,
+          userId: user.sub,
+          sessionId,
+          username: user.username,
+          routingDecision,
+        };
+        console.log(`[inference] auto_v2 triggered: complexity=${routingDecision.complexityScore}, calling SequentialReasoner`);
+        const seqResult = await sequentialReasoner.execute(seqInput, res);
+
+        if (seqResult) {
+          console.log(`[inference] Sequential reasoning complete: ${seqResult.assistantText.length} chars, ${seqResult.stepResults.filter(r => r.status === 'success').length}/${seqResult.stepResults.length} steps`);
+          orchestrationMeta = seqResult.orchestrationMeta as any;
+          result = {
+            assistantText: seqResult.assistantText,
+            inputTokens: seqResult.orchestrationMeta.totalInputTokens,
+            outputTokens: seqResult.orchestrationMeta.totalOutputTokens,
+            modelId: executedModelId,
+            status: 'success',
+          };
+        } else {
+          // Planner returned null — fall back to standard generate
+          console.log('[inference] Sequential reasoning plan failed, falling back to single-shot generate()');
+          result = await generate(conversationRequest, res) as ConversationInferenceResult;
+        }
+      } else if (routingDecision?.multiStep) {
         const orchestratorOutput = await orchestrate({
           originalPrompt: maskedPrompt,
           conversationContext: contextOutput.routing_payload,
@@ -455,6 +486,14 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
         }
       } else {
         result = await generate(conversationRequest, res) as ConversationInferenceResult;
+      }
+
+      // Emit done event if not already emitted.
+      // generate() emits done internally. auto_v2 and multiStep paths bypass generate()
+      // and build their own result — they need an explicit done here.
+      // Duplicate done is harmless (frontend setStreaming(false) is idempotent).
+      if (routingDecision?.isAutoV2 || routingDecision?.multiStep) {
+        res.write('event: done\ndata: {}\n\n');
       }
 
       // 12. Run verifier if we have a contract
@@ -877,7 +916,8 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
     const contextOutput = buildContext(historyMessages, maskedPrompt, contextConfig);
 
   // Step 12: Determine routing state and execute routing logic
-  const routingState: 'auto' | 'manual' = (!modelId || modelId.trim().length === 0) ? 'auto' : 'manual';
+  const isAutoV2 = validatedModelId === 'auto_v2';
+  const routingState: 'auto' | 'auto_v2' | 'manual' = isAutoV2 ? 'auto_v2' : (!modelId || modelId.trim().length === 0) ? 'auto' : 'manual';
 
   let executedModelId: string = validatedModelId;
   let routingEffectivePrompt: string = maskedPrompt;
@@ -886,7 +926,7 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
   // Combine masked document texts for routing context
   const maskedDocTextCombined = maskedDocumentExtractions.map(d => d.text).filter(Boolean).join('\n');
 
-  if (routingState === 'auto') {
+  if (routingState === 'auto' || routingState === 'auto_v2') {
     // Use routing_payload from contextOutput as conversation context
     const conversationContext = contextOutput.routing_payload;
 
@@ -896,9 +936,10 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
       maskedDocumentText: maskedDocTextCombined || undefined,
       hasImages: images.length > 0,
       imageModelRequired: images.length > 0,
-      routingState: 'auto',
+      routingState: isAutoV2 ? 'auto_v2' : 'auto',
       userId: user.sub,
       conversationContext,
+      isAutoV2,
     };
 
     try {
@@ -1077,6 +1118,14 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
     }
   }
 
+  // Use OCR-extracted text as effective document content when available.
+  // The document extractor may return empty for image-heavy files (PPTX, scanned PDFs)
+  // while the OCR pipeline extracts the real content. Without this override, the
+  // orchestrator (sub-agent or sequential reasoning) receives empty context.
+  const effectiveDocText = ocrText && ocrText.trim().length > 0
+    ? ocrText.slice(0, config.orchestration.largeDocumentThreshold)
+    : (maskedDocTextCombined || undefined);
+
   // Step 14: Set SSE headers
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -1153,12 +1202,42 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
 
   try {  // middle try — wraps generate, verifier, storage, audit; catch is main error handler below
 
-  // ── Orchestration Branch ─────────────────────────────────────────
-  // Check if routing engine determined multi-step orchestration is needed
-  if (routingDecision?.multiStep) {
+  // ── Orchestration / Sequential Reasoning Branch ────────────────
+  // auto_v2 mode: trigger sequential reasoning when complexity >= 4
+  if (!result && routingDecision?.isAutoV2 && (routingDecision.complexityScore ?? 0) >= 4) {
+    const seqInput = {
+      originalPrompt: maskedPrompt,
+      refinedPrompt: routingEffectivePrompt,
+      maskedDocumentText: effectiveDocText,
+      conversationHistory: inferenceMessages,
+      userId: user.sub,
+      sessionId,
+      username: user.username,
+      routingDecision,
+    };
+    console.log(`[inference-multipart] auto_v2 triggered: complexity=${routingDecision.complexityScore}, calling SequentialReasoner`);
+    const seqResult = await sequentialReasoner.execute(seqInput, res);
+
+    if (seqResult) {
+      console.log(`[inference-multipart] Sequential reasoning complete: ${seqResult.assistantText.length} chars, ${seqResult.stepResults.filter(r => r.status === 'success').length}/${seqResult.stepResults.length} steps`);
+      orchestrationMeta = seqResult.orchestrationMeta as any;
+      result = {
+        assistantText: seqResult.assistantText,
+        inputTokens: seqResult.orchestrationMeta.totalInputTokens,
+        outputTokens: seqResult.orchestrationMeta.totalOutputTokens,
+        modelId: finalExecutedModelId,
+        status: 'success',
+      };
+    } else {
+      console.log('[inference-multipart] Sequential reasoning plan failed, falling back to standard generate');
+    }
+  }
+
+  // Check if routing engine determined multi-step orchestration is needed (legacy)
+  if (!result && routingDecision?.multiStep) {
     const orchestratorOutput = await orchestrate({
       originalPrompt: maskedPrompt,
-      maskedDocumentText: maskedDocTextCombined || undefined,
+      maskedDocumentText: effectiveDocText,
       conversationContext: contextOutput.routing_payload,
       routingDecision,
       sessionId,
@@ -1221,6 +1300,11 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
         throw firstErr;
       }
     }
+  }
+
+  // Emit done event for non-generate paths (same reason as JSON handler above)
+  if (routingDecision?.isAutoV2 || routingDecision?.multiStep) {
+    res.write('event: done\ndata: {}\n\n');
   }
 
   // Verifier + auto-repair for multipath handler

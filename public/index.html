@@ -1788,6 +1788,12 @@ async function showChatScreen() {
     autoOpt.selected = true;
     select.appendChild(autoOpt);
 
+    // Add "Thinking" experimental option
+    const autoV2Opt = document.createElement('option');
+    autoV2Opt.value = 'auto_v2';
+    autoV2Opt.textContent = 'Thinking';
+    select.appendChild(autoV2Opt);
+
     data.models.forEach(m => {
       const opt = document.createElement('option');
       opt.value = m.modelId;
@@ -1867,6 +1873,7 @@ function getModelDisplayName(modelId) {
     'qwen.qwen3-32b-v1:0': 'Qwen3 32B',
     'qwen.qwen3-235b-a22b-2507-v1:0': 'Qwen3 235B',
     'openai.gpt-oss-120b-1:0': 'GPT OSS 120B',
+    'auto_v2': 'Thinking',
   };
   return MODEL_DISPLAY_NAMES[modelId] || modelId;
 }
@@ -1923,6 +1930,7 @@ async function handleSend() {
     `<details id="status-panel" style="font-size:0.85em;color:var(--text-tertiary)">
       <summary style="cursor:pointer;user-select:none;font-weight:500">🧠 Background Process</summary>
       <div id="step-status" style="margin-top:6px;line-height:1.6"><span style="color:var(--accent)">⏳ Initializing...</span></div>
+      <div id="seq-steps" style="margin-top:8px;display:none"></div>
       <div id="tech-details" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);display:none"></div>
     </details>
     <div class="assistant-text-content"></div>`;
@@ -1935,6 +1943,9 @@ async function handleSend() {
   let subAgentTotal = 0;
   let subAgentDone = 0;
   let subAgentSpecs = {};
+  // Sequential reasoning tracking
+  let seqStepTotal = 0;
+  let seqStepCurrent = 0;
 
   try {
     let res;
@@ -2128,9 +2139,13 @@ async function handleSend() {
             if (step) step.innerHTML = '<span style=\'color:var(--accent)\'>🔍 Analyzing request...</span>';
             } catch (e) { console.error('[ui] Tech details error:', e); }
           } else if (eventType === 'orchestration_plan') {
-            // Sub-agent plan received — show agent assignments with tasks
+            // Sequential reasoning plan received
             const stepStatus = document.getElementById('step-status');
-            if (stepStatus && data.specs) {
+            const seqSteps = document.getElementById('seq-steps');
+            if (!stepStatus) continue;
+
+            // Handle legacy sub-agent format (data.specs)
+            if (data.specs) {
               subAgentTotal = data.specs.length;
               subAgentSpecs = {};
               let html = '<span style=\'color:var(--accent)\'>🧩 Breaking into ' + subAgentTotal + ' sub-agents</span>';
@@ -2142,8 +2157,81 @@ async function handleSend() {
               }
               stepStatus.innerHTML = html;
             }
+
+            // Handle new sequential reasoning format (data.steps)
+            if (data.steps && seqSteps) {
+              seqStepTotal = data.steps.length;
+              seqStepCurrent = 0;
+              seqSteps.style.display = 'flex';
+              stepStatus.innerHTML = '<span style=\'color:var(--accent)\'>🧠 Planning ' + seqStepTotal + ' reasoning steps</span>';
+              let stepsHtml = '';
+              for (const s of data.steps) {
+                stepsHtml += '<div class="seq-step" data-step="' + s.order + '" style="display:flex;align-items:center;gap:6px;margin:2px 0;font-size:0.85em;opacity:0.5">' +
+                  '<span class="seq-step-icon" style="width:18px;text-align:center">○</span>' +
+                  '<span class="seq-step-name">' + escapeHtml(s.name) + '</span>' +
+                '</div>';
+              }
+              seqSteps.innerHTML = stepsHtml;
+            }
+          } else if (eventType === 'orchestration_status') {
+            // Sequential reasoning step progress
+            const seqSteps = document.getElementById('seq-steps');
+            if (!seqSteps) continue;
+            seqStepCurrent = data.step;
+            const stepEl = seqSteps.querySelector('.seq-step[data-step="' + data.step + '"]');
+            if (stepEl) {
+              const icon = stepEl.querySelector('.seq-step-icon');
+              if (icon) {
+                if (data.status === 'running') {
+                  icon.textContent = '⏳';
+                  stepEl.style.opacity = '1';
+                } else if (data.status === 'completed') {
+                  icon.textContent = '✅';
+                  stepEl.style.opacity = '0.7';
+                  if (data.durationMs) {
+                    const nameEl = stepEl.querySelector('.seq-step-name');
+                    if (nameEl) nameEl.textContent += ' (' + (data.durationMs / 1000).toFixed(1) + 's)';
+                  }
+                } else if (data.status === 'failed') {
+                  icon.textContent = '❌';
+                  stepEl.style.opacity = '0.7';
+                }
+              }
+            }
+            const stepStatus = document.getElementById('step-status');
+            if (stepStatus && data.status === 'running') {
+              stepStatus.innerHTML = '<span style=\'color:var(--accent)\'>🔍 ' + escapeHtml(data.description || data.name) + '</span>';
+            }
+          } else if (eventType === 'orchestration_interim') {
+            // Progressive synthesis - interim insights
+            const stepStatus = document.getElementById('step-status');
+            if (stepStatus && data.insight) {
+              const existing = stepStatus.querySelector('.interim-insight');
+              if (existing) existing.remove();
+              const div = document.createElement('div');
+              div.className = 'interim-insight';
+              div.style.cssText = 'margin-top:6px;padding:6px 8px;background:var(--bg-tertiary);border-radius:8px;font-size:0.85em;color:var(--text-secondary);border-left:2px solid var(--accent)';
+              div.innerHTML = '<b style="color:var(--text-primary)">📊 Interim (' + data.step + '/' + data.total + '):</b><br>' + escapeHtml(data.insight);
+              stepStatus.appendChild(div);
+            }
+          } else if (eventType === 'orchestration_error') {
+            // Step failure
+            const seqSteps = document.getElementById('seq-steps');
+            if (seqSteps) {
+              const stepEl = seqSteps.querySelector('.seq-step[data-step="' + data.step + '"]');
+              if (stepEl) {
+                const icon = stepEl.querySelector('.seq-step-icon');
+                if (icon) icon.textContent = '⚠️';
+                stepEl.style.opacity = '0.6';
+                if (data.reason) stepEl.title = data.reason;
+              }
+            }
+            const stepStatus = document.getElementById('step-status');
+            if (stepStatus) {
+              stepStatus.innerHTML += '<br><span style=\'color:#e6a817\'>⚠️ ' + escapeHtml(data.name) + ' — ' + escapeHtml(data.reason || 'failed') + '</span>';
+            }
           } else if (eventType === 'subagent_delta') {
-            // Per-agent progress update
+            // Legacy sub-agent progress (backward compat)
             if (data.status === 'done' || data.status === 'failed') {
               subAgentDone++;
               const icon = data.status === 'done' ? '✅' : '❌';
@@ -3020,8 +3108,8 @@ function checkModelCompatibility() {
   // Check if any attached files are images
   const hasImages = attachedFiles.some(f => f.type.startsWith('image/'));
 
-  // If auto mode (empty value) or no images, no warning needed
-  if (!modelId || !hasImages || capability !== 'text-only') {
+  // If auto mode (empty value), auto_v2, or no images, no warning needed
+  if (!modelId || modelId === 'auto_v2' || !hasImages || capability !== 'text-only') {
     warningEl.classList.remove('visible');
   } else {
     warningEl.classList.add('visible');

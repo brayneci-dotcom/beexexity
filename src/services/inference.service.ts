@@ -184,6 +184,11 @@ export function validateModelId(modelId?: string): string {
     return DEFAULT_MODEL;
   }
 
+  // auto_v2 is a pseudo-model — accepted as valid, triggers sequential reasoning in routes
+  if (modelId === 'auto_v2') {
+    return 'auto_v2';
+  }
+
   // Check if the provided modelId is in the allowed list
   if (!ALLOWED_MODELS.includes(modelId as typeof ALLOWED_MODELS[number])) {
     const error = new Error(

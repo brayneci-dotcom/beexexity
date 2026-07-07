@@ -1,0 +1,500 @@
+/**
+ * Sequential Reasoning Engine — auto_v2 mode.
+ *
+ * For complex requests (complexity >= 4), generates a step-by-step execution
+ * plan, executes steps sequentially with accumulated context, performs
+ * progressive synthesis, and always runs a final synthesizer layer.
+ *
+ * @see docs/feature-sequential-reasoning/
+ */
+
+import { ConverseCommand, ConverseStreamCommand } from '@aws-sdk/client-bedrock-runtime';
+import { bedrockClient } from './inference.service.js';
+import { mask } from './pii-masker.service.js';
+import { auditService } from './audit.service.js';
+import { config } from '../config/index.js';
+import type {
+  SequentialPlan,
+  SequentialStep,
+  StepResult,
+  SequentialOrchestrationMeta,
+  OrchestrationStatusEvent,
+} from '../types/inference.types.js';
+import type { RoutingDecision } from '../types/routing.types.js';
+import type { Response } from 'express';
+import { v4 as uuidv4 } from 'uuid';
+
+/** Default max tokens for step-level Bedrock calls. */
+const STEP_MAX_TOKENS = 8192;
+/** Quick synthesis uses same default but smaller model. */
+const INTERIM_MAX_TOKENS = 2048;
+/** Timeout per step Bedrock call. */
+const STEP_TIMEOUT_MS = 60_000;
+
+export interface SequentialReasoningInput {
+  originalPrompt: string;           // PII-masked
+  refinedPrompt: string;            // Post-routing refined
+  maskedDocumentText?: string;      // For map-reduce trigger
+  conversationHistory: Array<{ role: 'user' | 'assistant'; content: any }>;
+  userId: string;
+  sessionId: string;
+  username: string;
+  routingDecision: RoutingDecision;
+}
+
+export interface SequentialReasoningResult {
+  assistantText: string;
+  plan: SequentialPlan;
+  stepResults: StepResult[];
+  synthesisStatus: 'success' | 'partial' | 'failed';
+  orchestrationMeta: SequentialOrchestrationMeta;
+}
+
+class SequentialReasoner {
+  private readonly cfg = config.orchestration;
+
+  /**
+   * Main entry point.
+   * Returns null if planner decides sequential reasoning isn't needed
+   * (caller falls back to standard single-shot generate).
+   */
+  async execute(input: SequentialReasoningInput, res: Response): Promise<SequentialReasoningResult | null> {
+    const startTime = Date.now();
+    const orchestrationGroupId = uuidv4();
+
+    // ── Planner ──────────────────────────────────────────────────
+    const plan = await this.planner(input);
+    if (!plan || plan.steps.length < 2) {
+      console.log('[seq-reasoning] Planner returned <2 steps — falling back to single-shot');
+      return null;
+    }
+
+    // Emit plan SSE
+    this.emitPlanEvent(res, plan);
+    console.log(`[seq-reasoning] Plan: ${plan.steps.length} steps — ${plan.steps.map(s => s.name).join(' → ')}`);
+
+    // Audit planner call
+    auditService.log({
+      timestamp: new Date().toISOString(),
+      userId: input.userId,
+      username: input.username,
+      modelId: this.resolveModel(input.routingDecision),
+      inputTokens: 0,  // Will be updated after actual call
+      outputTokens: 0,
+      status: 'success',
+      durationMs: 0,
+      routingState: 'auto_v2',
+      orchestrationGroupId,
+      orchestrationStepOrder: 0,
+    }).catch(() => {});
+
+    // ── Executor ─────────────────────────────────────────────────
+    // Initialize accumulated context with document text and conversation history
+    // so steps can reference original content instead of hallucinating.
+    const contextParts: string[] = [];
+    if (input.maskedDocumentText) {
+      contextParts.push(`[Uploaded Document]\n${input.maskedDocumentText}`);
+    }
+    if (input.conversationHistory.length > 0) {
+      const historyText = input.conversationHistory
+        .map(m => `[${m.role.toUpperCase()}]\n${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`)
+        .join('\n\n');
+      contextParts.push(`[Conversation History]\n${historyText}`);
+    }
+    let accumulatedContext = contextParts.length > 0 ? contextParts.join('\n\n') + '\n\n' : '';
+    const stepResults: StepResult[] = [];
+
+    for (let i = 0; i < plan.steps.length; i++) {
+      const step = plan.steps[i];
+      const stepStart = Date.now();
+      let stepStatus: StepResult['status'] = 'success';
+      let stepOutput = '';
+      let retryCount = 0;
+      let errorMsg: string | undefined;
+
+      // Emit status: running
+      this.emitStatusEvent(res, step, plan.steps.length, 'running');
+
+      for (let attempt = 0; attempt < this.cfg.stepRetryCount; attempt++) {
+        retryCount = attempt;
+        const useSimplified = attempt >= 1;
+        const prompt = this.buildStepPrompt(step, accumulatedContext, useSimplified);
+
+        try {
+          // PII mask step input
+          const maskedPrompt = mask(prompt).maskedText;
+
+          // Run step
+          stepOutput = await this.callStepModel(step, maskedPrompt);
+          if (!stepOutput || stepOutput.trim().length === 0) {
+            throw new Error('Step produced empty output');
+          }
+
+          // PII mask step output (fail-closed)
+          const maskedOutput = mask(stepOutput).maskedText;
+          stepOutput = maskedOutput;
+
+          // Append to accumulated context
+          accumulatedContext += `\n\n[Step ${step.order}: ${step.name}]\n${stepOutput}`;
+          stepStatus = 'success';
+          break; // success
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.warn(`[seq-reasoning] Step ${step.order} attempt ${attempt + 1} failed: ${msg}`);
+          if (attempt < this.cfg.stepRetryCount - 1) {
+            continue; // retry
+          }
+          stepStatus = 'failed';
+          errorMsg = msg;
+        }
+      }
+
+      const durationMs = Date.now() - stepStart;
+
+      if (stepStatus === 'failed') {
+        // Emit error event
+        res.write(`event: orchestration_error\ndata: ${JSON.stringify({
+          step: step.order,
+          name: step.name,
+          reason: errorMsg || 'Step failed after retries',
+        })}\n\n`);
+
+        // Emit status: failed
+        this.emitStatusEvent(res, step, plan.steps.length, 'failed', durationMs);
+      } else {
+        // Emit step output via SSE
+        res.write(`event: orchestration_step\ndata: ${JSON.stringify({ step: step.order, content: stepOutput })}\n\n`);
+
+        // Emit status: completed
+        this.emitStatusEvent(res, step, plan.steps.length, 'completed', durationMs);
+      }
+
+      const stepTokens = this.estimateTokens(stepOutput);
+      stepResults.push({
+        order: step.order,
+        status: stepStatus,
+        inputTokens: stepTokens,
+        outputTokens: stepTokens,
+        durationMs,
+        retryCount,
+        errorMessage: errorMsg,
+      });
+
+      // Audit per step
+      auditService.log({
+        timestamp: new Date().toISOString(),
+        userId: input.userId,
+        username: input.username,
+        modelId: step.modelId,
+        inputTokens: stepTokens,
+        outputTokens: stepTokens,
+        status: stepStatus === 'success' ? 'success' : 'failed',
+        durationMs,
+        routingState: 'auto_v2',
+        sessionId: input.sessionId,
+        orchestrationGroupId,
+        orchestrationStepOrder: step.order,
+      }).catch(() => {});
+
+      // ── Progressive synthesis ───────────────────────────────
+      if (this.cfg.progressiveInterval > 0 && (step.order % this.cfg.progressiveInterval === 0)) {
+        await this.emitInterimSynthesis(res, accumulatedContext, step, plan.steps.length);
+      }
+    }
+
+    // ── Synthesizer (always runs) ─────────────────────────────────
+    const synthesisStatus = stepResults.some(r => r.status === 'success')
+      ? ('partial' as const)
+      : ('failed' as const);
+    const allSuccess = stepResults.every(r => r.status === 'success');
+    const finalStatus = allSuccess ? 'success' as const : synthesisStatus;
+
+    let assistantText: string;
+    try {
+      assistantText = await this.synthesizer(input, plan, accumulatedContext, stepResults, res);
+    } catch (err: unknown) {
+      const synthesisErr = err instanceof Error ? err.message : String(err);
+      console.error(`[seq-reasoning] Synthesizer failed: ${synthesisErr}`);
+      // Fallback: emit accumulated context as raw response
+      assistantText = accumulatedContext || input.refinedPrompt;
+    }
+
+    // Stream final text as standard delta events
+    res.write(`event: delta\ndata: ${JSON.stringify({ type: 'text', content: assistantText })}\n\n`);
+
+    const totalDurationMs = Date.now() - startTime;
+    const totalInputTokens = stepResults.reduce((s, r) => s + r.inputTokens, 0);
+    const totalOutputTokens = stepResults.reduce((s, r) => s + r.outputTokens, 0);
+
+    const orchestrationMeta: SequentialOrchestrationMeta = {
+      plan: { steps: plan.steps.map(s => ({ name: s.name, description: s.description })) },
+      stepResults,
+      synthesisStatus: finalStatus,
+      totalInputTokens,
+      totalOutputTokens,
+      totalDurationMs,
+    };
+
+    return {
+      assistantText,
+      plan,
+      stepResults,
+      synthesisStatus: finalStatus,
+      orchestrationMeta,
+    };
+  }
+
+  // ── Planner ───────────────────────────────────────────────────
+
+  private async planner(input: SequentialReasoningInput): Promise<SequentialPlan | null> {
+    const modelId = this.resolveModel(input.routingDecision);
+
+    // Detect map-reduce need
+    const isLargeDoc = (input.maskedDocumentText?.length ?? 0) > this.cfg.largeDocumentThreshold;
+
+    // Build system prompt describing the task
+    const systemPrompt = `You are a reasoning planner. Analyze the user request and generate a step-by-step execution plan.
+
+Rules:
+- Output a JSON object with "steps" array and "reasoning" string
+- Each step has: order (1-indexed), name (short), description (one line), systemPrompt (instructions for that step), modelId ("${modelId}")
+- Plan must have between 2 and ${this.cfg.maxSequentialSteps} steps
+- Each step should build on the previous one${isLargeDoc ? '\n- Step 1 MUST be a "Data Cruncher" step: condense the document to key facts (~2000 chars). Subsequent steps analyze the condensed summary.' : ''}
+- The FINAL step is the synthesizer: it must produce a cohesive, conversational response incorporating all prior step findings
+- Keep system prompts concise but specific to each step's goal
+
+CRITICAL RULE — DO NOT OVER-DECOMPOSE NARRATIVE TASKS:
+If the user asks for a comprehensive evaluation, report, essay, or summary of a document, DO NOT break it into multiple sequential steps (e.g., do not separate "parsing", "analyzing", and "synthesizing" into different steps).
+These are cohesive narrative tasks that should be handled in a SINGLE step or by falling back to standard generation (return empty array).
+Only use multiple steps if the task requires distinctly separate analytical phases with different outputs (e.g., "Extract financial data" THEN "Check compliance against BI regulations").
+
+User request: ${input.refinedPrompt}`;
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30_000);
+
+      const command = new ConverseCommand({
+        modelId,
+        messages: [{ role: 'user' as const, content: [{ text: systemPrompt }] }],
+        inferenceConfig: { maxTokens: 4096, temperature: 0.2 },
+      });
+
+      const response = await bedrockClient.send(command, { abortSignal: controller.signal });
+      clearTimeout(timeout);
+
+      const text = response.output?.message?.content?.[0]?.text ?? '';
+      const plan = this.parsePlan(text, modelId, isLargeDoc);
+
+      if (!plan || plan.steps.length < 2) {
+        console.warn('[seq-reasoning] Planner: invalid/empty plan');
+        return null;
+      }
+
+      return plan;
+    } catch (err: unknown) {
+      console.warn('[seq-reasoning] Planner failed:', err instanceof Error ? err.message : String(err));
+      return null;
+    }
+  }
+
+  /** Parse planner LLM response into SequentialPlan. */
+  private parsePlan(text: string, defaultModelId: string, isLargeDoc: boolean): SequentialPlan | null {
+    try {
+      // Find JSON block in response
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) return null;
+
+      const parsed = JSON.parse(jsonMatch[0]);
+
+      if (!Array.isArray(parsed.steps) || parsed.steps.length < 2) return null;
+
+      const steps: SequentialStep[] = parsed.steps.map((s: any, i: number) => ({
+        order: i + 1,
+        name: s.name || `Step ${i + 1}`,
+        description: s.description || '',
+        systemPrompt: s.systemPrompt || 'Continue the analysis.',
+        modelId: s.modelId || defaultModelId,
+      }));
+
+      // Enforce max steps
+      const capped = steps.slice(0, this.cfg.maxSequentialSteps);
+
+      return {
+        steps: capped,
+        reasoning: parsed.reasoning || '',
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  // ── Step Execution ────────────────────────────────────────────
+
+  /** Build step prompt = step system prompt + accumulated context. */
+  private buildStepPrompt(step: SequentialStep, accumulatedContext: string, simplified: boolean): string {
+    if (simplified) {
+      // Strip formatting, keep essential context
+      const trimmed = accumulatedContext.length > 8000
+        ? accumulatedContext.slice(-8000)
+        : accumulatedContext;
+      return `Continue from previous steps.\n\n${trimmed}\n\nNow: ${step.description}`;
+    }
+
+    return `${step.systemPrompt}\n\nPrevious context:\n${accumulatedContext || 'No prior context available.'}`;
+  }
+
+  /** Call Bedrock for a single step (non-streaming). Returns step output text. */
+  private async callStepModel(step: SequentialStep, prompt: string): Promise<string> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), STEP_TIMEOUT_MS);
+
+    try {
+      const command = new ConverseCommand({
+        modelId: step.modelId,
+        messages: [{ role: 'user' as const, content: [{ text: prompt }] }],
+        inferenceConfig: { maxTokens: STEP_MAX_TOKENS, temperature: 0.3 },
+      });
+
+      const response = await bedrockClient.send(command, { abortSignal: controller.signal });
+      return response.output?.message?.content?.[0]?.text ?? '';
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  // ── Synthesizer (always-execute final layer) ───────────────────
+
+  private async synthesizer(
+    input: SequentialReasoningInput,
+    plan: SequentialPlan,
+    accumulatedContext: string,
+    stepResults: StepResult[],
+    res: Response,
+  ): Promise<string> {
+    const completedCount = stepResults.filter(r => r.status === 'success').length;
+    const skippedSteps = stepResults.filter(r => r.status === 'failed' || r.status === 'skipped')
+      .map(r => `Step ${r.order}: ${r.errorMessage || 'failed'}`);
+
+    let synthPrompt: string;
+
+    if (completedCount === 0) {
+      // All steps failed — fallback to direct response
+      synthPrompt = `The user asked: ${input.refinedPrompt}\n\nPlease provide a direct, comprehensive response.`;
+    } else {
+      const gaps = skippedSteps.length > 0
+        ? `\n\nNote: The following steps could not complete:\n${skippedSteps.join('\n')}\n\nAcknowledge these gaps and provide the best response possible.`
+        : '';
+
+      synthPrompt = `You are a synthesis expert. Combine the findings from the step-by-step analysis into one cohesive, narrative response.
+
+Completed steps: ${completedCount}/${stepResults.length}
+${gaps}
+
+Analysis output:
+${accumulatedContext}
+
+Provide a well-structured final response that reads naturally, resolves any contradictions, and directly addresses the user's original request.`;
+    }
+
+    const modelId = this.resolveModel(input.routingDecision);
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), STEP_TIMEOUT_MS);
+
+      const command = new ConverseCommand({
+        modelId,
+        messages: [{ role: 'user' as const, content: [{ text: synthPrompt }] }],
+        inferenceConfig: { maxTokens: STEP_MAX_TOKENS, temperature: 0.3 },
+      });
+
+      const response = await bedrockClient.send(command, { abortSignal: controller.signal });
+      return response.output?.message?.content?.[0]?.text ?? (accumulatedContext || input.refinedPrompt);
+    } catch (err: unknown) {
+      console.error('[seq-reasoning] Synthesizer error:', err instanceof Error ? err.message : String(err));
+      // Return what we have
+      return accumulatedContext || input.refinedPrompt;
+    }
+  }
+
+  // ── Progressive Synthesis ──────────────────────────────────────
+
+  /** Emit interim synthesis every N steps using cheap model (qwen3-32b). */
+  private async emitInterimSynthesis(
+    res: Response,
+    accumulatedContext: string,
+    step: SequentialStep,
+    total: number,
+  ): Promise<void> {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 20_000);
+
+      const command = new ConverseCommand({
+        modelId: 'qwen.qwen3-32b-v1:0',
+        messages: [{
+          role: 'user' as const,
+          content: [{ text: `Summarize the key findings so far in 2-3 sentences:\n\n${accumulatedContext}` }],
+        }],
+        inferenceConfig: { maxTokens: INTERIM_MAX_TOKENS, temperature: 0.1 },
+      });
+
+      const response = await bedrockClient.send(command, { abortSignal: controller.signal });
+      clearTimeout(timeout);
+
+      const insight = response.output?.message?.content?.[0]?.text ?? '';
+
+      if (insight.trim()) {
+        res.write(`event: orchestration_interim\ndata: ${JSON.stringify({
+          step: step.order,
+          total,
+          insight,
+        })}\n\n`);
+      }
+    } catch {
+      // Progressive synthesis is best-effort — silence errors
+    }
+  }
+
+  // ── SSE Emitters ──────────────────────────────────────────────
+
+  private emitPlanEvent(res: Response, plan: SequentialPlan): void {
+    res.write(`event: orchestration_plan\ndata: ${JSON.stringify({
+      steps: plan.steps.map(s => ({ order: s.order, name: s.name, description: s.description })),
+      reasoning: plan.reasoning,
+    })}\n\n`);
+  }
+
+  private emitStatusEvent(
+    res: Response,
+    step: SequentialStep,
+    total: number,
+    status: OrchestrationStatusEvent['status'],
+    durationMs?: number,
+  ): void {
+    const event: OrchestrationStatusEvent = {
+      step: step.order,
+      total,
+      name: step.name,
+      description: step.description,
+      status,
+      durationMs,
+    };
+    res.write(`event: orchestration_status\ndata: ${JSON.stringify(event)}\n\n`);
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────
+
+  private resolveModel(rd: RoutingDecision): string {
+    // Use executed model from routing, default to qwen3-235b
+    return rd.executedModelId || 'qwen.qwen3-235b-a22b-2507-v1:0';
+  }
+
+  /** Rough token estimate: ~4 chars per token. */
+  private estimateTokens(text: string): number {
+    return Math.ceil((text?.length || 0) / 4);
+  }
+}
+
+export const sequentialReasoner = new SequentialReasoner();

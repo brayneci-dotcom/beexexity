@@ -88,6 +88,18 @@ export const config = {
     /** Max tokens per agent before per-agent summarization is triggered. */
     tokenBudget: parseInt(process.env.SUBAGENT_TOKEN_BUDGET || '30000', 10),
   },
+  orchestration: {
+    /** Max steps in a sequential reasoning plan (2-10). */
+    maxSequentialSteps: parseInt(process.env.MAX_SEQUENTIAL_STEPS || '6', 10),
+    /** Char threshold for map-reduce — documents larger trigger Step 1 Data Cruncher. */
+    largeDocumentThreshold: parseInt(process.env.LARGE_DOCUMENT_THRESHOLD || '50000', 10),
+    /** Max wall-clock for full orchestration before abort. */
+    orchestrationTimeoutMs: parseInt(process.env.ORCHESTRATION_TIMEOUT_MS || '120000', 10),
+    /** Max attempts per step before skipping. */
+    stepRetryCount: parseInt(process.env.STEP_RETRY_COUNT || '2', 10),
+    /** Emit interim synthesis every N steps (0 = disabled). */
+    progressiveInterval: parseInt(process.env.PROGRESSIVE_INTERVAL || '3', 10),
+  },
   session: {
     expiryHours: parseInt(process.env.SESSION_EXPIRY_HOURS || '24', 10),
     tokenBudget: parseInt(process.env.SESSION_TOKEN_BUDGET || '200000', 10),

@@ -65,13 +65,17 @@ function parseRefinementContract(raw: string): {
     : [];
   const clarificationNeeded = parsed.clarification_needed === true;
 
-  // Build flowing text (unchanged — backward compat)
+  // Build flowing text — use values directly without English sentence framing.
+  // The refinement model produces role/context/task/intent in the user's language
+  // (per LANGUAGE_PRESERVATION rules). English wrappers like "Your task is to..."
+  // bias the inference model to respond in English, even when the input was Indonesian.
   const parts: string[] = [];
-  if (role) parts.push(`You are a ${role}.`);
-  if (context) parts.push(context);
-  if (task) parts.push(`Your task is to ${task}.`);
-  if (intent) parts.push(`The goal is to ${intent}.`);
-  const flowingText = parts.length > 0 ? parts.join(' ') : null;
+  if (task) parts.push(task);           // Original prompt verbatim (per refinement rules)
+  if (context && task) parts.push('\n\n---\n' + context);
+  else if (context) parts.push(context);
+  if (role && task) parts.push('\n\nRole: ' + role);
+  else if (role) parts.push(role);
+  const flowingText = parts.length > 0 ? parts.join('') : null;
 
   // Build structured contract
   const contract: PromptContract = {
@@ -502,6 +506,31 @@ const SKILL_PROMPTS: Record<SkillType, string> = {
   ].join('\n'),
 };
 
+/**
+ * Lighter refinement prompt for follow-up queries (turn 2+).
+ * Role and context are already established in conversation history.
+ * The LLM still receives conversationContext as input (for resolving references),
+ * but the output JSON omits role/context to avoid redundant English framing
+ * that can bias the inference model's language.
+ */
+const FOLLOW_UP_REFINEMENT_PROMPT = [
+  'You are a prompt refiner for FOLLOW-UP questions in an ongoing conversation.',
+  'The user\'s role and context are already established — do NOT re-introduce them.',
+  '',
+  '### CRITICAL: Language & Scope',
+  '1. LANGUAGE PRESERVATION: Output values in the EXACT SAME language as the input.',
+  '2. BE CONCISE. The user is continuing a conversation — don\'t expand scope.',
+  '3. JSON ONLY. No markdown, no explanations.',
+  '',
+  'Output JSON with these fields ONLY (no role, no context):',
+  '{',
+  '  "task": "User\'s original follow-up prompt VERBATIM in original language",',
+  '  "intent": "What this specific follow-up wants to accomplish",',
+  '  "ambiguities": ["What is unclear (if anything)"],',
+  '  "clarification_needed": false',
+  '}',
+].join('\n');
+
 export async function refinePrompt(
   originalPrompt: string,
   documentContext?: string,
@@ -514,7 +543,14 @@ export async function refinePrompt(
   }, config.routing.refinementTimeoutMs);
 
   try {
-    const systemPrompt = GLOBAL_REFINEMENT_RULES + '\n\n' + SKILL_PROMPTS[skill];
+    // Use a lighter refinement prompt for follow-ups (turn 2+) — role/context
+    // are already established in conversation history. The LLM still receives
+    // conversationContext as input for understanding, but omits role/context
+    // from the output JSON to avoid redundant framing that can bias language.
+    const isFollowUp = !!conversationContext;
+    const systemPrompt = isFollowUp
+      ? GLOBAL_REFINEMENT_RULES + '\n\n' + FOLLOW_UP_REFINEMENT_PROMPT
+      : GLOBAL_REFINEMENT_RULES + '\n\n' + SKILL_PROMPTS[skill];
 
     const parts: string[] = [`Original request: ${originalPrompt}`];
     if (documentContext) {
@@ -799,7 +835,7 @@ export async function routeRequest(input: RoutingInput): Promise<RoutingDecision
 
     return {
       executedModelId: policyResult.modelId,
-      routingState: 'manual',
+      routingState: input.isAutoV2 ? 'auto_v2' : 'manual',
       complexityScore: config.routing.defaultFallbackScore,
       scoreBand: scoreToBand(config.routing.defaultFallbackScore),
       confidence: 1.0,
@@ -812,6 +848,7 @@ export async function routeRequest(input: RoutingInput): Promise<RoutingDecision
       skill: 'general',
       contract: null,
       multiStep: false,
+      isAutoV2: input.isAutoV2 ?? false,
     };
   }
 
@@ -928,7 +965,7 @@ export async function routeRequest(input: RoutingInput): Promise<RoutingDecision
   // Step 7: Return complete routing decision with per-step timing
   return {
     executedModelId: policyResult.modelId,
-    routingState: 'auto',
+    routingState: input.isAutoV2 ? 'auto_v2' : 'auto',
     complexityScore,
     scoreBand,
     confidence,
@@ -941,6 +978,7 @@ export async function routeRequest(input: RoutingInput): Promise<RoutingDecision
     skill,
     contract,
     multiStep,
+    isAutoV2: input.isAutoV2 ?? false,
     routingDurationMs: Date.now() - routingStart,
     classificationDurationMs,
     refinementDurationMs,

@@ -21,7 +21,7 @@ export interface AuditEntry {
   isMultimodal?: boolean;
 
   // Routing metadata fields
-  routingState?: 'auto' | 'manual';
+  routingState?: 'auto' | 'auto_v2' | 'manual';
   complexityScore?: number;
   routingReasonCode?: string;
   reasoningSummary?: string;
@@ -62,4 +62,8 @@ export interface AuditEntry {
     synthesizeUsed: boolean;
     summarizeTriggered: boolean;
   };
+
+  // Sequential reasoning orchestration fields
+  orchestrationGroupId?: string;
+  orchestrationStepOrder?: number;
 }

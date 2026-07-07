@@ -66,6 +66,8 @@ describe('AuditService', () => {
           null, // turnCount is undefined → null
           JSON.stringify({ inputPricePer1MTokens: 0.16, outputPricePer1MTokens: 0.62 }), // modelPricingSnapshot for qwen3-32b
           null, // orchestrationMeta is undefined → null
+          null, // orchestrationGroupId is undefined → null
+          null, // orchestrationStepOrder is undefined → null
         ],
       );
     });
@@ -155,7 +157,7 @@ describe('AuditService', () => {
 
       // Verify the params array only contains the expected metadata fields
       const params = mockedQuery.mock.calls[0][1] as unknown[];
-      expect(params).toHaveLength(29);
+      expect(params).toHaveLength(31);
       expect(params).toEqual([
         validEntry.timestamp,
         validEntry.userId,
@@ -186,6 +188,8 @@ describe('AuditService', () => {
         null, // turnCount
         JSON.stringify({ inputPricePer1MTokens: 0.16, outputPricePer1MTokens: 0.62 }), // modelPricingSnapshot
           null, // orchestrationMeta is undefined → null
+        null, // orchestrationGroupId
+        null, // orchestrationStepOrder
       ]);
     });
 

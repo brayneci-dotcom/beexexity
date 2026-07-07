@@ -59,7 +59,7 @@ export interface RoutingMetadataEvent {
   refinedPrompt?: string;
   complexityScore?: number;
   scoreBand?: string;
-  routingState: 'auto' | 'manual';
+  routingState: 'auto' | 'auto_v2' | 'manual';
   executedModelId: string;
   routingReasonCode: string;
   reasoningSummary: string;
@@ -127,4 +127,70 @@ export interface SubAgentDeltaEvent {
 export interface SynthesisDeltaEvent {
   type: 'text';
   content: string;
+}
+
+// ── Sequential Reasoning (auto_v2 mode) ────────────────────────────────
+
+export interface SequentialStep {
+  order: number;          // 1-indexed
+  name: string;
+  description: string;
+  systemPrompt: string;   // Full step prompt for Bedrock
+  modelId: string;
+}
+
+export interface SequentialPlan {
+  steps: SequentialStep[];
+  reasoning: string;       // Why this plan was chosen
+}
+
+export interface StepResult {
+  order: number;
+  status: 'success' | 'failed' | 'skipped';
+  inputTokens: number;
+  outputTokens: number;
+  durationMs: number;
+  retryCount: number;
+  errorMessage?: string;
+}
+
+export interface SequentialOrchestrationMeta {
+  plan: { steps: { name: string; description: string }[] };
+  stepResults: StepResult[];
+  synthesisStatus: 'success' | 'partial' | 'failed';
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalDurationMs: number;
+}
+
+// SSE event payloads for orchestration
+export interface OrchestrationPlanEvent {
+  steps: { order: number; name: string; description: string }[];
+  reasoning: string;
+}
+
+export interface OrchestrationStatusEvent {
+  step: number;
+  total: number;
+  name: string;
+  description: string;
+  status: 'running' | 'completed' | 'failed';
+  durationMs?: number;
+}
+
+export interface OrchestrationStepEvent {
+  step: number;
+  content: string;        // Streaming token fragment
+}
+
+export interface OrchestrationInterimEvent {
+  step: number;
+  total: number;
+  insight: string;        // Partial synthesis of findings so far
+}
+
+export interface OrchestrationErrorEvent {
+  step: number;
+  name: string;
+  reason: string;
 }
