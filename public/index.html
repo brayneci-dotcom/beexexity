@@ -2522,10 +2522,8 @@ function formatMarkdown(text) {
 
     if (inList && !isUnorderedItem && !isOrderedItem && line.trim() !== '') {
       // Append non-list line as continuation inside current <li>.
-      // Without this, LLM multi-line items ("1. Item
-   Detail
-2. Next")
-      // close </ol> prematurely and every item starts a new list at 1.
+      // Without this, LLM multi-line items close &lt;ol&gt; prematurely
+      // and every item starts a new list at 1.
       html += '<div style="margin:0 0 0.5rem 1.5rem">' + inlineFormat(line) + '</div>';
       continue;
     }
