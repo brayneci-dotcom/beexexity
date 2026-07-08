@@ -39,9 +39,11 @@ export interface InferenceResult {
 
 export const ALLOWED_MODELS = [
   'amazon.nova-lite-v1:0',
+  'anthropic.claude-sonnet-5',
   'openai.gpt-oss-120b-1:0',
   'qwen.qwen3-235b-a22b-2507-v1:0',
   'qwen.qwen3-32b-v1:0',
+  'zai.glm-5',
 ] as const;
 
 export type AllowedModelId = typeof ALLOWED_MODELS[number];

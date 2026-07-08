@@ -31,6 +31,16 @@
       "displayName": "DeepSeek V3",
       "inputPricePer1MTokens": 0.60,
       "outputPricePer1MTokens": 1.74
+    },
+    "anthropic.claude-sonnet-5": {
+      "displayName": "Claude Sonnet 5",
+      "inputPricePer1MTokens": 2.00,
+      "outputPricePer1MTokens": 10.00
+    },
+    "zai.glm-5": {
+      "displayName": "GLM-5",
+      "inputPricePer1MTokens": 1.20,
+      "outputPricePer1MTokens": 3.84
     }
   }
 }

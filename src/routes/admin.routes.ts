@@ -4,6 +4,8 @@ import { forcePasswordResetMiddleware } from '../middleware/password-reset.middl
 import { adminMiddleware } from '../middleware/admin.middleware.js';
 import { createUser, updateUser, upsertUser } from '../services/auth.service.js';
 import { getCostReport } from '../services/cost-reporting.service.js';
+import { ALLOWED_MODELS } from '../types/inference.types.js';
+import { query } from '../config/database.js';
 import { TokenPayload } from '../types/auth.types.js';
 import { ErrorResponse } from '../types/error.types.js';
 
@@ -308,6 +310,106 @@ router.get('/usage/cost', async (req: Request, res: Response): Promise<void> => 
       message: 'An unexpected error occurred',
     };
     res.status(500).json(error);
+  }
+});
+
+// ── Model Access Management ──────────────────────────────────────────────
+
+/**
+ * GET /api/v1/admin/model-access
+ * Returns all models with their access lists. Models with no access rows are public.
+ */
+router.get('/model-access', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const result = await Promise.all(
+      ALLOWED_MODELS.map(async (modelId) => {
+        const { rows } = await query<{ username: string; granted_at: string }>(
+          `SELECT uma.username, uma.granted_at
+           FROM user_model_access uma
+           WHERE uma.model_id = $1
+           ORDER BY uma.granted_at`,
+          [modelId],
+        );
+        return {
+          modelId,
+          isPrivate: rows.length > 0,
+          users: rows.map((r) => ({ username: r.username, grantedAt: r.granted_at })),
+        };
+      }),
+    );
+    res.status(200).json({ models: result });
+  } catch (err: unknown) {
+    console.error('[admin] Model access list failed:', (err as Error).message);
+    res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to load model access' });
+  }
+});
+
+/**
+ * PUT /api/v1/admin/model-access/:modelId
+ * Replace the whitelist for a model. Body: { usernames: string[] }
+ * Empty array = make model public.
+ */
+router.put('/model-access/:modelId', async (req: Request, res: Response): Promise<void> => {
+  const { modelId } = req.params;
+  const { usernames } = req.body as { usernames?: string[] };
+
+  if (!ALLOWED_MODELS.includes(modelId as typeof ALLOWED_MODELS[number])) {
+    res.status(400).json({ error: 'INVALID_MODEL', message: 'Model not found' });
+    return;
+  }
+
+  if (!Array.isArray(usernames)) {
+    res.status(400).json({ error: 'VALIDATION_ERROR', message: 'usernames must be an array' });
+    return;
+  }
+
+  try {
+    // Resolve usernames → user records
+    const { rows: users } = await query<{ id: string; username: string }>(
+      `SELECT id, username FROM users WHERE username = ANY($1)`,
+      [usernames],
+    );
+
+    // Warn about unknown usernames
+    const found = new Set(users.map((u) => u.username));
+    const unknown = usernames.filter((u) => !found.has(u));
+
+    // Replace whitelist
+    await query('DELETE FROM user_model_access WHERE model_id = $1', [modelId]);
+
+    if (users.length > 0) {
+      const values = users.map((u) => [u.id, modelId, u.username, req.user!.sub]);
+      const placeholders = values
+        .map((_, i) => `($${i * 4 + 1}, $${i * 4 + 2}, $${i * 4 + 3}, $${i * 4 + 4})`)
+        .join(', ');
+      const flat = values.flat();
+      await query(
+        `INSERT INTO user_model_access (user_id, model_id, username, granted_by) VALUES ${placeholders}`,
+        flat,
+      );
+    }
+
+    // Return updated list
+    const updated = await query<{ username: string; granted_at: string }>(
+      `SELECT uma.username, uma.granted_at
+       FROM user_model_access uma
+       WHERE uma.model_id = $1
+       ORDER BY uma.granted_at`,
+      [modelId],
+    );
+
+    const response: Record<string, unknown> = {
+      modelId,
+      isPrivate: updated.rows.length > 0,
+      users: updated.rows.map((r) => ({ username: r.username, grantedAt: r.granted_at })),
+    };
+    if (unknown.length > 0) {
+      response.unknownUsernames = unknown;
+    }
+    res.status(200).json(response);
+  } catch (err: unknown) {
+    console.error('[admin] Model access update failed:', (err as Error).message);
+    res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to update model access' });
   }
 });
 

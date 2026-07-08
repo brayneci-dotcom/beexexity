@@ -1,14 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Request, Response } from 'express';
 
-// Mock auth middleware to pass through
+// Mock auth middleware to pass through and attach user
 vi.mock('../../src/middleware/auth.middleware.js', () => ({
-  authMiddleware: (_req: Request, _res: Response, next: () => void) => next(),
+  authMiddleware: (req: Request, _res: Response, next: () => void) => {
+    (req as any).user = { sub: 'test-user-id', username: 'testuser' };
+    next();
+  },
 }));
 
 // Mock fs to control pricing config loading
 vi.mock('fs', () => ({
   readFileSync: vi.fn(),
+}));
+
+// Mock database — no access rows = public model
+vi.mock('../../src/config/database.js', () => ({
+  query: vi.fn().mockResolvedValue({ rows: [] }),
 }));
 
 import { readFileSync } from 'fs';
@@ -37,6 +45,16 @@ const mockPricingConfig = {
       displayName: 'Qwen3 32B (Default)',
       inputPricePer1MTokens: 0.16,
       outputPricePer1MTokens: 0.62,
+    },
+    'anthropic.claude-sonnet-5': {
+      displayName: 'Claude Sonnet 5',
+      inputPricePer1MTokens: 2.00,
+      outputPricePer1MTokens: 10.00,
+    },
+    'zai.glm-5': {
+      displayName: 'GLM-5',
+      inputPricePer1MTokens: 1.20,
+      outputPricePer1MTokens: 3.84,
     },
   },
 };
@@ -72,14 +90,14 @@ describe('GET /api/v1/models', () => {
     // The last handler is our route handler (after auth middleware)
     const routeHandler = handlers[handlers.length - 1];
 
-    const mockReq = {} as Request;
-    routeHandler(mockReq, mockRes as Response);
+    const mockReq = { user: { sub: 'test-user' } } as Request;
+    await routeHandler(mockReq, mockRes as Response);
 
     expect(jsonSpy).toHaveBeenCalledOnce();
     const response = jsonSpy.mock.calls[0][0];
 
-    // Should have 3 models
-    expect(response.models).toHaveLength(4);
+    // Should have 6 models (4 original + 2 new)
+    expect(response.models).toHaveLength(6);
 
     // Should include all allowed models
     const modelIds = response.models.map((m: { modelId: string }) => m.modelId);
@@ -120,8 +138,8 @@ describe('GET /api/v1/models', () => {
     );
     const routeHandler = handlers[handlers.length - 1];
 
-    const mockReq = {} as Request;
-    routeHandler(mockReq, mockRes as Response);
+    const mockReq = { user: { sub: 'test-user' } } as Request;
+    await routeHandler(mockReq, mockRes as Response);
 
     const response = jsonSpy.mock.calls[0][0];
 
@@ -154,8 +172,8 @@ describe('GET /api/v1/models', () => {
     );
     const routeHandler = handlers[handlers.length - 1];
 
-    const mockReq = {} as Request;
-    routeHandler(mockReq, mockRes as Response);
+    const mockReq = { user: { sub: 'test-user' } } as Request;
+    await routeHandler(mockReq, mockRes as Response);
 
     const response = jsonSpy.mock.calls[0][0];
 
@@ -186,13 +204,13 @@ describe('GET /api/v1/models', () => {
     );
     const routeHandler = handlers[handlers.length - 1];
 
-    const mockReq = {} as Request;
-    routeHandler(mockReq, mockRes as Response);
+    const mockReq = { user: { sub: 'test-user' } } as Request;
+    await routeHandler(mockReq, mockRes as Response);
 
     const response = jsonSpy.mock.calls[0][0];
 
-    // Should still return all models
-    expect(response.models).toHaveLength(4);
+    // Should still return all models (6 total with 2 new)
+    expect(response.models).toHaveLength(6);
 
     // Should fall back to modelId as displayName
     for (const model of response.models) {

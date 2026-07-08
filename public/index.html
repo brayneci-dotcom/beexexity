@@ -1348,22 +1348,14 @@
     }
 
     .session-cost-badge {
-      flex-shrink: 0;
-      font-size: 0.65rem;
+      font-size: 0.7rem;
       font-weight: 600;
       color: var(--text-secondary);
-      background: var(--bg-tertiary);
-      padding: 0.15rem 0.4rem;
-      border-radius: 6px;
-      font-family: 'SF Mono', Monaco, monospace;
-      border: 1px solid var(--border);
+      padding: 0;
+      border: none;
+      background: none;
     }
 
-    .session-cost-badge.active {
-      color: #16a34a;
-      background: rgba(22, 163, 74, 0.08);
-      border-color: rgba(22, 163, 74, 0.2);
-    }
 
     .session-row.active .session-row-preview {
       color: var(--text-primary);
@@ -2762,7 +2754,7 @@ function calculateCost(modelId, inputTokens, outputTokens) {
 function formatCost(usdAmount) {
   if (idrRate !== null) {
     const idrAmount = usdAmount * idrRate;
-    return `Rp ${idrAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `Rp ${Math.round(idrAmount).toLocaleString('en-US')}`;
   }
   return `$${usdAmount.toFixed(6)}`;
 }
@@ -3361,12 +3353,12 @@ function renderSessionList() {
       <div class="${cls.join(' ')}" data-session-id="${s.id}" onclick="viewSession('${s.id}')">
         <div class="session-row-header">
           <div class="session-row-preview">${escapeHtml(preview)}</div>
-          ${costBadge}
         </div>
         <div class="session-row-meta">
           <span class="session-row-time">${time}</span>
           <span>${turns}</span>
           ${tokens ? `<span class="session-row-tokens">${tokens}</span>` : ''}
+          ${costBadge}
         </div>
         ${isDegraded ? '<div class="session-row-status" title="Some messages may be missing">⚠️</div>' : ''}
       </div>
@@ -3599,7 +3591,7 @@ function formatCompactCost(usd) {
   if (idrRate !== null) {
     const idr = usd * idrRate;
     if (idr >= 1000) return 'Rp ' + (idr / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
-    return `Rp ${idr.toFixed(2)}`;
+    return `Rp ${Math.round(idr).toLocaleString('en-US')}`;
   }
   return `$${usd.toFixed(4)}`;
 }

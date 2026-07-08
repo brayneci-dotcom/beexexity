@@ -31,6 +31,7 @@ vi.mock('../../src/middleware/upload.middleware.js', () => ({
 }));
 
 vi.mock('../../src/config/database.js', () => ({
+  query: vi.fn().mockResolvedValue({ rows: [] }),
   tryAcquireSessionLock: vi.fn().mockResolvedValue({ locked: true, release: vi.fn().mockResolvedValue(undefined) }),
   releaseSessionLock: vi.fn().mockResolvedValue(undefined),
 }));
@@ -83,6 +84,12 @@ vi.mock('../../src/services/audit.service.js', () => ({
   auditService: {
     log: vi.fn().mockResolvedValue(undefined),
   },
+}));
+
+vi.mock('../../src/services/session-memory.service.js', () => ({
+  loadMemoryState: vi.fn().mockResolvedValue({ summary: null, memoryVersion: 0, facts: {} }),
+  summarizeEvicted: vi.fn().mockResolvedValue(undefined),
+  extractFacts: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../../src/services/session.service.js', () => ({
@@ -139,6 +146,7 @@ vi.mock('../../src/services/context-assembly.service.js', () => ({
     routing_payload: undefined,
     truncated: false,
     historyMessageCount: 0,
+    evictedMessages: [],
   }),
   assembleContext: vi.fn().mockReturnValue({
     messages: [],
@@ -305,7 +313,7 @@ describe('Inference Routes — POST /api/v1/inference/generate', () => {
     it('should default to qwen.qwen3-32b-v1:0 when modelId is not specified', async () => {
       await makeRequest(server, '/api/v1/inference/generate', { prompt: 'Hello world' });
 
-      expect(validateModelId).toHaveBeenCalledWith(undefined);
+      expect(validateModelId).toHaveBeenCalledWith(undefined, 'user-123');
     });
   });
 

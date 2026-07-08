@@ -168,10 +168,10 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  // 2. Validate modelId against allowed list
+  // 2. Validate modelId against allowed list (async — checks private model access)
   let validatedModelId: string;
   try {
-    validatedModelId = validateModelId(modelId);
+    validatedModelId = await validateModelId(modelId, user.sub);
   } catch (error: unknown) {
     const err = error as Error & { code?: string; statusCode?: number };
     res.status(err.statusCode ?? 400).json({
@@ -726,10 +726,10 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
     }
   }
 
-  // Step 2b: Validate modelId
+  // Step 2b: Validate modelId (async — checks private model access)
   let validatedModelId: string;
   try {
-    validatedModelId = validateModelId(modelId);
+    validatedModelId = await validateModelId(modelId, user.sub);
   } catch (error: unknown) {
     const err = error as Error & { code?: string; statusCode?: number };
     res.status(err.statusCode ?? 400).json({

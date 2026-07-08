@@ -34,6 +34,16 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilityEntry> = {
     capability: 'text-and-image',
     displayName: 'Qwen3 32B',
   },
+  'anthropic.claude-sonnet-5': {
+    modelId: 'anthropic.claude-sonnet-5',
+    capability: 'text-and-image',
+    displayName: 'Claude Sonnet 5',
+  },
+  'zai.glm-5': {
+    modelId: 'zai.glm-5',
+    capability: 'text-only',
+    displayName: 'GLM-5',
+  },
 };
 
 /**

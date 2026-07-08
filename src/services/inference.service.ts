@@ -17,6 +17,7 @@ import type {
   ConversationInferenceRequest,
   ConversationInferenceResult,
 } from '../types/session.types.js';
+import { query } from '../config/database.js';
 
 /**
  * Inference service — model validation, Bedrock API invocation, and SSE streaming.
@@ -178,7 +179,7 @@ const bedrockClient = new BedrockRuntimeClient({
  * @returns The validated model ID string
  * @throws Error with statusCode 400 if modelId is not in ALLOWED_MODELS
  */
-export function validateModelId(modelId?: string): string {
+export async function validateModelId(modelId?: string, userId?: string): Promise<string> {
   // Default to qwen.qwen3-32b-v1:0 when modelId is not specified
   if (modelId === undefined || modelId === null || modelId === '') {
     return DEFAULT_MODEL;
@@ -199,7 +200,44 @@ export function validateModelId(modelId?: string): string {
     throw error;
   }
 
+  // Private model access check
+  if (userId) {
+    const hasAccess = await checkModelAccess(userId, modelId);
+    if (!hasAccess) {
+      const error = new Error('You do not have access to this model');
+      (error as Error & { code: string }).code = 'ACCESS_DENIED';
+      (error as Error & { statusCode: number }).statusCode = 403;
+      throw error;
+    }
+  }
+
   return modelId;
+}
+
+/**
+ * Check if a user has access to a model.
+ * If the model has no access rows at all, it's public — everyone can use it.
+ * If the model has access rows, the user must be in the whitelist.
+ */
+async function checkModelAccess(userId: string, modelId: string): Promise<boolean> {
+  try {
+    // Check if model has any access rows (= private model)
+    const { rows } = await query<{ exists: boolean }>(
+      'SELECT EXISTS(SELECT 1 FROM user_model_access WHERE model_id = $1) AS exists',
+      [modelId],
+    );
+    if (!rows[0]?.exists) return true; // public model — no access restrictions
+
+    // Model is private — check if this user is whitelisted
+    const { rows: access } = await query<{ exists: boolean }>(
+      'SELECT EXISTS(SELECT 1 FROM user_model_access WHERE user_id = $1 AND model_id = $2) AS exists',
+      [userId, modelId],
+    );
+    return access[0]?.exists ?? false;
+  } catch {
+    // DB error — fail closed: reject access to private models
+    return false;
+  }
 }
 
 /**

@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Response } from 'express';
 import type { InferenceRequest } from '../../src/types/inference.types.js';
 
+// Mock the database module for validateModelId access checks
+vi.mock('../../src/config/database.js', () => ({
+  query: vi.fn().mockResolvedValue({ rows: [] }), // no access rows → public model
+}));
+
 // Mock the @aws-sdk/client-bedrock-runtime module
 vi.mock('@aws-sdk/client-bedrock-runtime', () => {
   const mockSend = vi.fn();
@@ -43,20 +48,20 @@ describe('inference.service', () => {
   });
 
   describe('validateModelId', () => {
-    it('should return default model when no modelId provided', () => {
-      expect(validateModelId()).toBe('qwen.qwen3-32b-v1:0');
-      expect(validateModelId('')).toBe('qwen.qwen3-32b-v1:0');
-      expect(validateModelId(undefined)).toBe('qwen.qwen3-32b-v1:0');
+    it('should return default model when no modelId provided', async () => {
+      await expect(validateModelId()).resolves.toBe('qwen.qwen3-32b-v1:0');
+      await expect(validateModelId('')).resolves.toBe('qwen.qwen3-32b-v1:0');
+      await expect(validateModelId(undefined)).resolves.toBe('qwen.qwen3-32b-v1:0');
     });
 
-    it('should accept valid model IDs', () => {
-      expect(validateModelId('openai.gpt-oss-120b-1:0')).toBe('openai.gpt-oss-120b-1:0');
-      expect(validateModelId('qwen.qwen3-32b-v1:0')).toBe('qwen.qwen3-32b-v1:0');
+    it('should accept valid model IDs', async () => {
+      await expect(validateModelId('openai.gpt-oss-120b-1:0')).resolves.toBe('openai.gpt-oss-120b-1:0');
+      await expect(validateModelId('qwen.qwen3-32b-v1:0')).resolves.toBe('qwen.qwen3-32b-v1:0');
     });
 
-    it('should reject invalid model IDs with statusCode 400', () => {
+    it('should reject invalid model IDs with statusCode 400', async () => {
       try {
-        validateModelId('invalid-model');
+        await validateModelId('invalid-model');
         expect.fail('Should have thrown');
       } catch (err: any) {
         expect(err.message).toContain('Invalid model');
