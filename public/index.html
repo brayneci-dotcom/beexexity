@@ -1667,7 +1667,7 @@
     <div class="messages" id="messages">
       <div class="empty-state">
         <h2 id="greeting">Hi, Ask me anything</h2>
-        <p>Ask anything. Your data is automatically masked for compliance before processing.</p>
+        <p>Running on a local LLM, hosted internally. Your data stays private—never stored, shared, or used for external training.</p>
       </div>
     </div>
 
@@ -1857,8 +1857,12 @@ async function showChatScreen() {
   const userInitial = user.displayName?.charAt(0).toUpperCase() || 'U';
   document.getElementById('user-avatar').textContent = userInitial;
   const greetingEl = document.getElementById('greeting');
+  const greetingSub = document.querySelector('.empty-state p');
   if (greetingEl && user.displayName) {
-    greetingEl.textContent = 'Hi ' + user.displayName + ', Ask me anything';
+    greetingEl.textContent = 'Hi ' + user.displayName + ', ask me anything';
+  }
+  if (greetingSub) {
+    greetingSub.textContent = 'Running on a local LLM, hosted internally. Your data stays private—never stored, shared, or used for external training.';
   }
 
   // Load models from API
@@ -2120,7 +2124,7 @@ async function handleSend() {
         document.getElementById('messages').innerHTML = `
           <div class="empty-state">
             <h2 id="greeting">Hi, Ask me anything</h2>
-            <p>Ask anything. Your data is automatically masked for compliance before processing.</p>
+            <p>Running on a local LLM, hosted internally. Your data stays private—never stored, shared, or used for external training.</p>
           </div>
         `;
         updateCostBar();
@@ -2413,7 +2417,7 @@ async function handleSend() {
               document.getElementById('messages').innerHTML = `
                 <div class="empty-state">
                   <h2 id="greeting">Hi, Ask me anything</h2>
-                  <p>Ask me anything. Your request will be processed by LLM, Locally</p>
+        <p>Running on a local LLM, hosted internally. Your data stays private—never stored, shared, or used for external training.</p>
                 </div>
               `;
               updateCostBar();
@@ -2922,7 +2926,7 @@ function handleLogout() {
   document.getElementById('messages').innerHTML = `
     <div class="empty-state">
       <h2 id="greeting">Hi, Ask me anything</h2>
-      <p>Ask anything. Your data is automatically masked for compliance before processing.</p>
+      <p>Running on a local LLM, hosted internally. Your data stays private—never stored, shared, or used for external training.</p>
     </div>
   `;
   document.getElementById('viewing-banner').classList.remove('visible');
@@ -3043,7 +3047,7 @@ async function handleNewChat() {
   document.getElementById('messages').innerHTML = `
     <div class="empty-state">
       <h2 id="greeting">Hi, Ask me anything</h2>
-      <p>Ask anything. Your data is automatically masked for compliance before processing.</p>
+      <p>Running on a local LLM, hosted internally. Your data stays private—never stored, shared, or used for external training.</p>
     </div>
   `;
   updateCostBar();
