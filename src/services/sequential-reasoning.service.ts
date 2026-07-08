@@ -93,7 +93,12 @@ class SequentialReasoner {
     // so steps can reference original content instead of hallucinating.
     const contextParts: string[] = [];
     if (input.maskedDocumentText) {
-      contextParts.push(`[Uploaded Document]\n${input.maskedDocumentText}`);
+      // Cap document text at threshold — full text goes to Data Cruncher step
+      // but subsequent steps get the condensed summary, not the raw mega-doc.
+      const docText = input.maskedDocumentText.length > this.cfg.largeDocumentThreshold
+        ? input.maskedDocumentText.slice(0, this.cfg.largeDocumentThreshold) + '\n...[truncated]'
+        : input.maskedDocumentText;
+      contextParts.push(`[Uploaded Document]\n${docText}`);
     }
     if (input.conversationHistory.length > 0) {
       const historyText = input.conversationHistory

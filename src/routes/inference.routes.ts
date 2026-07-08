@@ -488,13 +488,9 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
         result = await generate(conversationRequest, res) as ConversationInferenceResult;
       }
 
-      // Emit done event if not already emitted.
-      // generate() emits done internally. auto_v2 and multiStep paths bypass generate()
-      // and build their own result — they need an explicit done here.
-      // Duplicate done is harmless (frontend setStreaming(false) is idempotent).
-      if (routingDecision?.isAutoV2 || routingDecision?.multiStep) {
-        res.write('event: done\ndata: {}\n\n');
-      }
+      // Done is emitted below after verifier + semantic repair (for auto_v2/multiStep).
+      // generate() already emitted done internally. This ensures repair results
+      // arrive BEFORE done on the frontend so they can be processed.
 
       // 12. Run verifier if we have a contract
       if (routingDecision?.contract && result.assistantText) {
@@ -556,6 +552,13 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
         } catch (verifyErr: unknown) {
           console.warn('[verification] Verifier error:', (verifyErr as Error).message);
         }
+      }
+
+      // Emit done event after verifier + semantic repair so repair results
+      // arrive BEFORE done on the frontend. generate() already emitted done
+      // internally — auto_v2/multiStep paths bypassed it and need it here.
+      if (routingDecision?.isAutoV2 || routingDecision?.multiStep) {
+        res.write('event: done\ndata: {}\n\n');
       }
 
       // 13. After streaming: store assistant message
@@ -1302,11 +1305,6 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
     }
   }
 
-  // Emit done event for non-generate paths (same reason as JSON handler above)
-  if (routingDecision?.isAutoV2 || routingDecision?.multiStep) {
-    res.write('event: done\ndata: {}\n\n');
-  }
-
   // Verifier + auto-repair for multipath handler
   if (routingDecision?.contract && result.assistantText) {
       try {
@@ -1365,6 +1363,11 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
       } catch (verifyErr: unknown) {
         console.warn('[verification] Verifier error:', (verifyErr as Error).message);
       }
+    }
+
+    // Emit done after verifier + repair so repair events arrive before done
+    if (routingDecision?.isAutoV2 || routingDecision?.multiStep) {
+      res.write('event: done\ndata: {}\n\n');
     }
 
     // Step 16: After streaming: store assistant message
