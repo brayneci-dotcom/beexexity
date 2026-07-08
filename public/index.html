@@ -538,12 +538,13 @@
       opacity: 1;
     }
 
-    .assistant-content p {
-      margin-bottom: 1rem;
+    .assistant-content {
+      font-size: 0.95rem;
+      line-height: 1.65;
     }
 
-    .assistant-content p:last-child {
-      margin-bottom: 0;
+    .assistant-content p {
+      margin: 0.4rem 0;
     }
 
     .assistant-content strong {
@@ -560,18 +561,57 @@
     }
 
     .assistant-content pre {
-      background: var(--bg-tertiary);
+      margin: 0;
       padding: 1rem;
-      border-radius: 8px;
       overflow-x: auto;
-      margin: 1rem 0;
+      border-radius: 0 0 8px 8px;
+      background: var(--bg-tertiary);
     }
 
     .assistant-content pre code {
       background: none;
       padding: 0;
-      font-size: 0.875rem;
-      line-height: 1.5;
+      font-size: 0.82rem;
+      line-height: 1.6;
+    }
+
+    .code-block-wrapper {
+      margin: 0.75rem 0;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    .code-block-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.3rem 0.85rem;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      font-size: 0.72rem;
+      color: var(--text-tertiary);
+    }
+
+    .code-copy-btn {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.15rem 0.5rem;
+      cursor: pointer;
+      font-size: 0.7rem;
+      color: var(--text-secondary);
+      transition: all 0.15s;
+    }
+
+    .code-copy-btn:hover {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+    }
+
+    .code-copy-btn.copied {
+      border-color: #2ecc71;
+      color: #2ecc71;
     }
 
     .assistant-content ul, .assistant-content ol {
@@ -580,13 +620,40 @@
     }
 
     .assistant-content li {
-      margin: 0.25rem 0;
+      margin: 0.3rem 0;
+      line-height: 1.55;
     }
+
+    .assistant-content ul ul { list-style-type: circle; }
+    .assistant-content ul ul ul { list-style-type: square; }
+    .assistant-content ol ol { list-style-type: lower-alpha; }
+    .assistant-content ol ol ol { list-style-type: lower-roman; }
 
     .assistant-content h1, .assistant-content h2, .assistant-content h3,
     .assistant-content h4, .assistant-content h5, .assistant-content h6 {
-      margin: 1rem 0 0.5rem;
+      margin: 1.25rem 0 0.5rem;
       font-weight: 600;
+      scroll-margin-top: 80px;
+    }
+
+    .assistant-content h1 { font-size: 1.25rem; }
+    .assistant-content h2 { font-size: 1.1rem; }
+    .assistant-content h3 { font-size: 1rem; }
+    .assistant-content h4 { font-size: 0.95rem; }
+
+    .assistant-content h2 .heading-anchor,
+    .assistant-content h3 .heading-anchor {
+      opacity: 0;
+      margin-left: 0.35rem;
+      font-weight: 400;
+      color: var(--text-tertiary);
+      text-decoration: none;
+      font-size: 0.85em;
+    }
+
+    .assistant-content h2:hover .heading-anchor,
+    .assistant-content h3:hover .heading-anchor {
+      opacity: 1;
     }
 
     .assistant-content a {
@@ -599,28 +666,50 @@
     }
 
     .assistant-content blockquote {
-      border-left: 3px solid var(--accent);
-      padding-left: 1rem;
-      margin: 0.5rem 0;
+      margin: 0.75rem 0;
+      padding: 0.75rem 1rem;
+      border-left: 4px solid var(--accent);
+      background: var(--bg-tertiary);
+      border-radius: 0 8px 8px 0;
       color: var(--text-secondary);
+      font-size: 0.9em;
+    }
+
+    .table-wrapper {
+      overflow-x: auto;
+      margin: 0.75rem 0;
+      border: 1px solid var(--border);
+      border-radius: 8px;
     }
 
     .assistant-content table {
       border-collapse: collapse;
-      margin: 0.75rem 0;
-      font-size: 0.9rem;
+      font-size: 0.85rem;
       width: 100%;
     }
 
     .assistant-content th, .assistant-content td {
-      border: 1px solid var(--border);
       padding: 0.5rem 0.75rem;
       text-align: left;
+      border: none;
     }
 
     .assistant-content th {
       background: var(--bg-tertiary);
       font-weight: 600;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .assistant-content td {
+      border-bottom: 1px solid var(--border);
+    }
+
+    .assistant-content tr:last-child td {
+      border-bottom: none;
+    }
+
+    .assistant-content tbody tr:nth-child(even) td {
+      background: var(--bg-tertiary);
     }
 
     .assistant-content .math-display {
@@ -2453,7 +2542,8 @@ function formatMarkdown(text) {
         codeBlockLang = line.slice(3).trim();
         codeBlockContent = '';
       } else {
-        html += `<pre><code${codeBlockLang ? ` class="language-${codeBlockLang}"` : ''}>${escapeHtml(codeBlockContent.trimEnd())}</code></pre>`;
+        const langLabel = codeBlockLang || 'text';
+        html += `<div class="code-block-wrapper"><div class="code-block-header"><span class="code-lang">${escapeHtml(langLabel)}</span><button class="code-copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code>${escapeHtml(codeBlockContent.trimEnd())}</code></pre></div>`;
         inCodeBlock = false;
         codeBlockLang = '';
       }
@@ -2526,7 +2616,7 @@ function formatMarkdown(text) {
       }
 
       tableHtml += '</table>';
-      html += tableHtml;
+      html += '<div class="table-wrapper">' + tableHtml + '</div>';
 
       // Skip consumed lines
       i = j - 1; // -1 because the for loop will increment i
@@ -2549,7 +2639,9 @@ function formatMarkdown(text) {
     if (/^#{1,6}\s/.test(line)) {
       const level = line.match(/^(#{1,6})\s/)[1].length;
       const content = line.replace(/^#{1,6}\s+/, '');
-      html += `<h${level} style="margin: 1rem 0 0.5rem; font-size: ${1.4 - level * 0.1}rem;">${inlineFormat(content)}</h${level}>`;
+      const anchor = content.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+      const anchorHtml = level <= 3 ? `<a href="#${anchor}" class="heading-anchor">#</a>` : '';
+      html += `<h${level} id="${anchor}" style="margin: 1.25rem 0 0.5rem; font-weight:600;scroll-margin-top:80px;font-size:${1.4 - level * 0.1}rem;">${inlineFormat(content)}${anchorHtml}</h${level}>`;
       continue;
     }
     
@@ -2630,6 +2722,21 @@ function inlineFormat(text) {
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" style="color: var(--accent);">$1</a>')
     // Strikethrough
     .replace(/~~(.*?)~~/g, '<del>$1</del>');
+}
+
+/** Copy code block content to clipboard. */
+function copyCode(btn) {
+  const pre = btn.closest('.code-block-wrapper').querySelector('pre code');
+  if (!pre) return;
+  const text = pre.textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = 'Copied';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = 'Copy';
+      btn.classList.remove('copied');
+    }, 2000);
+  }).catch(() => { btn.textContent = 'Failed'; });
 }
 
 function escapeHtml(text) {

@@ -690,6 +690,114 @@ export async function scoreComplexity(
 }
 
 /**
+ * Merged classification + complexity scoring in a single LLM call.
+ * Replaces two separate calls (classifyRequestType + scoreComplexity) to cut
+ * routing latency by ~50%. Returns skill, score, and confidence.
+ *
+ * @returns { skill, complexityScore, confidence } or null on failure
+ */
+async function unifiedClassifyAndScore(
+  prompt: string,
+  documentText?: string,
+  conversationContext?: string,
+  hasEmptyPrompt?: boolean,
+  hasImages?: boolean,
+): Promise<{ skill: SkillType; complexityScore: number; confidence: number } | null> {
+  // Silent upload: files but no prompt → document_qna, score 3
+  if (hasEmptyPrompt && (hasImages || documentText)) {
+    return { skill: 'document_qna', complexityScore: 3, confidence: 0.9 };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), config.routing.scoringTimeoutMs);
+
+  try {
+    const promptPart = prompt.length > 1000 ? prompt.slice(0, 1000) + '...' : prompt;
+
+    let documentPart = '';
+    if (documentText) {
+      const snippet = documentText.length > 800 ? documentText.slice(0, 800) + '...' : documentText;
+      documentPart = `\n\nUploaded document content (first ${snippet.length} chars):\n${snippet}`;
+    }
+
+    let contextPart = '';
+    if (conversationContext) {
+      contextPart = `\n\nConversation history:\n${conversationContext}`;
+    }
+
+    const systemPrompt = [
+      'Classify the user request AND score its complexity. Return ONLY a JSON object, no other text.',
+      '',
+      'Supported skills (17):',
+      'email | creative | brainstorming | meta_prompting',
+      'summarization | translation | data_conversion | editing_critique',
+      'roleplay | logic_math | planning_strategy | document_qna',
+      'requirement_generation | compliance_pre_assessment',
+      'code | log_troubleshooting | general',
+      '',
+      'Skill selection rules:',
+      '- Document contains code → "code"',
+      '- Financial/regulatory content → "compliance_pre_assessment"',
+      '- Document Q&A ONLY if a document is actually uploaded → "document_qna"',
+      '- If NO document is attached → NEVER classify as document_qna, use "general"',
+      '- General knowledge questions without documents → "general"',
+      '',
+      'Complexity scoring guide:',
+      'Score 1: Simple factual lookup, greeting, yes/no (e.g. "what is 2+2", "hi")',
+      'Score 2: Basic explanation, summarization, translation (e.g. "summarize this email")',
+      'Score 3: Multi-step reasoning, comparison, analysis (e.g. "compare these two options")',
+      'Score 4: Complex analysis, compliance assessment, code generation',
+      'Score 5: Expert-level domain reasoning, strategic planning, regulatory analysis',
+      '',
+      'Calibrations by skill:',
+      '- email / summarization / translation: cap at 3',
+      '- code / log_troubleshooting: floor at 2',
+      '- compliance_pre_assessment: floor at 3',
+      '- document_qna: scale with document length and complexity',
+      '',
+      'JSON format:',
+      '{',
+      '  "skill": "<skill name>",',
+      '  "complexity_score": <1-5>,',
+      '  "confidence": <0.0-1.0>,',
+      '  "reasoning": "<brief reason>"',
+      '}',
+    ].join('\n');
+
+    const userContent = `${promptPart}${documentPart}${contextPart}`;
+
+    const command = new ConverseCommand({
+      modelId: config.routing.scoringModelId,
+      system: [{ text: systemPrompt }],
+      messages: [{ role: 'user', content: [{ text: userContent }] }],
+      inferenceConfig: { maxTokens: 150, temperature: 0 },
+    });
+
+    const response = await bedrockClient.send(command, { abortSignal: controller.signal });
+    const outputText = response.output?.message?.content?.[0]?.text?.trim();
+    if (!outputText) return null;
+
+    // Strip markdown fences
+    const cleaned = outputText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+    const parsed = JSON.parse(cleaned);
+
+    const skill = extractSkill(String(parsed.skill ?? ''));
+    const complexityScore = typeof parsed.complexity_score === 'number'
+      ? Math.max(1, Math.min(5, Math.round(parsed.complexity_score)))
+      : config.routing.defaultFallbackScore;
+    const confidence = typeof parsed.confidence === 'number'
+      ? Math.max(0, Math.min(1, parsed.confidence))
+      : 0.5;
+
+    return { skill, complexityScore, confidence };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
  * Maps a complexity score to its band name.
  * Complexity 1 → Qwen3 32B (simple, fast answers)
  * Complexity 2-3 → moderate (needs stronger model)
@@ -853,7 +961,7 @@ export async function routeRequest(input: RoutingInput): Promise<RoutingDecision
     };
   }
 
-  // Auto state: classify → refine → score → route
+  // Auto state: unified classify+score → refine → route
   let refinedPrompt: string = input.originalPrompt;
   let complexityScore: number = config.routing.defaultFallbackScore;
   let confidence: number = 0.5;
@@ -863,18 +971,25 @@ export async function routeRequest(input: RoutingInput): Promise<RoutingDecision
   let refinementDurationMs: number | undefined;
   let scoringDurationMs: number | undefined;
 
-  // Step 0: Classify request type (skip classifier for silent uploads)
-  const hasEmptyPrompt = !input.originalPrompt.trim();
-  if (hasEmptyPrompt && (input.hasImages || input.maskedDocumentText)) {
-    // Silent upload — hardcode skill by content type, skip LLM call
-    skill = 'document_qna';
-    console.log('[routing] Silent upload detected — routing as document_qna');
+  // Step 0: Unified classification + complexity scoring (single LLM call)
+  const unifiedStart = Date.now();
+  const unifiedResult = await unifiedClassifyAndScore(
+    input.originalPrompt,
+    input.maskedDocumentText,
+    input.conversationContext,
+    !input.originalPrompt.trim(),
+    input.hasImages,
+  );
+  const unifiedDuration = Date.now() - unifiedStart;
+  if (unifiedResult !== null) {
+    skill = unifiedResult.skill;
+    complexityScore = unifiedResult.complexityScore;
+    confidence = unifiedResult.confidence;
+    console.log(`[routing] Unified classify+score: skill=${skill}, score=${complexityScore}, confidence=${confidence} in ${unifiedDuration}ms`);
   } else {
-    // Normal: run classifier (text-only, truncated)
-    const classificationStart = Date.now();
-    skill = await classifyRequestType(input.originalPrompt, input.maskedDocumentText);
-    classificationDurationMs = Date.now() - classificationStart;
-    console.log(`[routing] Request classified as: ${skill} in ${classificationDurationMs}ms`);
+    // Unified call failed — fallback to defaults
+    flags.push('routing-fallback');
+    console.warn(`[routing] Unified classify+score failed after ${unifiedDuration}ms, using defaults`);
   }
 
   // Step 1: Prompt refinement (skill-aware)
@@ -890,26 +1005,6 @@ export async function routeRequest(input: RoutingInput): Promise<RoutingDecision
     // Refinement failed: use original prompt and flag
     flags.push('refinement-failed');
     console.warn(`[routing] Prompt refinement failed after ${refinementDurationMs}ms, using original prompt`);
-  }
-
-  // Step 2: Complexity scoring (skill-calibrated, includes conversation context if available)
-  const scoringStart = Date.now();
-  const scoringResult = await scoreComplexity(refinedPrompt, input.maskedDocumentText, input.conversationContext, skill);
-  scoringDurationMs = Date.now() - scoringStart;
-  if (input.conversationContext) {
-    console.log(`[routing] Conversation context included in scoring (${input.conversationContext.length} chars), reason=routing-context-enrichment`);
-    flags.push('routing-context-used');
-  }
-  if (scoringResult !== null) {
-    complexityScore = scoringResult.score;
-    confidence = scoringResult.confidence;
-    console.log(`[routing] Complexity scoring: score=${complexityScore}, confidence=${confidence} in ${scoringDurationMs}ms`);
-  } else {
-    // Scoring failed: use default score
-    complexityScore = config.routing.defaultFallbackScore;
-    confidence = 0.5;
-    flags.push('scoring-failed');
-    console.warn(`[routing] Complexity scoring failed after ${scoringDurationMs}ms, defaulting to score ${complexityScore}`);
   }
 
   // Step 3: Determine long context
