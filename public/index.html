@@ -1846,6 +1846,23 @@ async function loadSessionHistory() {
 
     if (data.session && data.session.id) {
       currentSessionId = data.session.id;
+
+      // Load session stats to populate savedSessionCost for the cost bar.
+      // Without this, session cost shows Rp 0 on page load / resume.
+      try {
+        const statsRes = await fetch(`${API_BASE}/sessions/${currentSessionId}/stats`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (statsRes.ok) {
+          const statsData = await statsRes.json();
+          savedSessionCost = statsData.estimatedCostUsd ?? 0;
+          savedSessionTokens = {
+            in: statsData.totalInputTokens ?? 0,
+            out: statsData.totalOutputTokens ?? 0,
+            requests: statsData.requestCount ?? 0,
+          };
+        }
+      } catch { /* stats fetch is best-effort */ }
     } else {
       currentSessionId = null;
     }
