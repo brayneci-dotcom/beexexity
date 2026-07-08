@@ -1701,6 +1701,7 @@
         <div class="model-compat-warning" id="model-compat-warning">⚠ Selected model does not support image inputs</div>
         <div class="file-error-area" id="file-error-area"></div>
         <div class="input-disclaimer">AI can make mistakes. Consider verifying important information.</div>
+        <div id="session-id-display" style="font-size:0.65rem;color:var(--text-tertiary);text-align:center;padding:0.25rem 0;display:none"></div>
       </div>
     </div>
   </div><!-- /.chat-main -->
@@ -1909,6 +1910,7 @@ async function showChatScreen() {
 
   // Load active session history
   await loadSessionHistory();
+  updateSessionIdDisplay();
 
   // Fetch USD → IDR conversion rate before rendering session list
   await fetchIdrRate();
@@ -2171,6 +2173,7 @@ async function handleSend() {
             // Store the session ID from the server
             if (data.sessionId) {
               currentSessionId = data.sessionId;
+              updateSessionIdDisplay();
             }
           } else if (eventType === 'session_status') {
             // Handle degraded session notification
@@ -2644,7 +2647,7 @@ function formatMarkdown(text) {
       const level = line.match(/^(#{1,6})\s/)[1].length;
       const content = line.replace(/^#{1,6}\s+/, '');
       const anchor = content.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-      const anchorHtml = level <= 3 ? `<a href="#${anchor}" class="heading-anchor">#</a>` : '';
+      const anchorHtml = level <= 3 ? `<a href="#${anchor}" style="opacity:0;margin-left:0.35rem;font-weight:400;color:var(--text-tertiary);text-decoration:none;font-size:0.85em" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0">#</a>` : '';
       html += `<h${level} id="${anchor}" style="margin: 1.25rem 0 0.5rem; font-weight:600;scroll-margin-top:80px;font-size:${1.4 - level * 0.1}rem;">${inlineFormat(content)}${anchorHtml}</h${level}>`;
       continue;
     }
@@ -2803,6 +2806,19 @@ async function fetchIdrRate() {
 }
 
 // --- UI Helpers ---
+
+/** Update the session ID display below the input area. */
+function updateSessionIdDisplay() {
+  const el = document.getElementById('session-id-display');
+  if (!el) return;
+  if (currentSessionId) {
+    el.textContent = 'Session: ' + currentSessionId;
+    el.style.display = 'block';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
 function addMessage(type, text) {
   const messagesContainer = document.getElementById('messages');
   const el = document.createElement('div');
@@ -2844,7 +2860,8 @@ function scrollToBottom() {
 }
 
 function copyAssistantMessage(btn, messageEl) {
-  const content = messageEl.querySelector('.assistant-content');
+  // Only copy the actual response text, exclude status panel and repair blocks
+  const content = messageEl.querySelector('.assistant-text-content');
   if (!content) return;
   const text = content.innerText || content.textContent;
   navigator.clipboard.writeText(text).then(() => {
@@ -3040,6 +3057,7 @@ async function handleNewChat() {
   savedSessionTokens = { in: 0, out: 0, requests: 0 };
   sessionCosts = [];
   sessionTotal = 0;
+  updateSessionIdDisplay();
   hideDegradedBanner();
   document.getElementById('viewing-banner').classList.remove('visible');
   setInputEnabled(true);
