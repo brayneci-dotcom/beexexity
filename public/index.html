@@ -2038,6 +2038,11 @@ async function handleSend() {
       <div id="tech-details" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);display:none"></div>
     </details>
     <div class="assistant-text-content"></div>`;
+  // Scoped references to status panel elements (avoids duplicate ID issue)
+  const scopedStepStatus = assistantEl.querySelector('#step-status');
+  const scopedTechDetails = assistantEl.querySelector('#tech-details');
+  const scopedSeqSteps = assistantEl.querySelector('#seq-steps');
+  const scopedStatusPanel = assistantEl.querySelector('#status-panel');
   let fullText = '';
   let inputTokens = 0;
   let outputTokens = 0;
@@ -2156,8 +2161,7 @@ async function handleSend() {
             fullText += data.content;
             if (!startedGenerating) {
               startedGenerating = true;
-              const step = document.getElementById('step-status');
-              if (step) step.innerHTML = '<span style=\'color:var(--accent)\'>🤖 Generating response...</span>';
+              if (scopedStepStatus) scopedStepStatus.innerHTML = '<span style=\'color:var(--accent)\'>🤖 Generating response...</span>';
             }
             assistantEl.querySelector('.assistant-text-content').innerHTML = formatMessage(fullText);
             scrollToBottom();
@@ -2181,9 +2185,10 @@ async function handleSend() {
             try {
             // Routing metadata — populate tech-details inside status panel
             if (data.executedModelId) executedModelId = data.executedModelId;
-            const techDetails = document.getElementById('tech-details');
-            if (!techDetails) { return; }
-            techDetails.style.display = 'block';
+            // Use scoped reference instead of document.getElementById
+            if (!scopedTechDetails) { return; }
+            scopedTechDetails.style.display = 'block';
+            if (scopedStatusPanel) scopedStatusPanel.open = true;
             const d = [];
             d.push(`<b>🧠 Thought Process:</b> ${data.reasoningSummary || 'auto-routed'}`);
             d.push(`<hr style="border:0;border-top:1px solid var(--border);margin:4px 0">`);
@@ -2240,14 +2245,11 @@ async function handleSend() {
             }
             d.push(`<div class="verification-status" style="margin-top:4px;font-style:italic;color:var(--text-tertiary)"></div>`);
             techDetails.innerHTML = d.join('<br>');
-            const step = document.getElementById('step-status');
-            if (step) step.innerHTML = '<span style=\'color:var(--accent)\'>🔍 Analyzing request...</span>';
+            if (scopedStepStatus) scopedStepStatus.innerHTML = '<span style=\'color:var(--accent)\'>🔍 Analyzing request...</span>';
             } catch (e) { console.error('[ui] Tech details error:', e); }
           } else if (eventType === 'orchestration_plan') {
             // Sequential reasoning plan received
-            const stepStatus = document.getElementById('step-status');
-            const seqSteps = document.getElementById('seq-steps');
-            if (!stepStatus) continue;
+            if (!scopedStepStatus) continue;
 
             // Handle legacy sub-agent format (data.specs)
             if (data.specs) {
@@ -2264,7 +2266,7 @@ async function handleSend() {
             }
 
             // Handle new sequential reasoning format (data.steps)
-            if (data.steps && seqSteps) {
+            if (data.steps && scopedSeqSteps) {
               seqStepTotal = data.steps.length;
               seqStepCurrent = 0;
               seqSteps.style.display = 'flex';
@@ -2280,8 +2282,7 @@ async function handleSend() {
             }
           } else if (eventType === 'orchestration_status') {
             // Sequential reasoning step progress
-            const seqSteps = document.getElementById('seq-steps');
-            if (!seqSteps) continue;
+            if (!scopedSeqSteps) continue;
             seqStepCurrent = data.step;
             const stepEl = seqSteps.querySelector('.seq-step[data-step="' + data.step + '"]');
             if (stepEl) {
@@ -2303,14 +2304,12 @@ async function handleSend() {
                 }
               }
             }
-            const stepStatus = document.getElementById('step-status');
-            if (stepStatus && data.status === 'running') {
+            if (scopedStepStatus && data.status === 'running') {
               stepStatus.innerHTML = '<span style=\'color:var(--accent)\'>🔍 ' + escapeHtml(data.description || data.name) + '</span>';
             }
           } else if (eventType === 'orchestration_interim') {
             // Progressive synthesis - interim insights
-            const stepStatus = document.getElementById('step-status');
-            if (stepStatus && data.insight) {
+            if (scopedStepStatus && data.insight) {
               const existing = stepStatus.querySelector('.interim-insight');
               if (existing) existing.remove();
               const div = document.createElement('div');
@@ -2321,8 +2320,7 @@ async function handleSend() {
             }
           } else if (eventType === 'orchestration_error') {
             // Step failure
-            const seqSteps = document.getElementById('seq-steps');
-            if (seqSteps) {
+            if (scopedSeqSteps) {
               const stepEl = seqSteps.querySelector('.seq-step[data-step="' + data.step + '"]');
               if (stepEl) {
                 const icon = stepEl.querySelector('.seq-step-icon');
@@ -2331,8 +2329,7 @@ async function handleSend() {
                 if (data.reason) stepEl.title = data.reason;
               }
             }
-            const stepStatus = document.getElementById('step-status');
-            if (stepStatus) {
+            if (scopedStepStatus) {
               stepStatus.innerHTML += '<br><span style=\'color:#e6a817\'>⚠️ ' + escapeHtml(data.name) + ' — ' + escapeHtml(data.reason || 'failed') + '</span>';
             }
           } else if (eventType === 'subagent_delta') {
@@ -2354,16 +2351,14 @@ async function handleSend() {
               fullText += data.content;
               if (!startedGenerating) {
                 startedGenerating = true;
-                const stepStatus = document.getElementById('step-status');
-                if (stepStatus) stepStatus.innerHTML += '<br><span style=\'color:var(--accent)\'>🔄 Combining results...</span>';
+                if (scopedStepStatus) scopedStepStatus.innerHTML += '<br><span style=\'color:var(--accent)\'>🔄 Combining results...</span>';
               }
               assistantEl.querySelector('.assistant-text-content').innerHTML = formatMessage(fullText);
               scrollToBottom();
             }
           } else if (eventType === 'verification') {
             // Verification event — update tech-details inside status panel
-            const techDetails = document.getElementById('tech-details');
-            const verifyEl = techDetails ? techDetails.querySelector('.verification-status') : null;
+            const verifyEl = scopedTechDetails ? scopedTechDetails.querySelector('.verification-status') : null;
             if (verifyEl && data.checks) {
               const icon = data.passed ? '✓' : '✗';
               verifyEl.innerHTML = `<hr style="border:0;border-top:1px solid var(--border);margin:4px 0"><b>${icon} Verification (${data.checks.filter(c => c.passed).length}/${data.checks.length} passed):</b><br>` +
@@ -2388,10 +2383,9 @@ async function handleSend() {
             }
           } else if (eventType === 'done') {
             // Inference complete
-            const step = document.getElementById('step-status');
-            if (step) {
+            if (scopedStepStatus) {
               const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-              step.innerHTML = '<span style=\'color:var(--text-tertiary)\'>✅ Done (' + elapsed + 's)</span>';
+              scopedStepStatus.innerHTML = '<span style=\'color:var(--text-tertiary)\'>✅ Done (' + elapsed + 's)</span>';
             }
             setStreaming(false);
             // Don't return — let the while loop finish reading remaining data
