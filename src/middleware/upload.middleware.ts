@@ -29,8 +29,8 @@ export const ALLOWED_MIME_TYPES = [
   'text/xml',
 ] as const;
 
-/** Maximum file size: 10 MB per file. @see Requirement 1.4 */
-export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+/** Maximum file size: 15 MB per file. @see Requirement 1.4 */
+export const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15 MB
 
 /** Maximum number of files per request. @see Requirement 1.6 */
 export const MAX_FILE_COUNT = 5;

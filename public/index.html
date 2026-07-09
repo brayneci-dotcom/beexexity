@@ -538,6 +538,27 @@
       opacity: 1;
     }
 
+    .modal-btn {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.5rem 1rem;
+      cursor: pointer;
+      color: var(--text-primary);
+      font-size: 0.85rem;
+    }
+    .modal-btn:hover {
+      background: var(--border);
+    }
+    .modal-btn-primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .modal-btn-primary:hover {
+      opacity: 0.9;
+    }
+
     .assistant-content {
       font-size: 0.95rem;
       line-height: 1.65;
@@ -1693,7 +1714,10 @@
         <div class="model-compat-warning" id="model-compat-warning">⚠ Selected model does not support image inputs</div>
         <div class="file-error-area" id="file-error-area"></div>
         <div class="input-disclaimer">AI can make mistakes. Consider verifying important information.</div>
-        <div id="session-id-display" style="font-size:0.65rem;color:var(--text-tertiary);text-align:center;padding:0.25rem 0;display:none"></div>
+        <div id="session-id-display" style="font-size:0.65rem;color:var(--text-tertiary);text-align:center;padding:0.25rem 0;display:none">
+          <span id="session-id-text"></span>
+          <span id="feedback-trigger" style="display:none;margin-left:0.5rem;cursor:pointer;font-weight:700;color:var(--accent);text-decoration:underline" onclick="openFeedbackModal()">Ada Feedback? Laporkan disini</span>
+        </div>
       </div>
     </div>
   </div><!-- /.chat-main -->
@@ -2163,7 +2187,7 @@ async function handleSend() {
               startedGenerating = true;
               if (scopedStepStatus) scopedStepStatus.innerHTML = '<span style=\'color:var(--accent)\'>🤖 Generating response...</span>';
             }
-            assistantEl.querySelector('.assistant-text-content').innerHTML = formatMessage(fullText);
+            assistantEl.querySelector('.assistant-text-content').innerHTML = formatMessage(sanitizePartialMarkdown(fullText));
             scrollToBottom();
           } else if (eventType === 'session') {
             // Store the session ID from the server
@@ -2382,7 +2406,8 @@ async function handleSend() {
               }
             }
           } else if (eventType === 'done') {
-            // Inference complete
+            // Inference complete — final render without sanitization
+            assistantEl.querySelector('.assistant-text-content').innerHTML = formatMessage(fullText);
             if (scopedStepStatus) {
               const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
               scopedStepStatus.innerHTML = '<span style=\'color:var(--text-tertiary)\'>✅ Done (' + elapsed + 's)</span>';
@@ -2732,10 +2757,80 @@ function copyCode(btn) {
   }).catch(() => { btn.textContent = 'Failed'; });
 }
 
+
+function openFeedbackModal(messageEl) {
+  if (!messageEl) messageEl = document.querySelector('.message.assistant:last-child');
+  document.getElementById('feedback-modal').style.display = 'flex';
+  document.getElementById('feedback-category').value = '';
+  document.getElementById('feedback-text').value = '';
+  document.getElementById('feedback-error').style.display = 'none';
+  window._feedbackMessageEl = messageEl;
+}
+
+function closeFeedbackModal() {
+  document.getElementById('feedback-modal').style.display = 'none';
+}
+
+async function submitFeedback() {
+  const category = document.getElementById('feedback-category').value;
+  const text = document.getElementById('feedback-text').value.trim();
+  const errorEl = document.getElementById('feedback-error');
+  errorEl.style.display = 'none';
+
+  if (!category) { errorEl.textContent = 'Please select an error category'; errorEl.style.display = 'block'; return; }
+  if (text.length < 10) { errorEl.textContent = 'Details must be at least 10 characters'; errorEl.style.display = 'block'; return; }
+
+  try {
+    const contentEl = window._feedbackMessageEl?.querySelector('.assistant-text-content');
+    const finalResponse = contentEl ? contentEl.innerText || contentEl.textContent || '' : '';
+
+    const res = await fetch(API_BASE + '/feedback', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: currentSessionId,
+        errorCategory: category,
+        userFeedback: text,
+        finalResponse: finalResponse,
+      }),
+    });
+
+    if (!res.ok) throw new Error((await res.json()).message || 'Failed to submit');
+    closeFeedbackModal();
+    showToast('Feedback submitted. Thank you!');
+  } catch (e) {
+    errorEl.textContent = 'Error: ' + e.message;
+    errorEl.style.display = 'block';
+  }
+}
+
 function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+/**
+ * Strip unclosed inline markdown delimiters from the end of streaming text.
+ * Prevents raw ** * ` from showing when a delta chunk cuts mid-pattern.
+ */
+function sanitizePartialMarkdown(text) {
+  // Unclosed bold (**text)
+  const boldOpens = (text.match(/\*\*/g) || []).length;
+  if (boldOpens % 2 !== 0) {
+    text = text.replace(/\*\*([^*]*)$/, '$1');
+  }
+  // Unclosed italic (*text) — only single *, not **
+  const italicMatch = text.match(/(?<!\*)\*(?!\*)/g);
+  if ((italicMatch || []).length % 2 !== 0) {
+    text = text.replace(/(?<!\*)\*(?!\*)([^*]*)$/, '$1');
+  }
+  // Unclosed inline code (`text)
+  const codeMatch = text.match(/`/g);
+  if ((codeMatch || []).length % 2 !== 0) {
+    text = text.replace(/`([^`]*)$/, '$1');
+  }
+  return text;
 }
 
 // --- Cost Calculation ---
@@ -2797,8 +2892,11 @@ async function fetchIdrRate() {
 function updateSessionIdDisplay() {
   const el = document.getElementById('session-id-display');
   if (!el) return;
+  const idSpan = document.getElementById('session-id-text');
+  const fbTrigger = document.getElementById('feedback-trigger');
   if (currentSessionId) {
-    el.textContent = 'Session: ' + currentSessionId;
+    if (idSpan) idSpan.textContent = 'Session: ' + currentSessionId;
+    if (fbTrigger) fbTrigger.style.display = 'inline';
     el.style.display = 'block';
   } else {
     el.style.display = 'none';
@@ -3614,6 +3712,30 @@ function toggleTheme() {
 </script>
 
 <div class="toast-notification" id="toast-notification"></div>
+
+
+<!-- Feedback Modal -->
+<div id="feedback-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center">
+  <div style="background:var(--bg-secondary);padding:1.5rem;border-radius:12px;max-width:450px;width:90%">
+    <h3 style="margin-bottom:1rem">Report Issue</h3>
+    <label style="display:block;margin-bottom:0.35rem;font-size:0.85rem">Error Category *</label>
+    <select id="feedback-category" style="width:100%;padding:0.5rem;margin-bottom:0.75rem;border-radius:8px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary)">
+      <option value="">Select category...</option>
+      <option value="hallucination">Hallucination</option>
+      <option value="missed_context">Missed Context</option>
+      <option value="wrong_tone">Wrong Tone</option>
+      <option value="formatting_issue">Formatting Issue</option>
+      <option value="other">Other</option>
+    </select>
+    <label style="display:block;margin-bottom:0.35rem;font-size:0.85rem">Details * (min 10 chars)</label>
+    <textarea id="feedback-text" placeholder="Describe what went wrong..." style="width:100%;padding:0.5rem;min-height:80px;border-radius:8px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);resize:vertical"></textarea>
+    <div id="feedback-error" style="color:var(--accent);font-size:0.8rem;margin-top:0.35rem;display:none"></div>
+    <div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:1rem">
+      <button class="modal-btn" onclick="closeFeedbackModal()">Cancel</button>
+      <button class="modal-btn modal-btn-primary" onclick="submitFeedback()">Send</button>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>
