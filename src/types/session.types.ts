@@ -56,6 +56,8 @@ export interface ConversationInferenceRequest {
   messages: BedrockMessage[];   // Full conversation history + current prompt
   modelId: string;
   userId: string;
+  /** Optional system prompt to send alongside messages. Instructs model behavior. */
+  system?: string;
   inferenceConfig?: {
     maxTokens?: number;
     temperature?: number;

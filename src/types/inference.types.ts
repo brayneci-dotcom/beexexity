@@ -99,6 +99,12 @@ export interface RoutingMetadataEvent {
   ocrExecuted?: boolean;
   ocrModel?: string;
   enhanceModel?: string;
+
+  // Raw LLM call data for debugging (routeRequest internals)
+  _classificationRaw?: string;   // Raw response from unifiedClassifyAndScore
+  _classificationPrompt?: string; // Prompt sent to classifier
+  _refinementRaw?: string;        // Raw response from refinePrompt
+  _refinementPrompt?: string;     // Prompt sent to refiner
 }
 
 /**

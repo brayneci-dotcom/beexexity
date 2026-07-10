@@ -29,6 +29,7 @@ import { tryAcquireSessionLock } from '../config/database.js';
 import { loadMemoryState, summarizeEvicted, extractFacts } from '../services/session-memory.service.js';
 import { getFewShotExamples } from '../services/few-shot-library.js';
 import { config } from '../config/index.js';
+import { getRoleForSkill } from '../config/skill-role-map.js';
 import type { RoutingMetadataEvent } from '../types/inference.types.js';
 import { DEFAULT_MODEL } from '../types/inference.types.js';
 import type { RoutingInput, RoutingDecision } from '../types/routing.types.js';
@@ -305,6 +306,11 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
         const routingDuration = Date.now() - routingStart;
         executedModelId = routingDecision.executedModelId;
         effectivePrompt = routingDecision.refinedPrompt;
+        // Attach raw LLM call data for debugging
+        (routingDecision as any)._classRaw = (routingDecision as any)._classRaw || (routingDecision as any).contract?._classRaw;
+        (routingDecision as any)._classPrompt = (routingDecision as any)._classPrompt || (routingDecision as any).contract?._classPrompt;
+        (routingDecision as any)._refineRaw = (routingDecision as any)._refineRaw || (routingDecision as any).contract?._refineRaw;
+        (routingDecision as any)._refinePrompt = (routingDecision as any)._refinePrompt || (routingDecision as any).contract?._refinePrompt;
         console.log(`[inference] Routing complete in ${routingDuration}ms → model=${executedModelId}, score=${routingDecision.complexityScore}, band=${routingDecision.scoreBand}, flags=[${routingDecision.flags.join(',')}]`);
       } catch (routingError: unknown) {
         // Routing engine failure: fallback to DEFAULT_MODEL, log warning
@@ -393,12 +399,22 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
         memorySummary: memoryState.summary ?? undefined,
         memoryVersion: memoryState.memoryVersion,
         memoryFacts: memoryState.facts,
+        // Raw LLM call data for debugging (routeRequest internals)
+        _classificationRaw: (routingDecision as any)?._classRaw,
+        _classificationPrompt: (routingDecision as any)?._classPrompt,
+        _refinementRaw: (routingDecision as any)?._refineRaw,
+        _refinementPrompt: (routingDecision as any)?._refinePrompt,
       };
       res.write(`event: routing\ndata: ${JSON.stringify(routingMetadata)}\n\n`);
     }
 
-    // 11. Build inference request using contextOutput.inference_payload
-    // Replace the current user message's text with the effective (routed) prompt
+    // 11. Inject ambiguities into prompt if contract flagged them
+    if (routingDecision?.contract?.clarificationNeeded && routingDecision?.contract?.ambiguities?.length > 0) {
+      const ambigNote = '\n\nNote: The following aspects of my request may be unclear. Please address them if possible:\n- ' + routingDecision.contract.ambiguities.join('\n- ');
+      effectivePrompt += ambigNote;
+    }
+
+    // 11b. Build inference request using contextOutput.inference_payload
     const inferenceMessages: BedrockMessage[] = contextOutput.inference_payload.slice(0, -1);
     const currentUserMessage: BedrockMessage = {
       role: 'user',
@@ -412,6 +428,17 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
       messages: conversationMessages,
       modelId: resolveModelForInvocation(executedModelId),
       userId: user.sub,
+      system: (() => {
+        const role = routingDecision?.contract?.role || getRoleForSkill(routingDecision?.skill || 'general');
+        const lang = routingDecision?.detectedLanguage || 'indonesian';
+        const bi = routingDecision?.contract?.behavioral_instructions;
+        const of = routingDecision?.contract?.output_format;
+        let s = 'You are ' + role + '. IMPORTANT: Respond in ' + lang + '.';
+        if (bi) s += '\n\n' + bi;
+        if (of) s += '\n\nFormat the response as follows:\n' + of;
+        s += ' Do NOT use Markdown formatting: no ###, ---, **bold**, *italic*, bullet points with - or *, numbered lists with 1., > blockquotes, or `code`. Use plain paragraphs.';
+        return s;
+      })(),
       ...(inferenceConfig && {
         inferenceConfig: {
           maxTokens: inferenceConfig.maxTokens,
@@ -1051,6 +1078,12 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
   let ocrText: string | undefined;
   let finalExecutedModelId = executedModelId;
 
+  // Inject ambiguities into prompt if contract flagged them (multipart)
+  if (routingDecision?.contract?.clarificationNeeded && routingDecision?.contract?.ambiguities?.length > 0) {
+    const ambigNote = '\n\nNote: The following aspects of my request may be unclear. Please address them if possible:\n- ' + routingDecision.contract.ambiguities.join('\n- ');
+    routingEffectivePrompt += ambigNote;
+  }
+
   // Use inference_payload from buildContext() for history, exclude the last message
   const inferenceMessages: BedrockMessage[] = contextOutput.inference_payload.slice(0, -1);
 
@@ -1184,6 +1217,11 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
       ocrExecuted: needsOCR || undefined,
       ocrModel: needsOCR ? NOVA_LITE_MODEL : undefined,
       enhanceModel: needsOCR ? ENHANCE_MODEL : undefined,
+      // Raw LLM call data for debugging
+      _classificationRaw: (routingDecision as any)?._classRaw,
+      _classificationPrompt: (routingDecision as any)?._classPrompt,
+      _refinementRaw: (routingDecision as any)?._refineRaw,
+      _refinementPrompt: (routingDecision as any)?._refinePrompt,
     };
     res.write(`event: routing\ndata: ${JSON.stringify(routingMetadata)}\n\n`);
   }
@@ -1272,6 +1310,17 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
         messages: conversationMessages,
         modelId: targetModel,
         userId: user.sub,
+        system: (() => {
+        const role = routingDecision?.contract?.role || getRoleForSkill(routingDecision?.skill || 'general');
+        const lang = routingDecision?.detectedLanguage || 'indonesian';
+        const bi = routingDecision?.contract?.behavioral_instructions;
+        const of = routingDecision?.contract?.output_format;
+        let s = 'You are ' + role + '. IMPORTANT: Respond in ' + lang + '.';
+        if (bi) s += '\n\n' + bi;
+        if (of) s += '\n\nFormat the response as follows:\n' + of;
+        s += ' Do NOT use Markdown formatting: no ###, ---, **bold**, *italic*, bullet points with - or *, numbered lists with 1., > blockquotes, or `code`. Use plain paragraphs.';
+        return s;
+      })(),
         ...(inferenceConfig && {
           inferenceConfig: {
             maxTokens: inferenceConfig.maxTokens,

@@ -42,7 +42,7 @@ router.post('/', authMiddleware, async (req: Request, res: Response): Promise<vo
   try {
     // Extract routing metadata from audit_logs for this session
     const { rows: routingRows } = await query(
-      `SELECT skill, complexity_score, routing_state, executed_model_id, model_id, input_tokens, output_tokens
+      `SELECT complexity_score, routing_state, executed_model_id, model_id, input_tokens, output_tokens
        FROM audit_logs WHERE session_id = $1 AND status = 'success'
        ORDER BY timestamp DESC LIMIT 1`,
       [sessionId],
@@ -50,7 +50,6 @@ router.post('/', authMiddleware, async (req: Request, res: Response): Promise<vo
 
     const routingMeta = routingRows.length > 0
       ? {
-          skill: routingRows[0].skill,
           complexityScore: routingRows[0].complexity_score,
           routingState: routingRows[0].routing_state,
           executedModelId: routingRows[0].executed_model_id,

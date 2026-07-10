@@ -313,6 +313,9 @@ export async function generate(
   const command = new ConverseStreamCommand({
     modelId: request.modelId,
     messages,
+    ...(isConversationRequest(request) && request.system
+      ? { system: [{ text: request.system }] }
+      : {}),
     inferenceConfig,
   });
 

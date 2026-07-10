@@ -659,23 +659,13 @@
 
     .assistant-content h1 { font-size: 1.25rem; }
     .assistant-content h2 { font-size: 1.1rem; }
-    .assistant-content h3 { font-size: 1rem; }
+    .assistant-content h3 {
+      font-size: 1.05rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.25rem;
+    }
     .assistant-content h4 { font-size: 0.95rem; }
 
-    .assistant-content h2 .heading-anchor,
-    .assistant-content h3 .heading-anchor {
-      opacity: 0;
-      margin-left: 0.35rem;
-      font-weight: 400;
-      color: var(--text-tertiary);
-      text-decoration: none;
-      font-size: 0.85em;
-    }
-
-    .assistant-content h2:hover .heading-anchor,
-    .assistant-content h3:hover .heading-anchor {
-      opacity: 1;
-    }
 
     .assistant-content a {
       color: var(--accent);
@@ -2097,6 +2087,8 @@ async function handleSend() {
         formData.append('files', file);
       });
 
+      window._routingRequestData = JSON.stringify({ prompt, modelId: modelId || '(auto)', sessionId: currentSessionId, mode: modelId === 'auto_v2' ? 'thinking' : 'auto' }, null, 2);
+      window._routingRequestData = JSON.stringify({ prompt, modelId: modelId || '(auto)', sessionId: currentSessionId, mode: modelId === 'auto_v2' ? 'thinking' : 'auto', multipart: true, fileCount: attachedFiles.length }, null, 2);
       res = await fetch(`${API_BASE}/inference/generate`, {
         method: 'POST',
         headers: {
@@ -2268,10 +2260,13 @@ async function handleSend() {
               if (data.enhanceModel) d.push(`&nbsp;&nbsp;Enhance: ${data.enhanceModel}`);
             }
             d.push(`<div class="verification-status" style="margin-top:4px;font-style:italic;color:var(--text-tertiary)"></div>`);
-            techDetails.innerHTML = d.join('<br>');
+            scopedTechDetails.innerHTML = d.join('<br>') + '<div style="margin-top:6px"><span style="cursor:pointer;font-size:0.7rem;color:var(--text-tertiary);text-decoration:underline" onclick="toggleRawData()">📋 Show Raw Data</span></div><pre id="raw-data-display" style="display:none;margin-top:4px;padding:6px;background:var(--bg-primary);border-radius:6px;font-size:0.7rem;overflow-x:auto;white-space:pre-wrap;color:var(--text-secondary)"></pre>';
             if (scopedStepStatus) scopedStepStatus.innerHTML = '<span style=\'color:var(--accent)\'>🔍 Analyzing request...</span>';
+            // Store raw routing data for debug toggle
+            window._routingRawData = JSON.stringify(data, null, 2);
             } catch (e) { console.error('[ui] Tech details error:', e); }
           } else if (eventType === 'orchestration_plan') {
+            window._debugEvents.push({ type: 'orchestration_plan', data: JSON.parse(JSON.stringify(data)) });
             // Sequential reasoning plan received
             if (!scopedStepStatus) continue;
 
@@ -2291,6 +2286,15 @@ async function handleSend() {
 
             // Handle new sequential reasoning format (data.steps)
             if (data.steps && scopedSeqSteps) {
+              if (scopedTechDetails) {
+                scopedTechDetails.style.display = 'block';
+                let planHtml = '<hr style="border:0;border-top:1px solid var(--border);margin:4px 0"><b>🧩 Orchestration Plan:</b>';
+                if (data.reasoning) planHtml += '<br><span style="font-size:0.85em;color:var(--text-tertiary)">' + escapeHtml(data.reasoning) + '</span>';
+                for (const s of data.steps) {
+                  planHtml += '<br>&nbsp;&nbsp;<b>Step ' + s.order + ':</b> ' + escapeHtml(s.name) + ' — <span style="color:var(--text-tertiary);font-size:0.85em">' + escapeHtml(s.description) + '</span>';
+                }
+                scopedTechDetails.innerHTML += planHtml;
+              }
               seqStepTotal = data.steps.length;
               seqStepCurrent = 0;
               seqSteps.style.display = 'flex';
@@ -2332,7 +2336,12 @@ async function handleSend() {
               stepStatus.innerHTML = '<span style=\'color:var(--accent)\'>🔍 ' + escapeHtml(data.description || data.name) + '</span>';
             }
           } else if (eventType === 'orchestration_interim') {
+            window._debugEvents.push({ type: 'orchestration_interim', data: JSON.parse(JSON.stringify(data)) });
             // Progressive synthesis - interim insights
+            if (scopedTechDetails && data.insight) {
+              scopedTechDetails.style.display = 'block';
+              scopedTechDetails.innerHTML += '<hr style="border:0;border-top:1px solid var(--border);margin:4px 0"><b>📊 Interim (' + data.step + '/' + data.total + '):</b><br><span style="font-size:0.85em;color:var(--text-tertiary)">' + escapeHtml(data.insight) + '</span>';
+            }
             if (scopedStepStatus && data.insight) {
               const existing = stepStatus.querySelector('.interim-insight');
               if (existing) existing.remove();
@@ -2343,7 +2352,12 @@ async function handleSend() {
               stepStatus.appendChild(div);
             }
           } else if (eventType === 'orchestration_error') {
+            window._debugEvents.push({ type: 'orchestration_error', data: JSON.parse(JSON.stringify(data)) });
             // Step failure
+            if (scopedTechDetails) {
+              scopedTechDetails.style.display = 'block';
+              scopedTechDetails.innerHTML += '<hr style="border:0;border-top:1px solid var(--border);margin:4px 0"><b>⚠️ Step ' + data.step + ' Failed:</b> ' + escapeHtml(data.name) + ' — <span style="color:var(--text-tertiary)">' + escapeHtml(data.reason || 'unknown') + '</span>';
+            }
             if (scopedSeqSteps) {
               const stepEl = seqSteps.querySelector('.seq-step[data-step="' + data.step + '"]');
               if (stepEl) {
@@ -2356,7 +2370,23 @@ async function handleSend() {
             if (scopedStepStatus) {
               stepStatus.innerHTML += '<br><span style=\'color:#e6a817\'>⚠️ ' + escapeHtml(data.name) + ' — ' + escapeHtml(data.reason || 'failed') + '</span>';
             }
-          } else if (eventType === 'subagent_delta') {
+          } else if (eventType === 'orchestration_step') {
+            window._debugEvents.push({ type: 'orchestration_step', data: JSON.parse(JSON.stringify(data)) });
+            // Per-step output — log to tech-details
+            if (scopedTechDetails) {
+              scopedTechDetails.style.display = 'block';
+              const preview = data.content ? (data.content.length > 200 ? data.content.slice(0, 200) + '...' : data.content) : '';
+              scopedTechDetails.innerHTML += '<hr style="border:0;border-top:1px solid var(--border);margin:4px 0"><b>📝 Step ' + data.step + ' Output:</b><br><span style="font-size:0.85em;color:var(--text-tertiary)">' + escapeHtml(preview) + '</span>';
+            }
+          } else if (eventType === 'orchestration_status') {
+            window._debugEvents.push({ type: 'orchestration_status', data: JSON.parse(JSON.stringify(data)) });
+            // Sequential reasoning step progress — log to tech-details
+            if (scopedTechDetails) {
+              scopedTechDetails.style.display = 'block';
+              const icon = data.status === 'running' ? '⏳' : data.status === 'completed' ? '✅' : '❌';
+              scopedTechDetails.innerHTML += '<hr style="border:0;border-top:1px solid var(--border);margin:4px 0"><span><b>' + icon + ' Step ' + data.step + '/' + data.total + ':</b> ' + escapeHtml(data.name || data.description || '') + (data.durationMs ? ' (' + (data.durationMs / 1000).toFixed(1) + 's)' : '') + ' <span style="color:var(--text-tertiary);font-size:0.85em">[' + data.status + ']</span></span>';
+            }
+            if (!scopedSeqSteps) continue;
             // Legacy sub-agent progress (backward compat)
             if (data.status === 'done' || data.status === 'failed') {
               subAgentDone++;
@@ -2642,8 +2672,8 @@ function formatMarkdown(text) {
     }
 
     // Close list if line is not a list item — instead treat as continuation
-    const isUnorderedItem = /^[\-\*]\s+/.test(line);
-    const isOrderedItem = /^\d+\.\s+/.test(line);
+    const isUnorderedItem = /^\s*[\-\*]\s+/.test(line);
+    const isOrderedItem = /^\s*\d+\.\s+/.test(line);
 
     if (inList && !isUnorderedItem && !isOrderedItem && line.trim() !== '') {
       // Append non-list line as continuation inside current <li>.
@@ -2658,8 +2688,7 @@ function formatMarkdown(text) {
       const level = line.match(/^(#{1,6})\s/)[1].length;
       const content = line.replace(/^#{1,6}\s+/, '');
       const anchor = content.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-      const anchorHtml = level <= 3 ? `<a href="#${anchor}" style="opacity:0;margin-left:0.35rem;font-weight:400;color:var(--text-tertiary);text-decoration:none;font-size:0.85em" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0">#</a>` : '';
-      html += `<h${level} id="${anchor}" style="margin: 1.25rem 0 0.5rem; font-weight:600;scroll-margin-top:80px;font-size:${1.4 - level * 0.1}rem;">${inlineFormat(content)}${anchorHtml}</h${level}>`;
+      html += `<h${level} id="${anchor}" style="margin: 1.25rem 0 0.5rem; font-weight:600;scroll-margin-top:80px;font-size:${1.4 - level * 0.1}rem;">${inlineFormat(content)}</h${level}>`;
       continue;
     }
     
@@ -2677,7 +2706,7 @@ function formatMarkdown(text) {
         inList = true;
         listType = 'ul';
       }
-      const content = line.replace(/^[\-\*]\s+/, '');
+      const content = line.trim().replace(/^[\-\*]\s+/, '');
       html += `<li style="margin: 0.25rem 0;">${inlineFormat(content)}</li>`;
       continue;
     }
@@ -2690,7 +2719,7 @@ function formatMarkdown(text) {
         inList = true;
         listType = 'ol';
       }
-      const content = line.replace(/^\d+\.\s+/, '');
+      const content = line.trim().replace(/^\d+\.\s+/, '');
       html += `<li style="margin: 0.25rem 0;">${inlineFormat(content)}</li>`;
       continue;
     }
@@ -2757,6 +2786,43 @@ function copyCode(btn) {
   }).catch(() => { btn.textContent = 'Failed'; });
 }
 
+
+// Debug: toggle raw routing data display
+function toggleRawData() {
+  const el = document.getElementById('raw-data-display');
+  if (!el) return;
+  if (el.style.display === 'block') {
+    el.style.display = 'none';
+    return;
+  }
+  const p = [];
+  if (window._routingRequestData) {
+    p.push('=== REQUEST ===');
+    p.push(window._routingRequestData);
+  }
+  let rd = null;
+  try { rd = JSON.parse(window._routingRawData || 'null'); } catch {}
+  if (rd) {
+    if (rd._classificationPrompt || rd._classificationRaw) {
+      p.push('\n=== LLM CALL 1: unifiedClassifyAndScore (qwen3-32b) ===');
+      if (rd._classificationPrompt) { p.push('--- PROMPT ---'); p.push(rd._classificationPrompt); }
+      if (rd._classificationRaw) { p.push('--- RESPONSE ---'); p.push(rd._classificationRaw); }
+    }
+    if (rd._refinementPrompt || rd._refinementRaw) {
+      p.push('\n=== LLM CALL 2: refinePrompt (qwen3-32b) ===');
+      if (rd._refinementPrompt) { p.push('--- PROMPT ---'); p.push(rd._refinementPrompt); }
+      if (rd._refinementRaw) { p.push('--- RESPONSE ---'); p.push(rd._refinementRaw); }
+    }
+    const { _classificationPrompt, _classificationRaw, _refinementPrompt, _refinementRaw, ...rest } = rd;
+    p.push('\n=== ROUTING DECISION (all fields) ===');
+    p.push(JSON.stringify(rest, null, 2));
+  }
+  el.textContent = p.join('\n') || 'No routing data';
+  el.style.display = 'block';
+}
+
+// Debug: buffer for raw orchestration events
+window._debugEvents = [];
 
 function openFeedbackModal(messageEl) {
   if (!messageEl) messageEl = document.querySelector('.message.assistant:last-child');

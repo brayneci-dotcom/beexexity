@@ -27,6 +27,7 @@ import type {
 import { SkillType, ALL_SKILLS } from '../types/routing.types.js';
 import type { PromptContract, VerificationResult } from '../types/routing.types.js';
 import type { ModalityFlags } from '../types/inference.types.js';
+import { getRoleForSkill } from '../config/skill-role-map.js';
 
 /** Bedrock client for routing engine calls (scoring + refinement). */
 const bedrockClient = new BedrockRuntimeClient({
@@ -64,6 +65,12 @@ function parseRefinementContract(raw: string): {
     ? parsed.ambiguities.filter((a): a is string => typeof a === 'string')
     : [];
   const clarificationNeeded = parsed.clarification_needed === true;
+  const behavioral_instructions = typeof parsed.behavioral_instructions === 'string'
+    ? parsed.behavioral_instructions.trim()
+    : undefined;
+  const output_format = typeof parsed.output_format === 'string'
+    ? parsed.output_format.trim()
+    : undefined;
 
   // Build flowing text — use values directly without English sentence framing.
   // The refinement model produces role/context/task/intent in the user's language
@@ -75,6 +82,8 @@ function parseRefinementContract(raw: string): {
   else if (context) parts.push(context);
   if (role && task) parts.push('\n\nRole: ' + role);
   else if (role) parts.push(role);
+  if (behavioral_instructions) parts.push('\n\nGuidelines:\n' + behavioral_instructions);
+  if (output_format) parts.push('\n\nFormat:\n' + output_format);
   const flowingText = parts.length > 0 ? parts.join('') : null;
 
   // Build structured contract
@@ -85,6 +94,8 @@ function parseRefinementContract(raw: string): {
     intent,
     ambiguities,
     clarificationNeeded,
+    behavioral_instructions,
+    output_format,
   };
 
   // Extract optional format hints from parsed fields
@@ -223,9 +234,17 @@ const GLOBAL_REFINEMENT_RULES = [
   '  - Prompt: "kamu tahu apa tentang k8s?" → intent: "answer concisely about k8s"',
   '  - Prompt: "Explain Kubernetes architecture with component diagram" → intent: "detailed explanation"',
   '  - Prompt: "evaluasi dokumen ini" → intent: "evaluate the uploaded document"',
+  '',
+  '### DYNAMIC INSTRUCTION GENERATION (Turn 1 only)',
+  'Based on the user\'s task, skill, and document context, generate specific guidance for the inference model.',
+  '1. "behavioral_instructions": Specific criteria, focus areas, or behavioral rules the model must follow (e.g., "Focus on security and scalability", "Use formal tone", "Prioritize SOLID principles") in the user\'s language.',
+  '2. "output_format": How the final response should be structured (e.g., "Use a 3-bullet list", "Format as a professional report with headings: Executive Summary, Strengths, Risks, Recommendations") in the user\'s language.',
+  '3. CRITICAL: Both fields MUST be in the EXACT SAME LANGUAGE as the user\'s original prompt. NEVER use English if the user wrote in Indonesian.',
+  '4. For simple tasks (e.g., basic translation, greetings), you may omit these fields.',
 ].join('\n');
 
 /** Skill-specific refinement prompts. Keyed by SkillType. */
+
 const SKILL_PROMPTS: Record<SkillType, string> = {
   // ── Generation ──────────────────────────────────────────────────
   email: [
@@ -514,6 +533,32 @@ const SKILL_PROMPTS: Record<SkillType, string> = {
  * but the output JSON omits role/context to avoid redundant English framing
  * that can bias the inference model's language.
  */
+const SKILL_REFINEMENT_PROMPT = [
+  'You are an expert prompt engineer refining a user\'s request for an AI inference engine.',
+  'The user\'s detected skill is: {{skill}}.',
+  'The user\'s detected language is: {{detected_language}}.',
+  '',
+  '### CRITICAL INSTRUCTIONS',
+  '1. TASK FIELD: Copy user\'s EXACT original prompt VERBATIM. Do not translate or alter.',
+  '2. LANGUAGE PRESERVATION: The "context", "intent", "behavioral_instructions", and "output_format" fields MUST be written in the EXACT SAME LANGUAGE as the user\'s original prompt ({{detected_language}}). NEVER use English if the user wrote in Indonesian.',
+  '3. DYNAMIC FIELDS: Based on the task and skill, generate specific guidance for the final model.',
+  '   - "behavioral_instructions": Specific criteria, focus areas, or behavioral rules (e.g., "Fokus pada keamanan dan skalabilitas").',
+  '   - "output_format": How the response should be structured (e.g., "Gunakan format laporan dengan heading: Ringkasan, Analisis, Rekomendasi").',
+  '4. BE CONCISE. High signal, zero noise.',
+  '5. JSON ONLY. No markdown, no explanations.',
+  '',
+  '### OUTPUT FORMAT',
+  '{',
+  '  "context": "<brief context description in user\'s language>",',
+  '  "task": "<EXACT VERBATIM USER PROMPT>",',
+  '  "intent": "<what the user wants to achieve, in user\'s language>",',
+  '  "behavioral_instructions": "<dynamic guidance in user\'s language>",',
+  '  "output_format": "<structure guidance in user\'s language>",',
+  '  "ambiguities": ["<list missing info in user\'s language>"],',
+  '  "clarification_needed": false',
+  '}',
+].join('\n');
+
 const FOLLOW_UP_REFINEMENT_PROMPT = [
   'You are a prompt refiner for FOLLOW-UP questions in an ongoing conversation.',
   'The user\'s role and context are already established — do NOT re-introduce them.',
@@ -523,10 +568,19 @@ const FOLLOW_UP_REFINEMENT_PROMPT = [
   '2. BE CONCISE. The user is continuing a conversation — don\'t expand scope.',
   '3. JSON ONLY. No markdown, no explanations.',
   '',
+  '### DYNAMIC INSTRUCTION GENERATION',
+  'Based on the user\'s follow-up and conversation history, generate specific guidance for the inference model.',
+  '1. "behavioral_instructions": Specific focus areas or behavioral rules the model must follow (e.g., "Focus on security and scalability", "Use formal tone").',
+  '2. "output_format": How the final response should be structured (e.g., "Use a 3-bullet list", "Format as a professional report with headings").',
+  '3. CRITICAL: Both fields MUST be in the EXACT SAME LANGUAGE as the user\'s follow-up. NEVER use English if the user wrote in Indonesian.',
+  '4. For simple tasks (e.g., greetings, basic translation), you may omit these fields.',
+  '',
   'Output JSON with these fields ONLY (no role, no context):',
   '{',
   '  "task": "User\'s original follow-up prompt VERBATIM in original language",',
   '  "intent": "What this specific follow-up wants to accomplish",',
+  '  "behavioral_instructions": "Specific guidance in user\'s language (optional)",',
+  '  "output_format": "Structural guidance in user\'s language (optional)",',
   '  "ambiguities": ["What is unclear (if anything)"],',
   '  "clarification_needed": false',
   '}',
@@ -537,7 +591,8 @@ export async function refinePrompt(
   documentContext?: string,
   skill: SkillType = 'general',
   conversationContext?: string,
-): Promise<{ flowingText: string | null; contract: PromptContract | null }> {
+  detectedLanguage?: string,
+): Promise<{ flowingText: string | null; contract: PromptContract | null; _rawResponse?: string; _rawPrompt?: string }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => {
     controller.abort();
@@ -548,10 +603,17 @@ export async function refinePrompt(
     // are already established in conversation history. The LLM still receives
     // conversationContext as input for understanding, but omits role/context
     // from the output JSON to avoid redundant framing that can bias language.
-    const isFollowUp = !!conversationContext;
-    const systemPrompt = isFollowUp
-      ? GLOBAL_REFINEMENT_RULES + '\n\n' + FOLLOW_UP_REFINEMENT_PROMPT
-      : GLOBAL_REFINEMENT_RULES + '\n\n' + SKILL_PROMPTS[skill];
+    const isFollowUp = !!(conversationContext && conversationContext.trim().length > 0);
+    let systemPrompt: string;
+    if (isFollowUp) {
+      systemPrompt = GLOBAL_REFINEMENT_RULES + '\n\n' + FOLLOW_UP_REFINEMENT_PROMPT;
+      console.log('[routing] Using Turn 2+ Follow-Up Refinement Prompt');
+    } else {
+      systemPrompt = GLOBAL_REFINEMENT_RULES + '\n\n' + SKILL_REFINEMENT_PROMPT
+        .replace('{{skill}}', skill)
+        .replace('{{detected_language}}', detectedLanguage || 'indonesian');
+      console.log('[routing] Using Turn 1 Skill Refinement Prompt (lang=' + (detectedLanguage || 'indonesian') + ')');
+    }
 
     const parts: string[] = [`Original request: ${originalPrompt}`];
     if (documentContext) {
@@ -587,7 +649,10 @@ export async function refinePrompt(
     }
 
     // Parse JSON and return both flowing text + structured contract
-    return parseRefinementContract(outputText);
+    const _refRaw = parseRefinementContract(outputText);
+    // Also capture the raw prompt for debugging
+    const _refRawPrompt = systemPrompt.slice(0, 500) + '\n\n[User]: ' + userContent.slice(0, 500);
+    return { flowingText: _refRaw.flowingText, contract: _refRaw.contract, _rawResponse: outputText, _rawPrompt: _refRawPrompt };
   } catch {
     // Any failure (timeout, API error, parse error) → return null
     return { flowingText: null, contract: null };
@@ -702,10 +767,10 @@ async function unifiedClassifyAndScore(
   conversationContext?: string,
   hasEmptyPrompt?: boolean,
   hasImages?: boolean,
-): Promise<{ skill: SkillType; complexityScore: number; confidence: number } | null> {
-  // Silent upload: files but no prompt → document_qna, score 3
+): Promise<{ skill: SkillType; complexityScore: number; confidence: number; language: string; languageConfidence: number; _rawResponse?: string; _rawPrompt?: string } | null> {
+  // Silent upload: files but no prompt → document_qna, score 3, default Indonesian
   if (hasEmptyPrompt && (hasImages || documentText)) {
-    return { skill: 'document_qna', complexityScore: 3, confidence: 0.9 };
+    return { skill: 'document_qna', complexityScore: 3, confidence: 0.9, language: 'indonesian', languageConfidence: 0.9, _rawResponse: '(silent upload - no LLM call)', _rawPrompt: '(silent upload - no LLM call)' };
   }
 
   const controller = new AbortController();
@@ -726,41 +791,65 @@ async function unifiedClassifyAndScore(
     }
 
     const systemPrompt = [
-      'Classify the user request AND score its complexity. Return ONLY a JSON object, no other text.',
+      'You are an expert intent classifier and complexity scorer for an AI routing engine. Classify the user request into ONE skill and score its complexity 1-5.',
       '',
-      'Supported skills (17):',
-      'email | creative | brainstorming | meta_prompting',
-      'summarization | translation | data_conversion | editing_critique',
-      'roleplay | logic_math | planning_strategy | document_qna',
-      'requirement_generation | compliance_pre_assessment',
-      'code | log_troubleshooting | general',
+      '### SKILLS (Choose exactly one)',
+      '[Generation] email | creative | brainstorming | meta_prompting',
+      '[Transformation] summarization | translation | data_conversion | editing_critique',
+      '[Interaction] roleplay | logic_math | planning_strategy | document_qna',
+      '[Enterprise] requirement_generation | compliance_pre_assessment',
+      '[Engineering] code | log_troubleshooting | general',
       '',
-      'Skill selection rules:',
-      '- Document contains code → "code"',
-      '- Financial/regulatory content → "compliance_pre_assessment"',
-      '- Document Q&A ONLY if a document is actually uploaded → "document_qna"',
-      '- If NO document is attached → NEVER classify as document_qna, use "general"',
-      '- General knowledge questions without documents → "general"',
+      'Skill definitions:',
+      '- email: compose or reply to emails',
+      '- creative: creative writing, stories, poems',
+      '- brainstorming: ideation, idea generation',
+      '- meta_prompting: prompt engineering assistance',
+      '- summarization: condense text, extract key points',
+      '- translation: convert between languages',
+      '- data_conversion: transform data formats (JSON, CSV, etc.)',
+      '- editing_critique: proofread, review, improve text',
+      '- roleplay: act as a character in a scenario',
+      '- logic_math: solve logic puzzles, math problems, proofs',
+      '- planning_strategy: create plans, roadmaps, strategies',
+      '- document_qna: answer questions about an uploaded document',
+      '- requirement_generation: create formal requirements, BRD, PRD',
+      '- compliance_pre_assessment: evaluate regulatory compliance',
+      '- code: write, review, debug code',
+      '- log_troubleshooting: debug system logs, errors, incidents',
+      '- general: catch-all for everything else',
       '',
-      'Complexity scoring guide:',
-      'Score 1: Simple factual lookup, greeting, yes/no (e.g. "what is 2+2", "hi")',
-      'Score 2: Basic explanation, summarization, translation (e.g. "summarize this email")',
-      'Score 3: Multi-step reasoning, comparison, analysis (e.g. "compare these two options")',
-      'Score 4: Complex analysis, compliance assessment, code generation',
-      'Score 5: Expert-level domain reasoning, strategic planning, regulatory analysis',
+      '### CRITICAL CLASSIFICATION RULES',
+      '- document_qna is ONLY valid if a document is actually uploaded. If no document, use "general".',
+      '- Document contains code to analyze/fix → "code"',
+      '- Financial/regulatory/legal content → "compliance_pre_assessment"',
+      '- Request to write code → "code"',
       '',
-      'Calibrations by skill:',
-      '- email / summarization / translation: cap at 3',
-      '- code / log_troubleshooting: floor at 2',
-      '- compliance_pre_assessment: floor at 3',
-      '- document_qna: scale with document length and complexity',
+      '### ⚠️ STRICT NEGATIVE CONSTRAINTS — COMPLIANCE SKILL',
+      '- NEVER use compliance_pre_assessment for purely technical, architectural, software engineering, or IT documents (e.g., Tech Reference, Node.js architecture, AWS Bedrock configs, code reviews).',
+      '- compliance_pre_assessment is STRICTLY reserved for legal, financial, tax, or government regulatory documents (e.g., OJK, Bank Indonesia, ISO audits, UU PDP).',
+      '- If the user asks to evaluate a technical implementation or architecture, use document_qna, editing_critique, or code instead.',
       '',
-      'JSON format:',
+      '### COMPLEXITY SCORING (1-5)',
+      '- CRITICAL: If the user asks to "evaluate", "review", or "analyze" an ENTIRE technical document, architecture, or system (not just a small section or single concept), the complexity_score MUST be 4 or 5. This triggers advanced reasoning (Thinking Mode).',
+      '  - Example: "evaluasi dokumen ini" regarding a full Tech Reference document = Score 4.',
+      'Score 1: Trivial — greetings, yes/no, simple factual lookup, basic translation of a word. Example: "what is 2+2", "hi", "terjemahkan buku"',
+      'Score 2: Standard — basic summarization, simple email drafting, general Q&A, straightforward code snippet. Example: "summarize this email", "tulis email resignasi", "apa itu REST API"',
+      'Score 3: Moderate — multi-step reasoning, standard document analysis, comparison, debugging typical logs, data conversion. Example: "compare these two options", "analisa dokumen ini", "convert JSON ke CSV"',
+      'Score 4: Complex — deep compliance/regulatory review, complex logic/math, large document synthesis, multi-domain reasoning. Example: "evaluasi kepatuhan dokumen ini terhadap BI regulation", "lakukan analisis risiko keamanan sistem pembayaran". [TRIGGERS THINKING MODE]',
+      'Score 5: Expert — highly abstract strategy, extreme edge-case troubleshooting, massive multi-document synthesis, zero-day vulnerability analysis. Example: "lakukan gap analysis menyeluruh terhadap seluruh framework keamanan yang ada". [TRIGGERS THINKING MODE]',
+      '',
+      '### LANGUAGE DETECTION',
+      'Detect the user\'s language. If the user explicitly requests a different language (e.g. "gunakan bahasa inggris", "speak English"), detect the REQUESTED language, not the prompt language.',
+      '',
+      '### OUTPUT FORMAT (JSON only, no markdown)',
       '{',
-      '  "skill": "<skill name>",',
+      '  "skill": "<one of the 17 skills>",',
       '  "complexity_score": <1-5>,',
       '  "confidence": <0.0-1.0>,',
-      '  "reasoning": "<brief reason>"',
+      '  "detected_language": "<language name in English, e.g. indonesian, english>",',
+      '  "language_confidence": <0.0-1.0>,',
+      '  "reasoning": "<brief 1-sentence justification>"',
       '}',
     ].join('\n');
 
@@ -789,7 +878,14 @@ async function unifiedClassifyAndScore(
       ? Math.max(0, Math.min(1, parsed.confidence))
       : 0.5;
 
-    return { skill, complexityScore, confidence };
+    const language = typeof parsed.detected_language === 'string'
+      ? parsed.detected_language.trim().toLowerCase()
+      : 'indonesian';
+    const languageConfidence = typeof parsed.language_confidence === 'number'
+      ? Math.max(0, Math.min(1, parsed.language_confidence))
+      : 0.5;
+
+    return { skill, complexityScore, confidence, language, languageConfidence, _rawResponse: outputText, _rawPrompt: systemPrompt.slice(0, 800) + '\n\n[User]: ' + userContent.slice(0, 500) };
   } catch {
     return null;
   } finally {
@@ -985,7 +1081,7 @@ export async function routeRequest(input: RoutingInput): Promise<RoutingDecision
     skill = unifiedResult.skill;
     complexityScore = unifiedResult.complexityScore;
     confidence = unifiedResult.confidence;
-    console.log(`[routing] Unified classify+score: skill=${skill}, score=${complexityScore}, confidence=${confidence} in ${unifiedDuration}ms`);
+    console.log(`[routing] Unified classify+score: skill=${skill}, score=${complexityScore}, confidence=${confidence}, lang=${unifiedResult.language} in ${unifiedDuration}ms`);
   } else {
     // Unified call failed — fallback to defaults
     flags.push('routing-fallback');
@@ -994,12 +1090,32 @@ export async function routeRequest(input: RoutingInput): Promise<RoutingDecision
 
   // Step 1: Prompt refinement (skill-aware)
   const refinementStart = Date.now();
-  const refinementResult = await refinePrompt(input.originalPrompt, input.maskedDocumentText, skill, input.conversationContext);
+  const refinementResult = await refinePrompt(input.originalPrompt, input.maskedDocumentText, skill, input.conversationContext, unifiedResult?.language);
   refinementDurationMs = Date.now() - refinementStart;
   let contract: PromptContract | null = null;
   if (refinementResult.flowingText !== null) {
     refinedPrompt = refinementResult.flowingText;
     contract = refinementResult.contract;
+
+    // Task verbatim validator — force task to match original prompt exactly
+    if (contract?.task && contract.task !== input.originalPrompt) {
+      console.warn(`[routing] Task not verbatim — correcting. Expected: "${input.originalPrompt.substring(0, 50)}...", Got: "${contract.task.substring(0, 50)}..."`);
+      contract.task = input.originalPrompt;
+    }
+
+    // Inject static role from skill-role-map, overriding any LLM-generated role
+    const staticRole = getRoleForSkill(skill);
+    if (contract) contract.role = staticRole;
+
+    // Rebuild flowingText with static role + dynamic instructions
+    const rebuiltParts: string[] = [];
+    if (contract?.task) rebuiltParts.push(contract.task);
+    if (contract?.context) rebuiltParts.push('\n\n---\n' + contract.context);
+    if (contract?.role) rebuiltParts.push('\n\nRole: ' + contract.role);
+    if (contract?.behavioral_instructions) rebuiltParts.push('\n\nGuidelines:\n' + contract.behavioral_instructions);
+    if (contract?.output_format) rebuiltParts.push('\n\nFormat:\n' + contract.output_format);
+    if (rebuiltParts.length > 0) refinedPrompt = rebuiltParts.join('');
+
     console.log(`[routing] Prompt refinement (${skill}) succeeded in ${refinementDurationMs}ms`);
   } else {
     // Refinement failed: use original prompt and flag
@@ -1075,11 +1191,16 @@ export async function routeRequest(input: RoutingInput): Promise<RoutingDecision
     contract,
     multiStep,
     isAutoV2: input.isAutoV2 ?? false,
+    detectedLanguage: unifiedResult?.language ?? 'indonesian',
     routingDurationMs: Date.now() - routingStart,
     classificationDurationMs,
     refinementDurationMs,
     scoringDurationMs,
-  };
+    _classRaw: (unifiedResult as any)?._rawResponse,
+    _classPrompt: (unifiedResult as any)?._rawPrompt,
+    _refineRaw: (refinementResult as any)?._rawResponse,
+    _refinePrompt: (refinementResult as any)?._rawPrompt,
+  } as any;
 }
 
 /** Exposed for testing — allows injecting a mock Bedrock client. */
