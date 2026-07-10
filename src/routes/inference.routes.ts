@@ -457,7 +457,7 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
       let result: ConversationInferenceResult;
 
       // auto_v2 mode: trigger sequential reasoning when complexity >= 4
-      if (routingDecision?.isAutoV2 && (routingDecision.complexityScore ?? 0) >= 4) {
+      if (routingDecision?.isAutoV2 && (routingDecision.complexityScore ?? 0) >= 3) {
         const seqInput = {
           originalPrompt: maskedPrompt,
           refinedPrompt: effectivePrompt,
@@ -1245,7 +1245,7 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
 
   // ── Orchestration / Sequential Reasoning Branch ────────────────
   // auto_v2 mode: trigger sequential reasoning when complexity >= 4
-  if (!result && routingDecision?.isAutoV2 && (routingDecision.complexityScore ?? 0) >= 4) {
+  if (!result && routingDecision?.isAutoV2 && (routingDecision.complexityScore ?? 0) >= 3) {
     const seqInput = {
       originalPrompt: maskedPrompt,
       refinedPrompt: routingEffectivePrompt,

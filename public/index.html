@@ -2066,6 +2066,7 @@ async function handleSend() {
   let subAgentTotal = 0;
   let subAgentDone = 0;
   let subAgentSpecs = {};
+  window._debugEvents = [];
   // Sequential reasoning tracking
   let seqStepTotal = 0;
   let seqStepCurrent = 0;
@@ -2281,7 +2282,7 @@ async function handleSend() {
                 const task = spec.skill.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
                 html += '<br><span style=\'color:var(--text-tertiary)\'>  • ' + escapeHtml(name) + ': <i>' + escapeHtml(task) + '</i></span>';
               }
-              stepStatus.innerHTML = html;
+              scopedStepStatus.innerHTML = html;
             }
 
             // Handle new sequential reasoning format (data.steps)
@@ -2297,8 +2298,8 @@ async function handleSend() {
               }
               seqStepTotal = data.steps.length;
               seqStepCurrent = 0;
-              seqSteps.style.display = 'flex';
-              stepStatus.innerHTML = '<span style=\'color:var(--accent)\'>🧠 Planning ' + seqStepTotal + ' reasoning steps</span>';
+              scopedSeqSteps.style.display = 'flex';
+              scopedStepStatus.innerHTML = '<span style=\'color:var(--accent)\'>🧠 Planning ' + seqStepTotal + ' reasoning steps</span>';
               let stepsHtml = '';
               for (const s of data.steps) {
                 stepsHtml += '<div class="seq-step" data-step="' + s.order + '" style="display:flex;align-items:center;gap:6px;margin:2px 0;font-size:0.85em;opacity:0.5">' +
@@ -2306,13 +2307,13 @@ async function handleSend() {
                   '<span class="seq-step-name">' + escapeHtml(s.name) + '</span>' +
                 '</div>';
               }
-              seqSteps.innerHTML = stepsHtml;
+              scopedSeqSteps.innerHTML = stepsHtml;
             }
           } else if (eventType === 'orchestration_status') {
             // Sequential reasoning step progress
             if (!scopedSeqSteps) continue;
             seqStepCurrent = data.step;
-            const stepEl = seqSteps.querySelector('.seq-step[data-step="' + data.step + '"]');
+            const stepEl = scopedSeqSteps.querySelector('.seq-step[data-step="' + data.step + '"]');
             if (stepEl) {
               const icon = stepEl.querySelector('.seq-step-icon');
               if (icon) {
@@ -2333,7 +2334,7 @@ async function handleSend() {
               }
             }
             if (scopedStepStatus && data.status === 'running') {
-              stepStatus.innerHTML = '<span style=\'color:var(--accent)\'>🔍 ' + escapeHtml(data.description || data.name) + '</span>';
+              scopedStepStatus.innerHTML = '<span style=\'color:var(--accent)\'>🔍 ' + escapeHtml(data.description || data.name) + '</span>';
             }
           } else if (eventType === 'orchestration_interim') {
             window._debugEvents.push({ type: 'orchestration_interim', data: JSON.parse(JSON.stringify(data)) });
@@ -2343,13 +2344,13 @@ async function handleSend() {
               scopedTechDetails.innerHTML += '<hr style="border:0;border-top:1px solid var(--border);margin:4px 0"><b>📊 Interim (' + data.step + '/' + data.total + '):</b><br><span style="font-size:0.85em;color:var(--text-tertiary)">' + escapeHtml(data.insight) + '</span>';
             }
             if (scopedStepStatus && data.insight) {
-              const existing = stepStatus.querySelector('.interim-insight');
+              const existing = scopedStepStatus.querySelector('.interim-insight');
               if (existing) existing.remove();
               const div = document.createElement('div');
               div.className = 'interim-insight';
               div.style.cssText = 'margin-top:6px;padding:6px 8px;background:var(--bg-tertiary);border-radius:8px;font-size:0.85em;color:var(--text-secondary);border-left:2px solid var(--accent)';
               div.innerHTML = '<b style="color:var(--text-primary)">📊 Interim (' + data.step + '/' + data.total + '):</b><br>' + escapeHtml(data.insight);
-              stepStatus.appendChild(div);
+              scopedStepStatus.appendChild(div);
             }
           } else if (eventType === 'orchestration_error') {
             window._debugEvents.push({ type: 'orchestration_error', data: JSON.parse(JSON.stringify(data)) });
@@ -2359,7 +2360,7 @@ async function handleSend() {
               scopedTechDetails.innerHTML += '<hr style="border:0;border-top:1px solid var(--border);margin:4px 0"><b>⚠️ Step ' + data.step + ' Failed:</b> ' + escapeHtml(data.name) + ' — <span style="color:var(--text-tertiary)">' + escapeHtml(data.reason || 'unknown') + '</span>';
             }
             if (scopedSeqSteps) {
-              const stepEl = seqSteps.querySelector('.seq-step[data-step="' + data.step + '"]');
+              const stepEl = scopedSeqSteps.querySelector('.seq-step[data-step="' + data.step + '"]');
               if (stepEl) {
                 const icon = stepEl.querySelector('.seq-step-icon');
                 if (icon) icon.textContent = '⚠️';
@@ -2368,7 +2369,7 @@ async function handleSend() {
               }
             }
             if (scopedStepStatus) {
-              stepStatus.innerHTML += '<br><span style=\'color:#e6a817\'>⚠️ ' + escapeHtml(data.name) + ' — ' + escapeHtml(data.reason || 'failed') + '</span>';
+              scopedStepStatus.innerHTML += '<br><span style=\'color:#e6a817\'>⚠️ ' + escapeHtml(data.name) + ' — ' + escapeHtml(data.reason || 'failed') + '</span>';
             }
           } else if (eventType === 'orchestration_step') {
             window._debugEvents.push({ type: 'orchestration_step', data: JSON.parse(JSON.stringify(data)) });
@@ -2396,7 +2397,7 @@ async function handleSend() {
                 const spec = subAgentSpecs[data.agentId];
                 const task = spec ? spec.skill.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '';
                 const taskSuffix = task ? ' (' + escapeHtml(task) + ')' : '';
-                stepStatus.innerHTML += '<br><span style=\'color:var(--text-tertiary)\'>' + icon + ' ' + escapeHtml(data.agentId.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())) + taskSuffix + ' (' + subAgentDone + '/' + subAgentTotal + ')</span>';
+                scopedStepStatus.innerHTML += '<br><span style=\'color:var(--text-tertiary)\'>' + icon + ' ' + escapeHtml(data.agentId.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())) + taskSuffix + ' (' + subAgentDone + '/' + subAgentTotal + ')</span>';
               }
             }
           } else if (eventType === 'synthesis_delta') {
@@ -2817,6 +2818,15 @@ function toggleRawData() {
     p.push('\n=== ROUTING DECISION (all fields) ===');
     p.push(JSON.stringify(rest, null, 2));
   }
+
+  if (window._debugEvents && window._debugEvents.length > 0) {
+    p.push('\n=== ORCHESTRATION EVENTS (' + window._debugEvents.length + ') ===');
+    for (const evt of window._debugEvents) {
+      p.push('\n--- ' + evt.type + ' ---');
+      p.push(JSON.stringify(evt.data, null, 2));
+    }
+  }
+
   el.textContent = p.join('\n') || 'No routing data';
   el.style.display = 'block';
 }

@@ -224,6 +224,15 @@ class SequentialReasoner {
       assistantText = accumulatedContext || input.refinedPrompt;
     }
 
+    // Clean markdown artifacts from final output (skip for code skills)
+    const cleanedText = stripMarkdownArtifacts(assistantText, input.routingDecision.skill);
+    if (cleanedText !== assistantText) {
+      console.log(`[seq-reasoning] Markdown cleanup applied: ${assistantText.length} → ${cleanedText.length} chars`);
+    }
+
+    // Use cleaned text for both streaming and storage
+    assistantText = cleanedText;
+
     // Stream final text as standard delta events
     res.write(`event: delta\ndata: ${JSON.stringify({ type: 'text', content: assistantText })}\n\n`);
 
@@ -500,6 +509,36 @@ Provide a well-structured final response that reads naturally, resolves any cont
   private estimateTokens(text: string): number {
     return Math.ceil((text?.length || 0) / 4);
   }
+}
+
+/**
+ * Strip markdown artifacts from text while preserving readability.
+ * Only applied to non-code skills (code responses may contain intentional markdown).
+ */
+export function stripMarkdownArtifacts(text: string, skill?: string): string {
+  // Skip cleanup for code-related skills
+  if (skill === 'code' || skill === 'log_troubleshooting') return text;
+
+  let cleaned = text
+    // Remove markdown headings (###, ##, #)
+    .replace(/^#{1,6}\s+/gm, '')
+    // Remove horizontal rules
+    .replace(/^\s*[-*_]{3,}\s*$/gm, '')
+    // Remove bold markers but keep content
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    // Remove italic markers but keep content
+    .replace(/(?<!\*)\*(?!\*)(.*?)(?<!\*)\*(?!\*)/g, '$1')
+    // Remove inline code backticks
+    .replace(/`([^`]+)`/g, '$1')
+    // Remove strikethrough
+    .replace(/~~(.*?)~~/g, '$1')
+    // Remove markdown link syntax but keep text
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    // Collapse multiple blank lines
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  return cleaned;
 }
 
 export const sequentialReasoner = new SequentialReasoner();
