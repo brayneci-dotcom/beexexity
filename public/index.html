@@ -650,6 +650,111 @@
     .assistant-content ol ol { list-style-type: lower-alpha; }
     .assistant-content ol ol ol { list-style-type: lower-roman; }
 
+    /* ── Enhanced markdown styling ────────────────────────────── */
+    .assistant-text-content {
+      font-size: 0.925rem;
+      line-height: 1.7;
+      color: var(--text-primary);
+    }
+
+    .assistant-text-content h1,
+    .assistant-text-content h2,
+    .assistant-text-content h3 {
+      font-weight: 600;
+      margin: 1.5rem 0 0.5rem;
+    }
+    .assistant-text-content h1 { font-size: 1.35rem; border-bottom: 1px solid var(--border); padding-bottom: 0.25rem; }
+    .assistant-text-content h2 { font-size: 1.15rem; }
+    .assistant-text-content h3 { font-size: 1rem; color: var(--text-secondary); }
+
+    .assistant-text-content ul {
+      list-style: none;
+      padding-left: 0;
+      margin: 0.5rem 0;
+    }
+    .assistant-text-content ul li {
+      padding-left: 1.25rem;
+      position: relative;
+      margin-bottom: 0.25rem;
+    }
+    .assistant-text-content ul li::before {
+      content: "4";
+      position: absolute;
+      left: 0;
+      color: var(--text-tertiary);
+    }
+
+    .assistant-text-content ol {
+      list-style: none;
+      counter-reset: item;
+      padding-left: 0;
+      margin: 0.5rem 0;
+    }
+    .assistant-text-content ol li {
+      counter-increment: item;
+      padding-left: 1.75rem;
+      position: relative;
+      margin-bottom: 0.25rem;
+    }
+    .assistant-text-content ol li::before {
+      content: counter(item) ".";
+      position: absolute;
+      left: 0;
+      font-weight: 600;
+      color: var(--accent);
+      min-width: 1.25rem;
+    }
+
+    .assistant-text-content pre {
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.75rem;
+      overflow-x: auto;
+      font-size: 0.8rem;
+      margin: 0.5rem 0;
+    }
+    .assistant-text-content code {
+      font-size: 0.85em;
+      background: var(--bg-tertiary);
+      padding: 0.15em 0.35em;
+      border-radius: 4px;
+    }
+    .assistant-text-content pre code {
+      background: transparent;
+      padding: 0;
+      border-radius: 0;
+    }
+
+    .assistant-text-content table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 0.75rem 0;
+      font-size: 0.85rem;
+    }
+    .assistant-text-content th {
+      text-align: left;
+      font-weight: 600;
+      color: var(--text-secondary);
+      border-bottom: 1px solid var(--border);
+      padding: 0.35rem 0.5rem;
+    }
+    .assistant-text-content td {
+      padding: 0.35rem 0.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .assistant-text-content blockquote {
+      border-left: 3px solid var(--accent);
+      padding-left: 0.75rem;
+      margin: 0.5rem 0;
+      color: var(--text-secondary);
+    }
+
+    .assistant-text-content p {
+      margin: 0.35rem 0;
+    }
+
     .assistant-content h1, .assistant-content h2, .assistant-content h3,
     .assistant-content h4, .assistant-content h5, .assistant-content h6 {
       margin: 1.5rem 0 0.5rem;
@@ -2508,8 +2613,19 @@ function renderLatex(latex, displayMode) {
   }
 }
 
+function cleanMarkdownLists(text) {
+  return text
+    // "1)" → "1." at start of lines
+    .replace(/^(\s*)(\d+)\)/gm, '$1$2.')
+    // Leading tabs → 2-space indents (GFM standard)
+    .replace(/^\t+/gm, (match) => '  '.repeat(match.length));
+}
+
 function formatMessage(text) {
   if (!text) return '';
+
+  // Step 0: Preprocess broken markdown before rendering
+  text = cleanMarkdownLists(text);
 
   // Step 1: Extract and protect display math blocks ($$...$$ and \[...\])
   // before markdown processing so they don't get mangled
