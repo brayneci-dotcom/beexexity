@@ -28,9 +28,7 @@ import { SkillType, ALL_SKILLS } from '../types/routing.types.js';
 import type { PromptContract, VerificationResult } from '../types/routing.types.js';
 import type { ModalityFlags } from '../types/inference.types.js';
 import { getRoleForSkill } from '../config/skill-role-map.js';
-import { appendFile } from 'fs/promises';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { query } from '../config/database.js';
 
 /** Bedrock client for routing engine calls (scoring + refinement). */
 const bedrockClient = new BedrockRuntimeClient({
@@ -932,10 +930,15 @@ export async function routeRequest(input: RoutingInput): Promise<RoutingDecision
         const raw = JSON.parse(refinementResult._rawResponse);
         const llmRole = typeof raw.role === 'string' ? raw.role.trim() : '';
         if (llmRole && llmRole !== staticRole) {
-          const __dirname = dirname(fileURLToPath(import.meta.url));
-          const logPath = join(__dirname, '..', '..', 'data', 'fallback-roles.ndjson');
-          const entry = JSON.stringify({ t: new Date().toISOString(), r: llmRole, c: raw.context || '', i: raw.intent || '' }) + '\n';
-          appendFile(logPath, entry).catch(() => {});
+          await query(`
+            INSERT INTO discovered_roles (role, count, last_seen, sample_context, sample_intent)
+            VALUES ($1, 1, NOW(), $2, $3)
+            ON CONFLICT (role) DO UPDATE SET
+              count = discovered_roles.count + 1,
+              last_seen = NOW(),
+              sample_context = CASE WHEN discovered_roles.sample_context IS NULL THEN $2 ELSE discovered_roles.sample_context END,
+              sample_intent = CASE WHEN discovered_roles.sample_intent IS NULL THEN $3 ELSE discovered_roles.sample_intent END
+          `, [llmRole, raw.context || '', raw.intent || '']).catch(() => {});
         }
       } catch { /* parse failure - skip */ }
     }
