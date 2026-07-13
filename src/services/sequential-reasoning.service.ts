@@ -532,8 +532,8 @@ export function stripMarkdownArtifacts(text: string, skill?: string): string {
   if (skill === 'code' || skill === 'log_troubleshooting') return text;
 
   let cleaned = text
-    // Remove markdown headings (###, ##, #)
-    .replace(/^#{1,6}\s+/gm, '')
+    // Preserve section structure: convert markdown headings to bold
+    .replace(/^#{1,6}\s+(.+)$/gm, '**$1**')
     // Remove horizontal rules
     .replace(/^\s*[-*_]{3,}\s*$/gm, '')
     // Remove bold markers but keep content

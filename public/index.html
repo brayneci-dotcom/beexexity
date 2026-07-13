@@ -2746,6 +2746,11 @@ function formatMarkdown(text) {
       continue;
     }
     
+    // Section heading: all-caps standalone line or [bracketed] title
+    if (/^[A-Z][A-Z\s]{2,}$/.test(line.trim()) || /^\[.+\]$/.test(line.trim())) {
+      html += `<div style="margin: 1.25rem 0 0.5rem;font-weight:700;font-size:1rem;color:var(--text-primary);text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid var(--border);padding-bottom:0.25rem">${inlineFormat(line.trim())}</div>`;
+      continue;
+    }
     // Regular paragraph
     html += `<p style="margin: 0.25rem 0;">${inlineFormat(line)}</p>`;
   }

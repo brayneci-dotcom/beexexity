@@ -433,6 +433,8 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
         if (bi) s += '\n\n' + bi;
         if (of) {
           s += '\n\nCRITICAL FORMAT INSTRUCTION — you MUST follow this output format exactly:\n' + of;
+          s += '\n\nWhen using numbered lists: start each item on its own line with the number ("1.", "2.", etc.), separate items with a blank line, and never leave a line without a number between two numbered items.';
+          s += '\n\nUse consistent section formatting throughout the entire response. If you use a section label like "Domain Bisnis" in plain text, ALL sections must use the same plain text format. Do NOT mix plain text headings with markdown ### headings — pick one style and use it for every section.';
         } else {
           s += ' Respond in plain text without markdown formatting.';
         }
@@ -1260,6 +1262,8 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
         if (bi) s += '\n\n' + bi;
         if (of) {
           s += '\n\nCRITICAL FORMAT INSTRUCTION — you MUST follow this output format exactly:\n' + of;
+          s += '\n\nWhen using numbered lists: start each item on its own line with the number ("1.", "2.", etc.), separate items with a blank line, and never leave a line without a number between two numbered items.';
+          s += '\n\nUse consistent section formatting throughout the entire response. If you use a section label like "Domain Bisnis" in plain text, ALL sections must use the same plain text format. Do NOT mix plain text headings with markdown ### headings — pick one style and use it for every section.';
         } else {
           s += ' Respond in plain text without markdown formatting.';
         }
