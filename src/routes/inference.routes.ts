@@ -33,9 +33,7 @@ import { getRoleForSkill } from '../config/skill-role-map.js';
 import type { RoutingMetadataEvent } from '../types/inference.types.js';
 import { DEFAULT_MODEL } from '../types/inference.types.js';
 import type { RoutingInput, RoutingDecision } from '../types/routing.types.js';
-import { orchestrate } from '../services/subagent-orchestrator.service.js';
 import { sequentialReasoner } from '../services/sequential-reasoning.service.js';
-import type { OrchestrationMeta } from '../types/subagent.types.js';
 import type { ContentBlock, DocumentContentBlock } from '../types/upload.types.js';
 import type { ConversationInferenceRequest, ConversationInferenceResult, BedrockMessage } from '../types/session.types.js';
 
@@ -277,14 +275,13 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
     const contextOutput = buildContext(historyMessages, maskedPrompt, contextConfig);
 
     // 9. Determine routing state and execute routing logic
-    const isAutoV2 = validatedModelId === 'auto_v2';
-    const routingState: 'auto' | 'auto_v2' | 'manual' = isAutoV2 ? 'auto_v2' : (!modelId || modelId.trim().length === 0) ? 'auto' : 'manual';
+    const routingState: 'auto' | 'manual' = (!modelId || modelId.trim().length === 0) ? 'auto' : 'manual';
 
     let executedModelId: string = validatedModelId;
     let effectivePrompt: string = maskedPrompt;
     let routingDecision: RoutingDecision | undefined;
 
-    if (routingState === 'auto' || routingState === 'auto_v2') {
+    if (routingState === 'auto') {
       // Use routing_payload from contextOutput as conversation context
       const conversationContext = contextOutput.routing_payload;
 
@@ -293,10 +290,9 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
         originalPrompt: maskedPrompt,
         hasImages: false,
         imageModelRequired: false,
-        routingState: isAutoV2 ? 'auto_v2' : 'auto',
+        routingState: 'auto',
         userId: user.sub,
         conversationContext,
-        isAutoV2,
       };
 
       try {
@@ -328,7 +324,7 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
           modalityFlags: { textOnly: true, documentText: false, image: false, mixed: false },
           manualOverrideApplied: false,
           flags: ['routing-fallback'],
-          skill: 'general',
+          skill: 'fallback',
           contract: null,
         };
       }
@@ -346,7 +342,7 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
         modalityFlags: { textOnly: true, documentText: false, image: false, mixed: false },
         manualOverrideApplied: true,
         flags: [],
-        skill: 'general',
+        skill: 'fallback',
         contract: null,
       };
     }
@@ -421,7 +417,7 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
       content: [{ text: effectivePrompt }],
     };
     // Inject skill-specific few-shot examples for format adherence
-    const fewShotPairs = getFewShotExamples(routingDecision?.skill || 'general');
+    const fewShotPairs = getFewShotExamples(routingDecision?.skill || 'fallback');
     const conversationMessages: BedrockMessage[] = [...inferenceMessages, ...fewShotPairs, currentUserMessage];
 
     const conversationRequest: ConversationInferenceRequest = {
@@ -429,14 +425,17 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
       modelId: resolveModelForInvocation(executedModelId),
       userId: user.sub,
       system: (() => {
-        const role = routingDecision?.contract?.role || getRoleForSkill(routingDecision?.skill || 'general');
+        const role = routingDecision?.contract?.role || getRoleForSkill(routingDecision?.skill || 'fallback');
         const lang = routingDecision?.detectedLanguage || 'indonesian';
         const bi = routingDecision?.contract?.behavioral_instructions;
         const of = routingDecision?.contract?.output_format;
         let s = 'You are ' + role + '. IMPORTANT: Respond in ' + lang + '.';
         if (bi) s += '\n\n' + bi;
-        if (of) s += '\n\nFormat the response as follows:\n' + of;
-        s += ' Do NOT use Markdown formatting: no ###, ---, **bold**, *italic*, bullet points with - or *, numbered lists with 1., > blockquotes, or `code`. Use plain paragraphs.';
+        if (of) {
+          s += '\n\nCRITICAL FORMAT INSTRUCTION — you MUST follow this output format exactly:\n' + of;
+        } else {
+          s += ' Respond in plain text without markdown formatting.';
+        }
         return s;
       })(),
       ...(inferenceConfig && {
@@ -448,16 +447,16 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
       }),
     };
 
-    let orchestrationMeta: OrchestrationMeta | undefined;
+    let orchestrationMeta: any;
 
     try {
       console.log(`[inference] Calling generate() with model=${resolveModelForInvocation(executedModelId)}, prompt length=${effectivePrompt.length}, history messages=${contextOutput.historyMessageCount}`);
 
-      // ── Orchestration / Sequential Reasoning Branch ────────────────
+      // ── Execution Branch ─────────────────────────────────────────
       let result: ConversationInferenceResult;
 
-      // auto_v2 mode: trigger sequential reasoning when complexity >= 4
-      if (routingDecision?.isAutoV2 && (routingDecision.complexityScore ?? 0) >= 3) {
+      // Unified dispatch: sequential reasoning for complex queries (≥4), single-shot otherwise
+      if ((routingDecision?.complexityScore ?? 0) >= 4 && routingDecision?.routingState !== 'manual') {
         const seqInput = {
           originalPrompt: maskedPrompt,
           refinedPrompt: effectivePrompt,
@@ -468,7 +467,7 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
           username: user.username,
           routingDecision,
         };
-        console.log(`[inference] auto_v2 triggered: complexity=${routingDecision.complexityScore}, calling SequentialReasoner`);
+        console.log(`[inference] Sequential reasoning triggered: complexity=${routingDecision.complexityScore}, calling SequentialReasoner`);
         const seqResult = await sequentialReasoner.execute(seqInput, res);
 
         if (seqResult) {
@@ -482,40 +481,14 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
             status: 'success',
           };
         } else {
-          // Planner returned null — fall back to standard generate
           console.log('[inference] Sequential reasoning plan failed, falling back to single-shot generate()');
           result = await generate(conversationRequest, res) as ConversationInferenceResult;
-        }
-      } else if (routingDecision?.multiStep) {
-        const orchestratorOutput = await orchestrate({
-          originalPrompt: maskedPrompt,
-          conversationContext: contextOutput.routing_payload,
-          routingDecision,
-          sessionId,
-          userId: user.sub,
-          username: user.username,
-        }, res);
-
-        if (orchestratorOutput.optedOut) {
-          // Planner decided orchestration unnecessary — fall back
-          console.log('[inference] Orchestrator opted out, falling back to single-shot generate()');
-          result = await generate(conversationRequest, res) as ConversationInferenceResult;
-        } else {
-          console.log(`[inference] Orchestration complete: ${orchestratorOutput.orchestrationMeta.specs.length} agents, ${orchestratorOutput.assistantText.length} chars`);
-          orchestrationMeta = orchestratorOutput.orchestrationMeta;
-          result = {
-            assistantText: orchestratorOutput.assistantText,
-            inputTokens: orchestrationMeta.totalInputTokens,
-            outputTokens: orchestrationMeta.totalOutputTokens,
-            modelId: 'qwen.qwen3-235b-a22b-2507-v1:0',
-            status: 'success',
-          };
         }
       } else {
         result = await generate(conversationRequest, res) as ConversationInferenceResult;
       }
 
-      // Done is emitted below after verifier + semantic repair (for auto_v2/multiStep).
+      // Done is emitted below after verifier + semantic repair.
       // generate() already emitted done internally. This ensures repair results
       // arrive BEFORE done on the frontend so they can be processed.
 
@@ -549,7 +522,7 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
           const semanticVerdict = await semanticJudge(
             maskedPrompt,
             result.assistantText,
-            routingDecision?.skill || 'general',
+            routingDecision?.skill || 'fallback',
           );
           if (semanticVerdict && !semanticVerdict.is_correct && semanticVerdict.missing_elements.length > 0) {
             res.write(`event: semantic_verdict\ndata: ${JSON.stringify(semanticVerdict)}\n\n`);
@@ -583,8 +556,8 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
 
       // Emit done event after verifier + semantic repair so repair results
       // arrive BEFORE done on the frontend. generate() already emitted done
-      // internally — auto_v2/multiStep paths bypassed it and need it here.
-      if (routingDecision?.isAutoV2 || routingDecision?.multiStep) {
+      // internally — sequential reasoning path bypassed it and needs it here.
+      if ((routingDecision?.complexityScore ?? 0) >= 4 && routingDecision?.routingState !== 'manual') {
         res.write('event: done\ndata: {}\n\n');
       }
 
@@ -946,8 +919,7 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
     const contextOutput = buildContext(historyMessages, maskedPrompt, contextConfig);
 
   // Step 12: Determine routing state and execute routing logic
-  const isAutoV2 = validatedModelId === 'auto_v2';
-  const routingState: 'auto' | 'auto_v2' | 'manual' = isAutoV2 ? 'auto_v2' : (!modelId || modelId.trim().length === 0) ? 'auto' : 'manual';
+  const routingState: 'auto' | 'manual' = (!modelId || modelId.trim().length === 0) ? 'auto' : 'manual';
 
   let executedModelId: string = validatedModelId;
   let routingEffectivePrompt: string = maskedPrompt;
@@ -956,7 +928,7 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
   // Combine masked document texts for routing context
   const maskedDocTextCombined = maskedDocumentExtractions.map(d => d.text).filter(Boolean).join('\n');
 
-  if (routingState === 'auto' || routingState === 'auto_v2') {
+  if (routingState === 'auto') {
     // Use routing_payload from contextOutput as conversation context
     const conversationContext = contextOutput.routing_payload;
 
@@ -966,10 +938,9 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
       maskedDocumentText: maskedDocTextCombined || undefined,
       hasImages: images.length > 0,
       imageModelRequired: images.length > 0,
-      routingState: isAutoV2 ? 'auto_v2' : 'auto',
+      routingState: 'auto',
       userId: user.sub,
       conversationContext,
-      isAutoV2,
     };
 
     try {
@@ -997,7 +968,7 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
         },
         manualOverrideApplied: false,
         flags: ['routing-fallback'],
-        skill: 'general',
+        skill: 'fallback',
         contract: null,
       };
     }
@@ -1020,7 +991,7 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
       },
       manualOverrideApplied: true,
       flags: [],
-      skill: 'general',
+      skill: 'fallback',
       contract: null,
     };
   }
@@ -1227,7 +1198,7 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
   }
 
   // Inject skill-specific few-shot examples for format adherence
-  const fewShotPairsMP = getFewShotExamples(routingDecision?.skill || 'general');
+  const fewShotPairsMP = getFewShotExamples(routingDecision?.skill || 'fallback');
   if (fewShotPairsMP.length > 0) {
     // Insert before the current user message, after history + OCR output
     const lastMsg = conversationMessages.pop()!;
@@ -1237,15 +1208,15 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
   // Step 15: Call generate (streams enhance model or original model)
   // If OCR switched to enhance model, fall back to original routing model on failure
   let result: ConversationInferenceResult | undefined;
-  let orchestrationMeta: OrchestrationMeta | undefined;
+  let orchestrationMeta: any;
   const targetModel = resolveModelForInvocation(finalExecutedModelId);
   const fallbackModel = executedModelId !== finalExecutedModelId ? resolveModelForInvocation(executedModelId) : null;
 
   try {  // middle try — wraps generate, verifier, storage, audit; catch is main error handler below
 
-  // ── Orchestration / Sequential Reasoning Branch ────────────────
-  // auto_v2 mode: trigger sequential reasoning when complexity >= 4
-  if (!result && routingDecision?.isAutoV2 && (routingDecision.complexityScore ?? 0) >= 3) {
+  // ── Unified Execution Branch ───────────────────────────────────
+  // Sequential reasoning for complex queries (≥4), single-shot otherwise
+  if (!result && (routingDecision?.complexityScore ?? 0) >= 4 && routingDecision?.routingState !== 'manual') {
     const seqInput = {
       originalPrompt: maskedPrompt,
       refinedPrompt: routingEffectivePrompt,
@@ -1256,7 +1227,7 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
       username: user.username,
       routingDecision,
     };
-    console.log(`[inference-multipart] auto_v2 triggered: complexity=${routingDecision.complexityScore}, calling SequentialReasoner`);
+    console.log(`[inference-multipart] Sequential reasoning triggered: complexity=${routingDecision.complexityScore}, calling SequentialReasoner`);
     const seqResult = await sequentialReasoner.execute(seqInput, res);
 
     if (seqResult) {
@@ -1274,36 +1245,6 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
     }
   }
 
-  // Check if routing engine determined multi-step orchestration is needed (legacy)
-  if (!result && routingDecision?.multiStep) {
-    const orchestratorOutput = await orchestrate({
-      originalPrompt: maskedPrompt,
-      maskedDocumentText: effectiveDocText,
-      conversationContext: contextOutput.routing_payload,
-      routingDecision,
-      sessionId,
-      userId: user.sub,
-      username: user.username,
-    }, res);
-
-    if (orchestratorOutput.optedOut) {
-      // Planner decided orchestration unnecessary — fall back to standard flow
-      console.log('[inference-multipart] Orchestrator opted out, falling back to single-shot generate()');
-      orchestrationMeta = undefined;
-    } else {
-      console.log(`[inference-multipart] Orchestration complete: ${orchestratorOutput.orchestrationMeta.specs.length} agents, ${orchestratorOutput.assistantText.length} chars`);
-      orchestrationMeta = orchestratorOutput.orchestrationMeta;
-      result = {
-        assistantText: orchestratorOutput.assistantText,
-        inputTokens: orchestrationMeta.totalInputTokens,
-        outputTokens: orchestrationMeta.totalOutputTokens,
-        modelId: 'qwen.qwen3-235b-a22b-2507-v1:0',
-        status: 'success',
-      };
-      // Skip standard generate block below
-    }
-  }
-
   if (!result) {
     try {
       const conversationRequest: ConversationInferenceRequest = {
@@ -1311,14 +1252,17 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
         modelId: targetModel,
         userId: user.sub,
         system: (() => {
-        const role = routingDecision?.contract?.role || getRoleForSkill(routingDecision?.skill || 'general');
+        const role = routingDecision?.contract?.role || getRoleForSkill(routingDecision?.skill || 'fallback');
         const lang = routingDecision?.detectedLanguage || 'indonesian';
         const bi = routingDecision?.contract?.behavioral_instructions;
         const of = routingDecision?.contract?.output_format;
         let s = 'You are ' + role + '. IMPORTANT: Respond in ' + lang + '.';
         if (bi) s += '\n\n' + bi;
-        if (of) s += '\n\nFormat the response as follows:\n' + of;
-        s += ' Do NOT use Markdown formatting: no ###, ---, **bold**, *italic*, bullet points with - or *, numbered lists with 1., > blockquotes, or `code`. Use plain paragraphs.';
+        if (of) {
+          s += '\n\nCRITICAL FORMAT INSTRUCTION — you MUST follow this output format exactly:\n' + of;
+        } else {
+          s += ' Respond in plain text without markdown formatting.';
+        }
         return s;
       })(),
         ...(inferenceConfig && {
@@ -1383,7 +1327,7 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
         const semanticVerdict = await semanticJudge(
           maskedPrompt,
           result.assistantText,
-          routingDecision?.skill || 'general',
+          routingDecision?.skill || 'fallback',
         );
         if (semanticVerdict && !semanticVerdict.is_correct && semanticVerdict.missing_elements.length > 0) {
           res.write(`event: semantic_verdict\ndata: ${JSON.stringify(semanticVerdict)}\n\n`);
@@ -1415,7 +1359,7 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
     }
 
     // Emit done after verifier + repair so repair events arrive before done
-    if (routingDecision?.isAutoV2 || routingDecision?.multiStep) {
+    if ((routingDecision?.complexityScore ?? 0) >= 4 && routingDecision?.routingState !== 'manual') {
       res.write('event: done\ndata: {}\n\n');
     }
 
@@ -1541,42 +1485,6 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
     await release().catch(() => {});
   }
 }
-
-/**
- * GET /sessions/active
- *
- * Returns the authenticated user's active session and its sanitized message history.
- * If no active session exists, returns HTTP 200 with `{ session: null, messages: [] }`.
- *
- * @see Requirements 8.1, 8.2, 8.3, 8.4
- */
-inferenceRouter.get('/sessions/active', authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  const user = req.user!;
-
-  try {
-    const session = await getActiveSession(user.sub);
-
-    if (!session) {
-      res.status(200).json({ session: null, messages: [] });
-      return;
-    }
-
-    const storedMessages = await getSessionMessages(session.id);
-    const messages = storedMessages.map((msg) => ({
-      role: msg.role,
-      content: msg.sanitizedContent,
-      createdAt: msg.createdAt,
-    }));
-
-    res.status(200).json({ session, messages });
-  } catch (error: unknown) {
-    console.error('[sessions/active] Failed to retrieve active session:', (error as Error).message);
-    res.status(500).json({
-      error: 'SESSION_ERROR',
-      message: 'Failed to retrieve active session',
-    });
-  }
-});
 
 /**
  * POST /sessions/reset

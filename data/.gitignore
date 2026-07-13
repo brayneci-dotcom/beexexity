@@ -1,0 +1,3 @@
+# Runtime data — do not commit
+*.ndjson
+*state.json

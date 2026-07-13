@@ -36,7 +36,7 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilityEntry> = {
   },
   'anthropic.claude-sonnet-5': {
     modelId: 'anthropic.claude-sonnet-5',
-    capability: 'text-and-image',
+    capability: 'text-only',
     displayName: 'Claude Sonnet 5',
   },
   'zai.glm-5': {

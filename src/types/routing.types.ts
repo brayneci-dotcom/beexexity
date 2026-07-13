@@ -10,27 +10,27 @@ import type { ModalityFlags } from './inference.types.js';
 
 /**
  * Skill type for the hybrid router — classifies user requests into one of
- * 17 categories across 5 groups to select a skill-specific refinement prompt.
+ * 19 skills across 6 groups to select a skill-specific refinement prompt.
  */
 export type SkillType =
   // Generation
-  | 'email' | 'creative' | 'brainstorming' | 'meta_prompting'
+  | 'business_writing' | 'creative_writing' | 'brainstorming' | 'prompt_optimizer'
   // Transformation
-  | 'summarization' | 'translation' | 'data_conversion' | 'editing_critique'
+  | 'summarization' | 'translation' | 'data_transformation' | 'editing'
   // Interaction
-  | 'roleplay' | 'logic_math' | 'planning_strategy' | 'document_qna'
+  | 'roleplay' | 'logic_math' | 'planning_strategy'
   // Enterprise
-  | 'requirement_generation' | 'compliance_pre_assessment'
+  | 'requirement_generation' | 'compliance_pre_assessment' | 'risk_analyst' | 'process_optimization'
   // Engineering
-  | 'code' | 'log_troubleshooting' | 'general';
+  | 'code' | 'log_troubleshooting' | 'data_analysis' | 'fallback';
 
 /** Ordered list of all skill types for regex extraction. */
 export const ALL_SKILLS: SkillType[] = [
-  'email', 'creative', 'brainstorming', 'meta_prompting',
-  'summarization', 'translation', 'data_conversion', 'editing_critique',
-  'roleplay', 'logic_math', 'planning_strategy', 'document_qna',
-  'requirement_generation', 'compliance_pre_assessment',
-  'code', 'log_troubleshooting', 'general',
+  'business_writing', 'creative_writing', 'brainstorming', 'prompt_optimizer',
+  'summarization', 'translation', 'data_transformation', 'editing',
+  'roleplay', 'logic_math', 'planning_strategy',
+  'requirement_generation', 'compliance_pre_assessment', 'risk_analyst', 'process_optimization',
+  'code', 'log_troubleshooting', 'data_analysis', 'fallback',
 ];
 
 /**
@@ -69,11 +69,10 @@ export interface RoutingInput {
   maskedDocumentText?: string;      // Extracted + masked doc text
   hasImages: boolean;
   imageModelRequired: boolean;
-  routingState: 'auto' | 'auto_v2' | 'manual';
+  routingState: 'auto' | 'manual';
   manualModelId?: string;           // Set when routingState = 'manual'
   userId: string;
   conversationContext?: string;     // Compact recent-turns text for scoring (prior user messages, capped)
-  isAutoV2?: boolean;               // True when user selected auto_v2 mode (sent as modelId)
 }
 
 /**
@@ -82,7 +81,7 @@ export interface RoutingInput {
  */
 export interface RoutingDecision {
   executedModelId: string;
-  routingState: 'auto' | 'auto_v2' | 'manual';
+  routingState: 'auto' | 'manual';
   complexityScore: number;          // 1-5
   scoreBand: 'direct-answer' | 'moderate-reasoning' | 'advanced-reasoning';
   confidence: number;               // 0.0-1.0
@@ -94,10 +93,6 @@ export interface RoutingDecision {
   flags: string[];                  // e.g. ['refinement-failed']
   skill: SkillType;                 // classified request type for transparency
   contract: PromptContract | null;  // structured contract from refinement
-  /** True when sub-agent orchestration is triggered (skill+complexity gate). */
-  multiStep?: boolean;
-  /** True when user selected auto_v2 mode in dropdown. */
-  isAutoV2?: boolean;
   /** Detected language from unified classify+score (e.g. "indonesian", "english"). */
   detectedLanguage?: string;
 
@@ -139,7 +134,7 @@ export interface PolicyInput {
   complexityScore: number;
   hasImages: boolean;
   isLongContext: boolean;
-  routingState: 'auto' | 'auto_v2' | 'manual';
+  routingState: 'auto' | 'manual';
   manualModelId?: string;
 }
 

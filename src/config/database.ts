@@ -2,7 +2,7 @@ import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
 import { config } from './index.js';
 
 /**
- * PostgreSQL connection pool configured for ap-southeast-3 RDS.
+ * PostgreSQL connection pool configured for GCP Cloud SQL (public IP).
  * Uses settings from the application config (environment variables or defaults).
  */
 export const pool = new Pool({
@@ -37,7 +37,7 @@ export async function closePool(): Promise<void> {
 // ─── Distributed Locking (PostgreSQL Advisory Locks) ──────────────────────────
 //
 // Replaces the in-memory Map-based turn lock. Advisory locks work across all
-// Cloud Run instances because they share the same RDS.
+// Cloud Run instances because they share the same Cloud SQL.
 //
 // The lock key is derived from the session UUID (first 8 hex chars → int4).
 // This is collision-safe for session-level granularity.

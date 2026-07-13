@@ -185,11 +185,6 @@ export async function validateModelId(modelId?: string, userId?: string): Promis
     return DEFAULT_MODEL;
   }
 
-  // auto_v2 is a pseudo-model — accepted as valid, triggers sequential reasoning in routes
-  if (modelId === 'auto_v2') {
-    return 'auto_v2';
-  }
-
   // Check if the provided modelId is in the allowed list
   if (!ALLOWED_MODELS.includes(modelId as typeof ALLOWED_MODELS[number])) {
     const error = new Error(
@@ -470,13 +465,13 @@ export async function repairResponse(
 // ─── Semantic Verification ─────────────────────────────────────────────────────────
 
 /** Skills that get LLM-as-a-judge semantic verification after inference. */
-const SEMANTIC_VERIFY_SKILLS = ['compliance_pre_assessment', 'logic_math', 'document_qna', 'code'];
+const SEMANTIC_VERIFY_SKILLS = ['compliance_pre_assessment', 'logic_math', 'code', 'risk_analyst', 'data_analysis'];
 
 /**
  * Lightweight LLM-as-a-judge — checks whether the assistant response is
  * semantically correct and complete for the original prompt.
  *
- * Only runs for high-stakes skills (compliance, math, doc Q&A, code).
+ * Only runs for high-stakes skills (compliance, math, doc analysis, code).
  * Uses qwen3-32b with a strict judge prompt, maxTokens=256.
  *
  * @returns { is_correct, missing_elements } or null on failure (graceful degradation).

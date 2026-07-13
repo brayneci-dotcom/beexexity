@@ -413,4 +413,123 @@ router.put('/model-access/:modelId', async (req: Request, res: Response): Promis
   }
 });
 
+// ── Discovered Roles State Helpers ────────────────────────────────────────
+
+async function _discoveredRolesDir(): Promise<string> {
+  const { join, dirname } = await import('path');
+  const { fileURLToPath } = await import('url');
+  return join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'data');
+}
+
+async function readState(): Promise<Record<string, string>> {
+  const { readFile } = await import('fs/promises');
+  const { join } = await import('path');
+  const statePath = join(await _discoveredRolesDir(), 'discovered-roles-state.json');
+  try {
+    const raw = await readFile(statePath, 'utf-8');
+    const parsed = JSON.parse(raw);
+    return parsed.roles || {};
+  } catch { return {}; }
+}
+
+async function writeState(roles: Record<string, string>): Promise<void> {
+  const { writeFile } = await import('fs/promises');
+  const { join } = await import('path');
+  const statePath = join(await _discoveredRolesDir(), 'discovered-roles-state.json');
+  await writeFile(statePath, JSON.stringify({ roles }, null, 2));
+}
+
+/**
+ * GET /api/v1/admin/discovered-roles?status=new
+ * Returns discovered roles filtered by status: new (default), accepted, rejected, deployed.
+ */
+router.get('/discovered-roles', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const status = (req.query.status as string) || 'new';
+    const { readFile } = await import('fs/promises');
+    const { join } = await import('path');
+    const logPath = join(await _discoveredRolesDir(), 'fallback-roles.ndjson');
+
+    // Read raw discoveries
+    let content: string;
+    try { content = await readFile(logPath, 'utf-8'); } catch { res.json([]); return; }
+
+    const groups = new Map<string, { count: number; lastSeen: string; contexts: string[]; intents: string[] }>();
+    for (const line of content.trim().split('\n')) {
+      if (!line.trim()) continue;
+      try {
+        const { r, t, c, i } = JSON.parse(line);
+        const g = groups.get(r) || { count: 0, lastSeen: t, contexts: [] as string[], intents: [] as string[] };
+        g.count++;
+        if (t > g.lastSeen) g.lastSeen = t;
+        if (c && g.contexts.length < 3) g.contexts.push(c);
+        if (i && g.intents.length < 3) g.intents.push(i);
+        groups.set(r, g);
+      } catch { /* skip */ }
+    }
+
+    // Merge with state
+    const state = await readState();
+    const result = [...groups.entries()]
+      .filter(([role]) => {
+        const s = state[role];
+        if (status === 'new') return !s; // not yet reviewed
+        return s === status; // exact status match
+      })
+      .map(([role, data]) => ({
+        role, count: data.count, lastSeen: data.lastSeen,
+        sampleContext: data.contexts[0] || '',
+        sampleIntent: data.intents[0] || '',
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    res.json(result);
+  } catch { res.json([]); }
+});
+
+/**
+ * POST /api/v1/admin/discovered-roles/accept
+ * Mark a role as accepted (candidate for taxonomy).
+ */
+router.post('/discovered-roles/accept', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { role } = req.body;
+    if (!role) { res.status(400).json({ error: 'Missing role' }); return; }
+    const state = await readState();
+    state[role] = 'accepted';
+    await writeState(state);
+    res.json({ ok: true });
+  } catch { res.status(500).json({ error: 'Failed to accept role' }); }
+});
+
+/**
+ * POST /api/v1/admin/discovered-roles/reject
+ * Mark a role as rejected (not a valid skill).
+ */
+router.post('/discovered-roles/reject', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { role } = req.body;
+    if (!role) { res.status(400).json({ error: 'Missing role' }); return; }
+    const state = await readState();
+    state[role] = 'rejected';
+    await writeState(state);
+    res.json({ ok: true });
+  } catch { res.status(500).json({ error: 'Failed to reject role' }); }
+});
+
+/**
+ * POST /api/v1/admin/discovered-roles/deploy
+ * Mark a role as deployed (added to taxonomy code).
+ */
+router.post('/discovered-roles/deploy', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { role } = req.body;
+    if (!role) { res.status(400).json({ error: 'Missing role' }); return; }
+    const state = await readState();
+    state[role] = 'deployed';
+    await writeState(state);
+    res.json({ ok: true });
+  } catch { res.status(500).json({ error: 'Failed to deploy role' }); }
+});
+
 export default router;

@@ -21,7 +21,7 @@ export interface AuditEntry {
   isMultimodal?: boolean;
 
   // Routing metadata fields
-  routingState?: 'auto' | 'auto_v2' | 'manual';
+  routingState?: 'auto' | 'manual';
   complexityScore?: number;
   routingReasonCode?: string;
   reasoningSummary?: string;

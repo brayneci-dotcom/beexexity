@@ -1,5 +1,5 @@
 /**
- * Static role mapping for all 17 skills.
+ * Static role mapping for all 19 skills.
  * Replaces LLM-generated role selection with deterministic, domain-appropriate roles.
  * Role is injected into the inference system prompt, not the refinement output.
  *
@@ -10,31 +10,35 @@ import { SkillType } from '../types/routing.types.js';
 
 export const SKILL_TO_ROLE: Record<SkillType, string> = {
   // Generation
-  email: 'Professional Email Writer',
-  creative: 'Creative Writer & Storyteller',
+  business_writing: 'Business & Professional Communication Specialist',
+  creative_writing: 'Creative Writer & Storyteller',
   brainstorming: 'Innovation & Ideation Facilitator',
-  meta_prompting: 'Prompt Engineering Expert',
+  prompt_optimizer: 'Prompt Strategy & Optimization Consultant',
 
   // Transformation
   summarization: 'Information Synthesis Specialist',
   translation: 'Professional Multilingual Translator',
-  data_conversion: 'Data Transformation Engineer',
-  editing_critique: 'Editorial Review & Proofreading Expert',
+  data_transformation: 'Data Format & Schema Conversion Specialist',
+  editing: 'Editorial Review & Proofreading Expert',
 
   // Interaction
   roleplay: 'Character Roleplay Actor',
   logic_math: 'Mathematics & Logic Problem Solver',
   planning_strategy: 'Strategic Planning & Business Consultant',
-  document_qna: 'Document Analyst & Research Specialist',
 
   // Enterprise
   requirement_generation: 'Senior Business & Requirements Analyst',
   compliance_pre_assessment: 'Senior Compliance & Regulatory Auditor',
+  risk_analyst: 'Risk Assessment & Mitigation Specialist',
+  process_optimization: 'Business Process Improvement Consultant',
 
   // Engineering
   code: 'Principal Software Engineer',
   log_troubleshooting: 'DevOps & Site Reliability Engineer',
-  general: 'General Knowledge Assistant',
+  data_analysis: 'Data Insights & Statistical Analyst',
+
+  // Fallback (explicit, not "general")
+  fallback: 'General Purpose Assistant',
 };
 
 /**

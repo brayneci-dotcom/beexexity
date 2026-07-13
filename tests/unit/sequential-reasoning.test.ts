@@ -38,7 +38,7 @@ const mockedAuditLog = vi.mocked(auditService.log);
 function makeRoutingDecision(overrides?: Partial<RoutingDecision>): RoutingDecision {
   return {
     executedModelId: 'qwen.qwen3-235b-a22b-2507-v1:0',
-    routingState: 'auto_v2',
+    routingState: 'auto',
     complexityScore: 4,
     scoreBand: 'advanced-reasoning',
     confidence: 0.8,
@@ -48,7 +48,7 @@ function makeRoutingDecision(overrides?: Partial<RoutingDecision>): RoutingDecis
     modalityFlags: { textOnly: true, documentText: false, image: false, mixed: false },
     manualOverrideApplied: false,
     flags: [],
-    skill: 'general',
+    skill: 'fallback',
     contract: null,
     ...overrides,
   };

@@ -1,5 +1,5 @@
 /**
- * Sequential Reasoning Engine — auto_v2 mode.
+ * Sequential Reasoning Engine — multi-step reasoning for complex queries.
  *
  * For complex requests (complexity >= 4), generates a step-by-step execution
  * plan, executes steps sequentially with accumulated context, performs
@@ -83,7 +83,7 @@ class SequentialReasoner {
       outputTokens: 0,
       status: 'success',
       durationMs: 0,
-      routingState: 'auto_v2',
+      routingState: 'auto',
       orchestrationGroupId,
       orchestrationStepOrder: 0,
     }).catch(() => {});
@@ -129,8 +129,9 @@ class SequentialReasoner {
           // PII mask step input
           const maskedPrompt = mask(prompt).maskedText;
 
-          // Run step
-          stepOutput = await this.callStepModel(step, maskedPrompt);
+          // Run step with language awareness
+          const lang = input.routingDecision?.detectedLanguage;
+          stepOutput = await this.callStepModel(step, maskedPrompt, lang);
           if (!stepOutput || stepOutput.trim().length === 0) {
             throw new Error('Step produced empty output');
           }
@@ -195,7 +196,7 @@ class SequentialReasoner {
         outputTokens: stepTokens,
         status: stepStatus === 'success' ? 'success' : 'failed',
         durationMs,
-        routingState: 'auto_v2',
+        routingState: 'auto',
         sessionId: input.sessionId,
         orchestrationGroupId,
         orchestrationStepOrder: step.order,
@@ -359,14 +360,19 @@ User request: ${input.refinedPrompt}`;
   }
 
   /** Call Bedrock for a single step (non-streaming). Returns step output text. */
-  private async callStepModel(step: SequentialStep, prompt: string): Promise<string> {
+  private async callStepModel(step: SequentialStep, prompt: string, language?: string): Promise<string> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), STEP_TIMEOUT_MS);
 
     try {
+      const system: { text: string }[] = [];
+      if (language) {
+        system.push({ text: `IMPORTANT: Respond in ${language}. Use the same language as the user's original request.` });
+      }
       const command = new ConverseCommand({
         modelId: step.modelId,
         messages: [{ role: 'user' as const, content: [{ text: prompt }] }],
+        system: system.length > 0 ? system : undefined,
         inferenceConfig: { maxTokens: STEP_MAX_TOKENS, temperature: 0.3 },
       });
 
@@ -412,14 +418,20 @@ Provide a well-structured final response that reads naturally, resolves any cont
     }
 
     const modelId = this.resolveModel(input.routingDecision);
+    const lang = input.routingDecision?.detectedLanguage;
 
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), STEP_TIMEOUT_MS);
 
+      const system: { text: string }[] = [];
+      if (lang) {
+        system.push({ text: `IMPORTANT: The user's original request was in ${lang}. Respond in ${lang}.` });
+      }
       const command = new ConverseCommand({
         modelId,
         messages: [{ role: 'user' as const, content: [{ text: synthPrompt }] }],
+        system: system.length > 0 ? system : undefined,
         inferenceConfig: { maxTokens: STEP_MAX_TOKENS, temperature: 0.3 },
       });
 

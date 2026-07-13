@@ -3,14 +3,14 @@
 # gcp-setup.sh — One-time GCP infrastructure provisioning for Cloud Run deployment.
 #
 # Architecture:
-#   Cloud Run (app) → AWS Bedrock Account #1 (LLM) → AWS RDS Account #2 (DB)
+#   Cloud Run (app) → AWS Bedrock Account #1 (LLM) → GCP Cloud SQL (DB)
 #
 # Prerequisites:
 #   1. gcloud CLI installed and authenticated (gcloud auth login)
 #   2. A GCP project created with billing enabled
 #   3. PROJECT_ID exported or set below
 #   4. AWS Account #1 with Bedrock access in ap-southeast-3
-#   5. AWS Account #2 with RDS PostgreSQL running
+#   5. GCP Cloud SQL for PostgreSQL instance running
 #
 # Usage:
 #   export PROJECT_ID="my-gcp-project"
@@ -19,7 +19,7 @@
 # Creates:
 #   - Enabled APIs (Cloud Run, Artifact Registry, Secret Manager, IAM)
 #   - Artifact Registry Docker repository
-#   - Secret Manager secrets for DB credentials (AWS RDS Account #2)
+#   - Secret Manager secrets for DB credentials (GCP Cloud SQL)
 #     and Bedrock access keys (AWS Account #1)
 #   - Cloud Run service account with required roles
 #   - Workload Identity Federation for GitHub Actions
@@ -96,7 +96,7 @@ create_secret() {
   echo "  Secret '$name' created."
 }
 
-create_secret "db-password"           "RDS database password (AWS Account #2)"        "DB_PASSWORD"
+create_secret "db-password"           "Cloud SQL database password"                     "DB_PASSWORD"
 create_secret "jwt-secret"            "JWT signing secret"                                  "JWT_SECRET"
 create_secret "aws-access-key-id"     "Bedrock IAM access key ID (AWS Account #1)"          "AWS_ACCESS_KEY_ID"
 create_secret "aws-secret-access-key" "Bedrock IAM secret access key (AWS Account #1)"      "AWS_SECRET_ACCESS_KEY"

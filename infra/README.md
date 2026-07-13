@@ -9,17 +9,17 @@ Users → Cloud Run (HTTPS, asia-southeast2)
               │     - ap-southeast-3 (Jakarta)
               │     - All models via ConverseStream / Converse / InvokeModel API
               │
-              └── AWS RDS Account #2 (PostgreSQL)
-                    - Private RDS instance
-                    - Accessed via credentials stored in GCP Secret Manager
+              └── GCP Cloud SQL (PostgreSQL)
+                    - Public IP
+                    - SSL required
                     - Connection pool (pg Pool, max 20)
 ```
 
 ## Prerequisites
 
 - GCP project with Cloud Run enabled
+- GCP Cloud SQL for PostgreSQL instance running
 - AWS Account #1 with Bedrock access in ap-southeast-3
-- AWS Account #2 with RDS PostgreSQL running
 - `gcloud` CLI installed and authenticated
 - Docker installed
 
@@ -42,14 +42,14 @@ This creates:
 
 ## Database
 
-RDS PostgreSQL is in AWS Account #2. Connection is via standard PostgreSQL wire protocol using credentials stored in Secret Manager:
+GCP Cloud SQL for PostgreSQL. Public IP with SSL required.
 
-- `DB_HOST` — RDS endpoint (e.g. `database-1.xxxxxx.ap-southeast-3.rds.amazonaws.com`)
+- `DB_HOST` — `34.101.75.59`
 - `DB_PORT` — 5432
 - `DB_NAME` — bedrock_gateway
 - `DB_USER` — postgres
 - `DB_PASSWORD` — stored in Secret Manager as `db-password`
-- `DB_SSL` — true (required for RDS)
+- `DB_SSL` — true
 
 ### Running Migrations
 
@@ -123,6 +123,6 @@ Set via Cloud Run env vars or Secret Manager:
 |---|---|
 | Cloud Run (light use) | ~$0–5 |
 | Artifact Registry (500MB free) | $0 |
-| RDS db.t3.micro | ~$13/mo |
+| Cloud SQL (db-f1-micro, 10GB) | ~$8/mo |
 | Bedrock (per-token) | Varies by model usage |
 | **Total** | **~$15–20/mo baseline + Bedrock usage** |

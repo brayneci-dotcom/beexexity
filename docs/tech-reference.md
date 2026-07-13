@@ -8,7 +8,7 @@
 
 | Layer | Technology | Version / Notes |
 |---|---|---|
-| Runtime | Node.js | 20 (Alpine in Docker) |
+| Runtime | Node.js | 24 (Alpine in Docker) |
 | Language | TypeScript | 5.6+, `NodeNext` module resolution |
 | Framework | Express.js | 4.21+ |
 | Database | PostgreSQL | pg Pool (max 20), SSL via `rejectUnauthorized: false` |
@@ -40,7 +40,7 @@ src/
 ├── server.ts              # HTTP listener entry + EventEmitter.defaultMaxListeners = 50
 ├── app.ts                 # Express app: middleware, routes, error handler, /health, Cache-Control on HTML
 ├── config/
-│   ├── index.ts           # All env-var config with defaults (including orchestration block)
+│   ├── index.ts           # All env-var config with defaults
 │   ├── database.ts        # pg Pool + query() helper + closePool()
 │   └── model-capabilities.ts  # Static model→capability registry
 ├── middleware/
@@ -52,20 +52,19 @@ src/
 ├── routes/
 │   ├── auth.routes.ts        # POST /login, POST /google, GET /google/config, POST /change-password
 │   ├── admin.routes.ts       # POST|PUT /users, GET /usage/cost, POST /users/bulk
+│   │                         # + GET/POST /discovered-roles (accept/reject/deploy)
 │   ├── models.routes.ts      # GET / (available models with pricing)
 │   ├── inference.routes.ts   # POST /generate (JSON + multipart), GET /sessions/active, POST /sessions/reset
-│   │                         # Auto_v2 branch, done after verifier, effectiveDocText for OCR→orchestrator
-│   └── session.routes.ts     # GET /, GET /:id/messages, GET /:id/stats, POST /:id/resume
+│   ├── session.routes.ts     # GET /, GET /:id/messages, GET /:id/stats, POST /:id/resume
+│   └── feedback.routes.ts    # POST / (submit), GET/PUT /admin (admin review + synthesis)
 ├── services/
-│   ├── auth.service.ts           # Login, JWT sign/verify, user CRUD, Google OAuth (loginWithGoogle)
-│   ├── subagent-orchestrator.service.ts  # Legacy parallel sub-agent pipeline (still active)
-│   ├── subagent-executor.service.ts      # Parallel sub-agent execution with concurrency limit
-│   ├── subagent-synthesizer.service.ts   # Merge sub-agent results, per-agent token budget guard
+│   ├── auth.service.ts           # Login, JWT sign/verify, user CRUD, Google OAuth
 │   ├── session.service.ts        # Session lifecycle, messages CRUD, stats
-│   ├── inference.service.ts      # Bedrock ConverseStream/Converse/InvokeModel, retry, SSE, OCR, repair
-│   ├── routing-engine.service.ts # 17-skill classifier, refinement (full + follow-up), scoring, policy
-│   ├── routing-policy.service.ts # Model selection: manual→long→vision→text. Handles auto_v2 state
-│   ├── sequential-reasoning.service.ts  # NEW: Sequential reasoner for Thinking mode
+│   ├── inference.service.ts      # Bedrock ConverseStream/Converse/InvokeModel, retry, SSE, OCR, repair, semantic judge
+│   ├── routing-engine.service.ts # 19-skill classifier + refinement + complexity scoring + policy + verification
+│   │                            # + validateSkillInvariants() post-classification guard
+│   ├── routing-policy.service.ts # Model selection: manual→long→vision→text
+│   ├── sequential-reasoning.service.ts  # Multi-step planner→executor→synthesizer for complex queries
 │   │   ├── planner()             # LLM generates 2-6 step plan, returns null for 1 step (fallback)
 │   │   ├── executor()            # Sequential step loop with retry, PII per step, audit per step
 │   │   ├── synthesizer()         # Always-executes final layer, handles partial/complete/failure
@@ -79,12 +78,9 @@ src/
 │   ├── upload-validator.service.ts     # Classify files → documents/images, MIME checks
 │   ├── audit.service.ts                # Fire-and-forget audit logs + pricing snapshots + orchestration columns
 │   ├── cost-reporting.service.ts       # Per-user cost aggregation
-│   ├── few-shot-library.ts             # Per-skill golden examples for format adherence
+│   ├── few-shot-library.ts             # Per-skill golden examples for format adherence (incl. Indonesian)
 │   ├── gotenberg.service.ts            # Legacy Office (.doc, .ppt) → PDF → text via Gotenberg
 │   └── file-signature-validator.ts     # Magic byte heuristic gate
-├── prompts/
-│   └── subagent-planner.prompt.ts    # Planner LLM system prompt (legacy)
-│   └── subagent-synthesis.prompt.ts  # Synthesis LLM system prompt (legacy)
 ├── frontend/
 │   ├── cost-display.ts          # IDR rate fetch, session cost tracking
 │   └── pricing-config.json      # Per-model pricing (input/output per 1M tokens)
@@ -92,46 +88,33 @@ src/
 │   ├── auth.types.ts
 │   ├── session.types.ts         # Session, StoredMessage, BedrockMessage, AssembledContext, SessionStats
 │   ├── inference.types.ts       # + SequentialStep, SequentialPlan, StepResult, SequentialOrchestrationMeta
-│   │                           # + OrchestrationPlanEvent, StatusEvent, StepEvent, InterimEvent, ErrorEvent
-│   ├── routing.types.ts         # + isAutoV2 flag, auto_v2 routing state on RoutingInput/Decision/PolicyInput
+│   ├── routing.types.ts         # 19 skills, routingState: 'auto'|'manual', no isAutoV2
 │   ├── pii.types.ts
 │   ├── upload.types.ts          # DocumentFile, ImageFile, ExtractionResult, ContentBuildInput, ContentBlock
-│   ├── subagent.types.ts       # SubAgentSpec, SubAgentResult, OrchestrationMeta (legacy)
-│   ├── audit.types.ts          # + orchestrationGroupId, orchestrationStepOrder
+│   ├── audit.types.ts           # + orchestrationGroupId, orchestrationStepOrder
 │   ├── pricing.types.ts
 │   ├── reporting.types.ts
 │   └── error.types.ts
 └── scripts/
     └── run-migrations.ts    # Idempotent migration runner (creates _migrations table)
+
+data/                            # Runtime data (not committed to git)
+├── fallback-roles.ndjson         # Raw discovery log for novel fallback roles
+└── discovered-roles-state.json   # Accept/reject/deploy state per role
+
 migrations/
-├── 001_initial_schema.sql
-├── 002_audit_upload_fields.sql
-├── 003_gateway_enhancements.sql
-├── 004_conversation_memory.sql
-├── 005_session_hardening.sql
-├── 006_audit_pricing_snapshot.sql
-├── 007_session_memory.sql          # rolling_summary, memory_version
-├── 008_session_facts.sql           # extracted_facts JSONB
-├── 009_add_group_name.sql          # group_name on users
-├── 010_subagent_orchestration.sql  # orchestration_meta on audit_logs
-├── 011_google_oauth.sql            # google_id, auth_provider, password nullable
-└── 012_orchestration_audit.sql     # orchestration_group_id, orchestration_step_order on audit_logs
+├── 001_initial_schema.sql ... 014_feedback_reports.sql  (14 prior migrations)
+└── 015_update_skill_taxonomy.sql   # 19-skill constraints, obsolete skill migration
+
 tests/
-└── unit/                           # 25 test files
-    └── sequential-reasoning.test.ts # NEW: 16 tests (planner, executor, retry, PII, progressive, SSE, audit)
-scripts/
-├── seed-admin.ts                   # Creates admin/admin123
+└── unit/                           # 25 test files, 345 tests
+    ├── routing-engine.test.ts      # 12 tests for validateSkillInvariants()
+    ├── sequential-reasoning.test.ts # 16 tests (planner, executor, retry, PII, progressive, SSE, audit)
+    └── ... (23 other test files)
+
 public/
-├── index.html                      # SPA frontend — model dropdown includes "Thinking" mode
-│                                   # SSE handlers for 5 orchestration events + legacy subagent
-│                                   # Stats pill + cost bar, IDR conversion
-└── admin.html                      # Admin dashboard (user mgmt, cost, settings)
-infra/
-├── README.md                       # Architecture docs (Cloud Run → Bedrock → RDS)
-└── gcp-setup.sh                    # One-time GCP Cloud Run provisioning
-docs/
-├── feature-sequential-reasoning/   # Requirements, design, tasks for Thinking mode
-├── tech-reference.md               # This file
+├── admin.html                      # Admin dashboard — 6 tabs (+ Discovered Roles)
+└── index.html                      # SPA frontend — Auto only, no "Thinking" mode
 ```
 
 ---
@@ -143,13 +126,13 @@ docs/
 ```
 Client → POST /api/v1/inference/generate
   Body: { prompt, modelId?, config? }
-  modelId can be: '' (Auto), 'auto_v2' (Thinking mode), or a specific model ID
+  modelId: '' (default Auto) or a specific model ID (manual mode)
   
   1. authMiddleware           — JWT validation, attach req.user
   2. forcePasswordResetMiddleware — check flag
   3. inferenceRateLimit       — 20 req/min per IP
   4. Validate prompt          — non-empty, < 64K chars
-  5. Validate modelId         — ALLOWED_MODELS, default, or 'auto_v2'
+  5. Validate modelId         — ALLOWED_MODELS or empty (→ auto)
   6. PII mask prompt          — fail-closed: 500 if throws
   7. Prompt length check      — < maxContextCharacters
   8. Session validation       — getValidatedSession() (create or resume)
@@ -162,38 +145,35 @@ Client → POST /api/v1/inference/generate
       → routing_payload      — last 2 user msgs + last assistant, ≤ 500 chars
       → evictedMessages[]    — for summary refresh
   14. Routing engine:
-      a. Determine routingState: 'auto' | 'auto_v2' | 'manual'
-      b. If 'auto' or 'auto_v2' → routeRequest() with isAutoV2 flag:
-         - classifyRequestType()   — 17 skills via qwen3-32b
-         - refinePrompt()          — skill-specific or follow-up refinement
-         - scoreComplexity()       — 1-5
-         - resolvePolicy()         — model selection (auto_v2 follows same policy as auto)
-         → routingDecision with isAutoV2: true/false
-      c. If 'manual' → build RoutingDecision directly
+      a. Determine routingState: 'auto' | 'manual'
+      b. If 'auto' → routeRequest():
+         - unifiedClassifyAndScore()  — single LLM call: skill + complexity + language
+         - validateSkillInvariants()  — post-classification deterministic guard (5 rules)
+         - refinePrompt()            — skill-aware or follow-up refinement
+         - resolvePolicy()           — model selection
+         → RoutingDecision
+      c. If 'manual' → build RoutingDecision directly, skip routing
   15. Emit SSE events:
       event: session      { sessionId }
-      event: routing      { routingState, executedModelId, skill, flags, timing, ... }
-  16. BRANCH: auto_v2 mode with complexity >= 4?
-      → YES: SequentialReasoner.execute()
+      event: routing      { skill, flags, timing, ... }
+  16. Unified dispatch:
+      complexity >= 4 AND routingState !== 'manual'
+      → SequentialReasoner.execute()
          - planner() → 2-6 step plan (returns null → fallback to generate)
          - Emit orchestration_plan SSE
-         - executor() — sequential step loop with:
-           * PII mask input/output per step
-           * Retry up to STEP_RETRY_COUNT (tiered: same prompt → simplified)
-           * Progressive synthesis every PROGRESSIVE_INTERVAL steps
-           * Per-step audit with orchestration_group_id
-         - synthesizer() — always-executes final layer
+         - executor() + synthesizer() + progressiveSynthesis()
+         - Each step passes language system prompt (e.g. "Respond in indonesian")
          - Emit delta + done events
-      → NO: generate() — Bedrock ConverseStream, SSE delta/metadata/done
-  17. verifyOutput()       — deterministic checks against PromptContract
-  18. Semantic verification — semanticJudge() for compliance/logic/doc_qna/code
-       → event: semantic_verdict (if failed)
-  19. Auto-repair (verification or semantic fails) — repairResponse() → event: repair
-  20. Emit done (for auto_v2/multiStep paths that bypassed generate())
-  21. Store assistant msg  — PII-masked, increment turnCount
-  22. Extract facts        — extractFacts() → update extracted_facts JSONB
-  23. Audit log            — metadata-only, fire-and-forget
-  24. Memory update        — if messages evicted, summarizeEvicted() → rolling_summary
+      → else: generate() — Bedrock ConverseStream, SSE delta/metadata/done
+  17. verifyOutput()         — deterministic checks against PromptContract
+  18. Semantic verification  — semanticJudge() for compliance/logic/code/risk_analyst/data_analysis
+      → event: semantic_verdict (if failed)
+  19. Auto-repair (if verification fails) → repairResponse() → event: repair
+  20. Emit done (sequential reasoning paths only)
+  21. Store assistant msg    — PII-masked, increment turnCount
+  22. Extract facts          — extractFacts() → update extracted_facts JSONB
+  23. Audit log              — metadata-only, fire-and-forget
+  24. Memory update          — if messages evicted, summarizeEvicted() → rolling_summary
   25. Release turn lock
 ```
 
@@ -212,9 +192,7 @@ Same as JSON flow, with additions:
       Stage 1: Nova Lite via InvokeModel (raw API, messages-v1 schema)
       Stage 2: GPT-OSS 120B enhances OCR output
   5j. effectiveDocText      — ocrText (if available) overrides extraction text
-      Without this override, the orchestrator (sub-agent or sequential reasoning)
-      receives empty context for image-heavy files and hallucinates.
-  5k. BRANCH: auto_v2 + complexity >= 4 → SequentialReasoner (same as JSON flow)
+  5k. Unified dispatch: complexity >= 4 → SequentialReasoner, else → generate()
   5l. Fallback: If enhance model fails → auto-fallback to original routing model
 ```
 
@@ -232,11 +210,10 @@ interface RoutingInput {
   maskedDocumentText?: string;      // PII-masked extracted document text
   hasImages: boolean;
   imageModelRequired: boolean;
-  routingState: 'auto' | 'auto_v2' | 'manual';
+  routingState: 'auto' | 'manual';
   manualModelId?: string;           // Set when user manually selects a model
   userId: string;
   conversationContext?: string;     // Last 2 user messages + last assistant, ≤ 500 chars
-  isAutoV2?: boolean;               // True when Thinking mode selected
 }
 ```
 
@@ -245,7 +222,7 @@ interface RoutingInput {
 ```typescript
 interface RoutingDecision {
   executedModelId: string;
-  routingState: 'auto' | 'auto_v2' | 'manual';
+  routingState: 'auto' | 'manual';
   complexityScore: number;          // 1-5
   scoreBand: 'direct-answer' | 'moderate-reasoning' | 'advanced-reasoning';
   confidence: number;               // 0.0-1.0 from scoring LLM
@@ -254,15 +231,13 @@ interface RoutingDecision {
   reasoningSummary: string;
   modalityFlags: ModalityFlags;
   manualOverrideApplied: boolean;
-  flags: string[];
+  flags: string[];                  // e.g. ['skill-demoted:code→fallback', 'refinement-failed']
   skill: SkillType;
   contract: PromptContract | null;
-  multiStep?: boolean;              // Legacy: triggers parallel sub-agent
-  isAutoV2?: boolean;               // NEW: triggers sequential reasoning
+  detectedLanguage?: string;        // e.g. "indonesian", "english"
   routingDurationMs?: number;
   classificationDurationMs?: number;
   refinementDurationMs?: number;
-  scoringDurationMs?: number;
 }
 ```
 
@@ -273,56 +248,82 @@ routeRequest(input)
 │
 ├── [GUARD] routingState === 'manual'?
 │     ├── resolvePolicy({ manual: true, manualModelId }) → modelId
-│     └── return RoutingDecision (no refinement/scoring, includes isAutoV2 if set)
+│     └── return RoutingDecision (no refinement/scoring)
 │
-└── routingState === 'auto' or 'auto_v2'?
+└── routingState === 'auto'?
       │
-      ├── ... same as before (classify → refine → score → long-context → policy) ...
+      ├── 1. UNIFIED CLASSIFY + SCORE  (unifiedClassifyAndScore)
+      │     ├── Single qwen3-32b call: returns { skill, complexityScore, language }
+      │     ├── Silent upload (files, no prompt) → fallback (no LLM call)
+      │     └── Document snippet: first 2000 chars + last 1000 chars (head+tail)
       │
-      ├── 6. POLICY RESOLUTION  (resolvePolicy)
-      │     ├── auto_v2 routingState treated the SAME as auto for model selection
-      │     └── isAutoV2 flag propagated through to RoutingDecision
+      ├── 2. INVARIANT CHECK  (validateSkillInvariants)  [NEW]
+      │     ├── 5 deterministic rules, zero LLM cost
+      │     ├── compliance_pre_assessment → requires legal/financial context
+      │     ├── risk_analyst             → requires risk/threat context
+      │     ├── data_analysis            → requires data/statistical context
+      │     ├── code                     → requires ``` or code keywords
+      │     ├── process_optimization     → requires process/workflow context
+      │     └── → demotes to fallback if rule fails, emits flag
       │
-      └── 8. RETURN RoutingDecision
-            └── + isAutoV2: input.isAutoV2 ?? false
+      ├── 3. PROMPT REFINEMENT  (refinePrompt)
+      │     ├── Turn 1: SKILL_REFINEMENT_PROMPT (generic template with {{skill}})
+      │     ├── Turn 2+: FOLLOW_UP_REFINEMENT_PROMPT (minimal, no role/context)
+      │     ├── → PromptContract { role, context, task, intent, ... }
+      │     └── Static role from SKILL_TO_ROLE overrides LLM-generated role
+      │
+      ├── 4. LONG CONTEXT CHECK
+      │     └── > 8000 chars prompt+document → override model selection
+      │
+      ├── 5. POLICY RESOLUTION  (resolvePolicy)
+      │     ├── Manual → honor user's selected model
+      │     ├── Long context → qwen3-235b
+      │     ├── Vision + score 1-3 → GPT-OSS 120B
+      │     ├── Vision + score 4-5 → qwen3-235b
+      │     └── Text (any score) → qwen3-235b
+      │
+      └── 6. RETURN RoutingDecision
+            └── includes skill, complexity, flags, contract, language
 ```
 
-### 4.2 The 17 Skills (5 groups)
+### 4.2 The 19 Skills (6 groups)
 
 ```
-Generation:    email | creative | brainstorming | meta_prompting
-Transformation: summarization | translation | data_conversion | editing_critique
-Interaction:   roleplay | logic_math | planning_strategy | document_qna
-Enterprise:    requirement_generation | compliance_pre_assessment
-Engineering:   code | log_troubleshooting | general (catch-all)
+Generation:    business_writing | creative_writing | brainstorming | prompt_optimizer
+Transformation: summarization | translation | data_transformation | editing
+Interaction:   roleplay | logic_math | planning_strategy
+Enterprise:    requirement_generation | compliance_pre_assessment | risk_analyst | process_optimization
+Engineering:   code | log_troubleshooting | data_analysis
+Fallback:      fallback (catch-all)
 ```
 
-**Critical classifier rule:** `document_qna` is ONLY valid when a document is actually attached. If no document, general knowledge Q&A falls to `general`. The classifier prompt explicitly states: "If NO document is attached, NEVER classify as document_qna."
+**Removed:** `document_analysis` — document is a medium, not a cognitive task. Silent uploads route to `fallback` and ask the user what to do. Document-type-specific roles were redistributed to other skill prompts.
+
+**Renamed from original 17:** `email → business_writing`, `creative → creative_writing`, `meta_prompting → prompt_optimizer`, `data_conversion → data_transformation`, `editing_critique → editing`, `general → fallback`
 
 ### 4.3 Refinement — Two Modes
 
 | | Turn 1 (no conversationContext) | Turn 2+ (has conversationContext) |
 |---|---|---|
-| Prompt | `SKILL_PROMPTS[skill]` (includes role/context/task/intent) | `FOLLOW_UP_REFINEMENT_PROMPT` (task + intent only, no role/context) |
+| Prompt | `SKILL_REFINEMENT_PROMPT` (generic template with role/context/task/intent) | `FOLLOW_UP_REFINEMENT_PROMPT` (task + intent only, no role/context) |
 | LLM input | Original prompt + document context | Original prompt + conversation history |
-| Output JSON | Full `PromptContract` | Minimal: task + intent + ambiguities |
-| flowingText | No English sentence wrapping — values used directly | Just `task` (original prompt verbatim) |
+| Output JSON | Full `PromptContract` including role | Minimal: task + intent + ambiguities |
+| Language | Detected language injected via `{{detected_language}}` | Same language detected from input |
 
-**Language preservation fix:** The `flowingText` construction no longer wraps values in English sentence templates (`"You are a..."`, `"Your task is to..."`). These English wrappers biased the inference model to respond in English even when the input was Indonesian.
+**Role override:** LLM-generated role is always replaced with the static role from `SKILL_TO_ROLE`. The LLM-generated role is still logged and, if `skill === 'fallback'` and the role differs from the static one, appended to `data/fallback-roles.ndjson` for the Discovered Roles admin feature.
 
 ### 4.4 Routing Policy
 
 ```
 resolvePolicy(input):
   1. Manual state        → honor user's selected model
-  2. auto_v2 state       → same as auto (long-context → vision → text)
-  3. Long context        → qwen.qwen3-235b-a22b-2507-v1:0
-  4. Vision + score 1-3  → openai.gpt-oss-120b-1:0
-  5. Vision + score 4-5  → qwen.qwen3-235b-a22b-2507-v1:0
-  6. Text (any score)    → qwen.qwen3-235b-a22b-2507-v1:0
+  2. Long context        → qwen.qwen3-235b-a22b-2507-v1:0
+  3. Vision + score 1-3  → openai.gpt-oss-120b-1:0
+  4. Vision + score 4-5  → qwen.qwen3-235b-a22b-2507-v1:0
+  5. Text (any score)    → qwen.qwen3-235b-a22b-2507-v1:0
 ```
 
-**Key invariant**: qwen3-32b is NEVER used for inference — reserved for routing engine tasks (classification, refinement, scoring).
+**Key invariant**: qwen3-32b is NEVER used for inference — reserved for routing engine tasks (classification, refinement, scoring, progressive synthesis).
 
 ### 4.5 Allowed Models
 
@@ -335,12 +336,12 @@ resolvePolicy(input):
 
 ---
 
-## 5. Sequential Reasoning (Thinking Mode)
+## 5. Sequential Reasoning (Complex Mode)
 
 ### Trigger
 
 ```
-mode === 'auto_v2' AND complexityScore >= 4
+complexityScore >= 4 AND routingState !== 'manual'
 ```
 Not restricted to specific skills — any request with complexity >= 4 qualifies.
 
@@ -362,7 +363,7 @@ SequentialReasoner.execute(input, res)
   │   ├─ accumulatedContext initialized with document text (capped at 50K) + conversation history
   │   ├─ For each step:
   │   │   ├─ PII mask step input (fail-closed)
-  │   │   ├─ Bedrock ConverseCommand (non-streaming)
+  │   │   ├─ Bedrock ConverseCommand (non-streaming) with language system prompt
   │   │   ├─ Retry up to STEP_RETRY_COUNT (tiered: same prompt → simplified)
   │   │   ├─ Skip step if all retries exhausted, emit orchestration_error
   │   │   ├─ PII mask step output (fail-closed)
@@ -376,7 +377,8 @@ SequentialReasoner.execute(input, res)
   │   ├─ Success case: formats accumulated context into cohesive narrative
   │   ├─ Partial case: best-effort response, acknowledges skipped steps
   │   ├─ Failure case: direct response from original prompt
-  │   └─ Uses qwen3-235b (routed model)
+  │   ├─ Uses qwen3-235b (routed model) with language system prompt
+  │   └─ → synthesisStatus: 'success' | 'partial' | 'failed'
   │
   ├─ progressiveSynthesis()
   │   ├─ Every PROGRESSIVE_INTERVAL steps (default 3)
@@ -391,8 +393,8 @@ SequentialReasoner.execute(input, res)
 | Event | When | Data |
 |---|---|---|
 | `orchestration_plan` | After planner | `{ steps: [{ order, name, description }], reasoning }` |
-| `orchestration_status` | Per step | `{ step, total, name, description, status: 'running'\|'completed'\|'failed', durationMs? }` |
-| `orchestration_step` | Per step streaming | `{ step, content }` |
+| `orchestration_status` | Per step | `{ step, total, name, description, status: 'running'|'completed'|'failed', durationMs? }` |
+| `orchestration_step` | Per step output | `{ step, content }` |
 | `orchestration_interim` | Every N steps | `{ step, total, insight }` |
 | `orchestration_error` | Step failure | `{ step, name, reason }` |
 
@@ -412,8 +414,8 @@ SequentialReasoner.execute(input, res)
 
 ### Tier 1: Raw Recent Turns
 - All messages stored in `messages` table per session
-- `buildContext()` selects last N messages within char budget (default 640K)
-- Default 20 turns max (`maxHistoryTurns`)
+- `buildContext()` selects last N messages within char budget (default 120K)
+- Default 10 turns max (`maxHistoryTurns`)
 
 ### Tier 2: Rolling Summary
 - When messages are evicted from the window, `summarizeEvicted()` calls qwen3-32b to generate/update a rolling summary
@@ -435,10 +437,10 @@ SequentialReasoner.execute(input, res)
 | Event | Timing | Data |
 |---|---|---|
 | `session` | Start of stream | `{ sessionId }` |
-| `routing` | After routing | Full `RoutingMetadataEvent` (includes routingState, isAutoV2) |
-| `orchestration_plan` | After planner (Thinking mode) | `{ steps: [...], reasoning }` |
+| `routing` | After routing | Full `RoutingMetadataEvent` (skill, flags, complexity, language, timing, raw LLM data) |
+| `orchestration_plan` | After planner (complex mode) | `{ steps: [...], reasoning }` |
 | `orchestration_status` | Per step progress | `{ step, total, name, status }` |
-| `orchestration_step` | Per step token stream | `{ step, content }` |
+| `orchestration_step` | Per step output | `{ step, content }` |
 | `orchestration_interim` | Every N steps | `{ step, total, insight }` |
 | `orchestration_error` | Step failure | `{ step, name, reason }` |
 | `delta` | Per token | `{ type: "text", content: "<token>" }` |
@@ -447,7 +449,7 @@ SequentialReasoner.execute(input, res)
 | `semantic_verdict` | After semantic judge | `{ is_correct, missing_elements[] }` |
 | `repair` | After verification/judge failure | `{ text: "<repaired content>" }` |
 | `session_status` | On storage failure | `{ sessionId, is_degraded: true }` |
-| `done` | AFTER verifier+repair — allows repair before done | `{}` |
+| `done` | AFTER verifier+repair | `{}` |
 | `error` | On failure | `{ error, message }` |
 
 **Key timing:** `done` is emitted AFTER the verifier + semantic judge + repair block, so repair results arrive before `done`. This fixes the bug where the frontend received `done`, closed the stream, and repair events arrived too late.
@@ -460,14 +462,14 @@ Two verification layers: deterministic + semantic. Both feed into the same repai
 
 ### Layer 1: Deterministic (`verifyOutput`)
 - Empty output detection
-- PII placeholder leakage (`[NIK_1]`, `[NAMA_2]` etc. in response)
+- PII placeholder check disabled intentionally (placeholders in output are correct — masker worked)
 - Word count limits from `contract.constraints`
-- Required sections from `contract.format.mustInclude`
+- Required sections from `contract.format.mustInclude` (language-agnostic)
 - Forbidden content from `contract.format.mustAvoid`
 
 ### Layer 2: Semantic (`semanticJudge`)
 - LLM-as-a-judge: calls qwen3-32b (maxTokens=256, temperature=0)
-- Only runs for high-stakes skills: `compliance_pre_assessment`, `logic_math`, `document_qna`, `code`
+- Runs for high-stakes skills: `compliance_pre_assessment`, `logic_math`, `code`, `risk_analyst`, `data_analysis`
 - Returns `{ is_correct: boolean, missing_elements: string[] }`
 - Emitted as `event: semantic_verdict` SSE
 
@@ -478,10 +480,10 @@ Two verification layers: deterministic + semantic. Both feed into the same repai
 
 ### Timing
 ```
-generate() → emit done (generate path) / skip (Thinking path)
+generate() or sequentialReasoner → done (emitted by generate path only)
           → verifyOutput() (deterministic)
           → semanticJudge() + repairResponse() ← runs BEFORE done
-          → emit done (Thinking path only — generate() already emitted it)
+          → emit done (complex mode only — generate path already emitted it)
           → store, audit, res.end()
 ```
 
@@ -511,18 +513,7 @@ extractDocumentText(file)
 
 ### OCR fallback & Document Text Injection
 
-When extraction returns low-confidence text (image-heavy PDFs, PPTX), the two-stage OCR pipeline extracts the real content. The `effectiveDocText` variable ensures OCR output overrides the empty extraction text for all downstream consumers:
-
-```
-extracted text (empty) → OCR pipeline → ocrText (real content)
-                                         ↓
-effectiveDocText = ocrText || extractedText
-                    ↓                    ↓
-              SequentialReasoner   Sub-agent orchestrator
-              (maskedDocumentText) (maskedDocumentText)
-```
-
-Without this override, the orchestrators receive empty context and hallucinate document content.
+When extraction returns low-confidence text (image-heavy PDFs, PPTX), the two-stage OCR pipeline extracts the real content. The `effectiveDocText` variable ensures OCR output overrides the empty extraction text for all downstream consumers.
 
 ---
 
@@ -600,12 +591,12 @@ Convert binary Office formats (.doc, .ppt) that pure Node.js cannot parse. Deplo
 | id | UUID | PK |
 | username | VARCHAR(64) | UNIQUE |
 | password | VARCHAR(255) | bcrypt hash, nullable for Google users |
-| role | VARCHAR(16) | 'admin' \| 'user' |
+| role | VARCHAR(16) | 'admin' | 'user' |
 | display_name | VARCHAR(128) | |
 | force_password_reset | BOOLEAN | Default true |
 | group_name | VARCHAR(255) | Organizational group |
 | google_id | VARCHAR(255) | UNIQUE, nullable. Google OIDC sub claim |
-| auth_provider | VARCHAR(16) | 'local' \| 'google', default 'local' |
+| auth_provider | VARCHAR(16) | 'local' | 'google', default 'local' |
 | created_at / updated_at | TIMESTAMPTZ | |
 
 ### `sessions`
@@ -613,7 +604,7 @@ Convert binary Office formats (.doc, .ppt) that pure Node.js cannot parse. Deplo
 |---|---|---|
 | id | UUID | PK |
 | user_id | UUID | FK → users |
-| status | VARCHAR(16) | active \| degraded \| inactive \| expired |
+| status | VARCHAR(16) | active | degraded | inactive | expired |
 | turn_count | INTEGER | |
 | rolling_summary | TEXT | Tier 2 memory |
 | memory_version | INTEGER | Default 0 |
@@ -626,7 +617,7 @@ Convert binary Office formats (.doc, .ppt) that pure Node.js cannot parse. Deplo
 |---|---|---|
 | id | UUID | PK |
 | session_id | UUID | FK → sessions |
-| role | VARCHAR(16) | 'user' \| 'assistant' |
+| role | VARCHAR(16) | 'user' | 'assistant' |
 | sanitized_content | TEXT | PII-masked |
 | storage_flags | JSONB | |
 | created_at | TIMESTAMPTZ | |
@@ -639,7 +630,7 @@ Convert binary Office formats (.doc, .ppt) that pure Node.js cannot parse. Deplo
 | user_id, username | | Denormalized |
 | model_id | VARCHAR(128) | |
 | input_tokens, output_tokens | INTEGER | |
-| status | VARCHAR(16) | 'success' \| 'failed' |
+| status | VARCHAR(16) | 'success' | 'failed' |
 | error_category | VARCHAR(32) | |
 | duration_ms | INTEGER | |
 | file_count, file_mime_types, total_file_size | | File metadata |
@@ -655,9 +646,28 @@ Convert binary Office formats (.doc, .ppt) that pure Node.js cannot parse. Deplo
 | session_state | VARCHAR(16) | |
 | turn_count | INTEGER | |
 | model_pricing_snapshot | JSONB | Pricing at request time |
-| orchestration_meta | JSONB | Sequential reasoning / sub-agent metadata |
+| orchestration_meta | JSONB | Sequential reasoning metadata |
 | orchestration_group_id | UUID | Groups per-step audit rows |
 | orchestration_step_order | INTEGER | 0 = planner, 1-N = steps |
+
+### `feedback_reports`
+| Column | Type | Notes |
+|---|---|---|
+| id | UUID | PK |
+| session_id | UUID | |
+| user_feedback | TEXT | User's complaint text |
+| error_category | VARCHAR(32) | hallucination, missed_context, wrong_tone, formatting_issue, other |
+| final_response | TEXT | The LLM output text |
+| routing_metadata | JSONB | Enriched: complexity, model, userPrompt, routingContext, flags |
+| alignment_summary | TEXT | LLM-generated root cause analysis |
+| root_cause_analysis | TEXT | |
+| recommendation | TEXT | |
+| status | VARCHAR(20) | default 'pending' |
+| reviewed_by | VARCHAR(64) | |
+| reviewed_at | TIMESTAMPTZ | |
+| created_at | TIMESTAMPTZ | |
+
+**Rich feedback:** When user submits feedback, the frontend captures the user prompt and routing context (skill, complexity, flags, verification status) from the status panel. These are stored in `routing_metadata` and fed to the synthesis LLM for root cause analysis.
 
 ---
 
@@ -693,8 +703,6 @@ Convert binary Office formats (.doc, .ppt) that pure Node.js cannot parse. Deplo
 | `EXTRACTION_MAX_PPTX_ENTRIES` | 2000 | Max PPTX ZIP entries |
 | `GOTENBERG_URL` | — | Gotenberg service URL |
 | `GOTENBERG_TIMEOUT_MS` | 30000 | Gotenberg conversion timeout |
-| `SUBAGENT_CONCURRENCY` | 3 | Max parallel sub-agents (legacy) |
-| `SUBAGENT_TIMEOUT_MS` | 120000 | Sub-agent timeout |
 | `MIN_PASSWORD_LENGTH` | 8 | Minimum password length |
 
 ---
@@ -710,7 +718,7 @@ Convert binary Office formats (.doc, .ppt) that pure Node.js cannot parse. Deplo
 - **Pure function tests**: no mocking needed (context-assembly, content-builder, pii-masker)
 - **Route tests**: `vi.mock` for all dependencies
 
-### Test files (25 total, 354 tests)
+### Test files (25 total, 345 tests)
 ```
 tests/unit/
 ├── admin.middleware.test.ts
@@ -735,38 +743,41 @@ tests/unit/
 ├── password-reset.middleware.test.ts
 ├── pii-detection.test.ts
 ├── pii-masker-nama.test.ts
-├── sequential-reasoning.test.ts   # NEW: 16 tests (planner, executor, retry, PII, SSE, audit)
+├── routing-engine.test.ts       # 12 tests for validateSkillInvariants()
+├── sequential-reasoning.test.ts # 16 tests (planner, executor, retry, PII, SSE, audit)
 ├── session-memory.test.ts
 └── session.service.test.ts
 ```
 
-### Sequential Reasoning Test Coverage
+### Routing Engine Test Coverage
 | Test | What it verifies |
 |---|---|
-| planner — valid plan | Returns plan when LLM returns 2+ steps |
-| planner — 1 step fallback | Returns null → caller falls back to single-shot |
-| planner — LLM failure | Returns null on Bedrock error |
-| planner — malformed JSON | Returns null on parse failure |
-| executor — first attempt | Step succeeds on first try, retryCount=0 |
-| executor — retry once | Fails first, succeeds second, retryCount=1 |
-| executor — skip exhausted | Fails both attempts, skipped, chain continues |
-| executor — empty output | Empty string treated as failure |
-| synthesizer — all success | SynthesisStatus = 'success' |
-| synthesizer — partial | Some steps fail, synthesisStatus = 'partial' |
-| synthesizer — all failed | All steps fail, fallback response generated |
-| PII masking per step | mask() called for step inputs and outputs |
-| progressive synthesis | orchestration_interim emitted at configured interval |
-| SSE events — success | orchestration_plan, status, step present; error absent |
-| SSE events — failure | orchestration_error emitted on step failure |
-| audit per step | auditService.log called for each step |
+| compliance with legal context | Passes through invariant |
+| compliance without legal context | Demoted to fallback |
+| risk_analyst with risk context | Passes through invariant |
+| risk_analyst without risk context | Demoted to fallback |
+| data_analysis with data context | Passes through invariant |
+| data_analysis without data context | Demoted to fallback |
+| code with ``` blocks | Passes through invariant |
+| code with function keyword | Passes through invariant |
+| code without indicators | Demoted to fallback |
+| process_optimization with context | Passes through invariant |
+| process_optimization without context | Demoted to fallback |
+| non-guarded skills unchanged | business_writing, summarization, fallback pass through |
 
 ---
 
 ## 16. Important Patterns
 
-- **Thinking mode (auto_v2)**: Opt-in dropdown option "Thinking". Same routing as Auto, but triggers sequential reasoning for complexity >= 4. Default remains Auto.
-- **done emission timing**: `event: done` emitted AFTER verifier + semantic judge + repair, so repair results arrive before `done` on the frontend. Fixes silent repair failure.
-- **Classifier bias fix**: Classifier prompt explicitly forbids `document_qna` when no document is attached. General knowledge Q&A falls to `general`.
+- **Unified dispatch**: Single execution path: complexity >= 4 → SequentialReasoner, otherwise → `generate()`. No separate "mode" concept. All queries use the same routing and the same threshold.
+- **Post-classification invariant guard**: `validateSkillInvariants()` runs 5 deterministic checks after the LLM classifier. Demotes impossible skill classifications to `fallback`. Zero LLM cost.
+- **Head+tail document extraction**: Classifier receives first 2000 + last 1000 chars of document, not just first 800. Better classification signal for long documents.
+- **Discovered Roles**: When `skill === 'fallback'` and the refinement model generates a role different from the static "General Purpose Assistant", the role is logged to `data/fallback-roles.ndjson`. The admin dashboard shows a "Discovered Roles" tab with accept/reject/deploy workflow. Accepted roles are candidates for taxonomy expansion.
+- **Rich feedback**: Feedback submission includes the user's original prompt + routing context (skill, flags, verification status) alongside the error category and response text. Stored in `feedback_reports.routing_metadata` JSONB.
+- **Language-aware sequential reasoning**: Each step and the final synthesis pass `IMPORTANT: Respond in {language}` as a system prompt, derived from the detected language in the routing decision.
+- **Conditional format enforcement**: System prompt says "CRITICAL FORMAT INSTRUCTION — you MUST follow this" when `output_format` is present, or "respond in plain text" when absent. No more contradictory anti-markdown rule.
+- **Indent-aware markdown rendering**: List items track indentation level via a stack, producing proper nested HTML (`<ul><li>` → `<ul><li>`) instead of flat siblings.
+- **Done emission timing**: `event: done` emitted AFTER verifier + semantic judge + repair, so repair results arrive before `done` on the frontend. Fixes silent repair failure.
 - **Fail-closed PII**: If masker throws, inference rejected (500). Never sends unmasked data. Applied per-step in sequential reasoning.
 - **Graceful degradation**: Routing step failures fall back gracefully. Sequential reasoning falls back to single-shot on planner failure.
 - **Distributed turn lock**: PostgreSQL advisory lock prevents concurrent turns. Released in `finally` block.
@@ -775,10 +786,9 @@ tests/unit/
 - **Pricing snapshots**: Model pricing captured at inference time for historical accuracy.
 - **Language preservation**: `flowingText` construction no longer wraps values in English sentence templates. Refinement outputs values in the user's detected language.
 - **Follow-up refinement**: Turn 2+ uses `FOLLOW_UP_REFINEMENT_PROMPT` — skips role/context fields, emits minimal task+intent JSON. Reduces redundant framing.
-- **OCR→orchestrator injection**: `effectiveDocText` ensures OCR-extracted content reaches both sequential reasoning and parallel sub-agent paths.
+- **OCR→orchestrator injection**: `effectiveDocText` ensures OCR-extracted content reaches sequential reasoning path.
 - **File buffer cleanup**: After multipart inference, file buffers explicitly nullified.
 - **Cache-control on HTML**: HTML files served with `Cache-Control: no-cache, no-store, must-revalidate` to prevent stale JS serving.
-- **EventEmitter limit**: `EventEmitter.defaultMaxListeners = 50` in `server.ts` — prevents MaxListenersExceededWarning from concurrent Bedrock calls.
-- **Session cost persistence**: `loadSessionHistory()` fetches session stats to populate `savedSessionCost` on page load/resume. Costs are no longer lost on refresh.
+- **EventEmitter limit**: `EventEmitter.defaultMaxListeners = 50` in `server.ts`.
 - **Google OAuth JIT provisioning**: `loginWithGoogle()` verifies Google ID token server-side, then JIT-provisions via 3-step process.
-- **Admin dashboard**: Separate `/admin.html` with 4 tabs (user CRUD, bulk upload, cost, settings).
+- **Admin dashboard**: Separate `/admin.html` with 6 tabs (user CRUD, bulk upload, cost, settings, model access, feedback reports, discovered roles).

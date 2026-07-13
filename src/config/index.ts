@@ -2,7 +2,8 @@ import 'dotenv/config';
 
 /**
  * Application configuration.
- * All AWS resources are locked to ap-southeast-3 (Jakarta) for data residency compliance.
+ * AWS Bedrock is locked to ap-southeast-3 (Jakarta) for data residency compliance.
+ * Database is GCP Cloud SQL (public IP).
  */
 
 export const config = {

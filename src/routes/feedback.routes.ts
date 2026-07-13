@@ -16,10 +16,10 @@ const router = Router();
  * Submit feedback for the last turn. Backend extracts routing metadata
  * from audit_logs and triggers background synthesis via qwen3-235b.
  *
- * Body: { sessionId, errorCategory, userFeedback, finalResponse }
+ * Body: { sessionId, errorCategory, userFeedback, finalResponse, userPrompt?, routingContext? }
  */
 router.post('/', authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  const { sessionId, errorCategory, userFeedback, finalResponse } = req.body;
+  const { sessionId, errorCategory, userFeedback, finalResponse, userPrompt, routingContext } = req.body;
 
   // Validate
   if (!sessionId || typeof sessionId !== 'string') {
@@ -48,7 +48,7 @@ router.post('/', authMiddleware, async (req: Request, res: Response): Promise<vo
       [sessionId],
     );
 
-    const routingMeta = routingRows.length > 0
+    const routingMeta: Record<string, unknown> = routingRows.length > 0
       ? {
           complexityScore: routingRows[0].complexity_score,
           routingState: routingRows[0].routing_state,
@@ -57,13 +57,17 @@ router.post('/', authMiddleware, async (req: Request, res: Response): Promise<vo
           inputTokens: routingRows[0].input_tokens,
           outputTokens: routingRows[0].output_tokens,
         }
-      : null;
+      : {};
+
+    // Enrich with frontend-provided context (user prompt + status-panel data)
+    if (userPrompt && typeof userPrompt === 'string') routingMeta.userPrompt = userPrompt.trim();
+    if (routingContext && typeof routingContext === 'string') routingMeta.routingContext = routingContext.trim();
 
     // Insert feedback report
     const { rows: inserted } = await query<{ id: string }>(
       `INSERT INTO feedback_reports (session_id, user_feedback, error_category, final_response, routing_metadata)
        VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-      [sessionId, userFeedback.trim(), errorCategory, finalResponse, routingMeta ? JSON.stringify(routingMeta) : null],
+      [sessionId, userFeedback.trim(), errorCategory, finalResponse, JSON.stringify(routingMeta)],
     );
 
     const reportId = inserted[0].id;

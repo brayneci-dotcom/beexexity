@@ -1888,12 +1888,6 @@ async function showChatScreen() {
     autoOpt.selected = true;
     select.appendChild(autoOpt);
 
-    // Add "Thinking" experimental option
-    const autoV2Opt = document.createElement('option');
-    autoV2Opt.value = 'auto_v2';
-    autoV2Opt.textContent = 'Thinking';
-    select.appendChild(autoV2Opt);
-
     data.models.forEach(m => {
       const opt = document.createElement('option');
       opt.value = m.modelId;
@@ -1991,7 +1985,6 @@ function getModelDisplayName(modelId) {
     'qwen.qwen3-32b-v1:0': 'Qwen3 32B',
     'qwen.qwen3-235b-a22b-2507-v1:0': 'Qwen3 235B',
     'openai.gpt-oss-120b-1:0': 'GPT OSS 120B',
-    'auto_v2': 'Thinking',
   };
   return MODEL_DISPLAY_NAMES[modelId] || modelId;
 }
@@ -2088,8 +2081,8 @@ async function handleSend() {
         formData.append('files', file);
       });
 
-      window._routingRequestData = JSON.stringify({ prompt, modelId: modelId || '(auto)', sessionId: currentSessionId, mode: modelId === 'auto_v2' ? 'thinking' : 'auto' }, null, 2);
-      window._routingRequestData = JSON.stringify({ prompt, modelId: modelId || '(auto)', sessionId: currentSessionId, mode: modelId === 'auto_v2' ? 'thinking' : 'auto', multipart: true, fileCount: attachedFiles.length }, null, 2);
+      window._routingRequestData = JSON.stringify({ prompt, modelId: modelId || '(auto)', sessionId: currentSessionId, mode: 'auto' }, null, 2);
+      window._routingRequestData = JSON.stringify({ prompt, modelId: modelId || '(auto)', sessionId: currentSessionId, mode: 'auto', multipart: true, fileCount: attachedFiles.length }, null, 2);
       res = await fetch(`${API_BASE}/inference/generate`, {
         method: 'POST',
         headers: {
@@ -2205,7 +2198,7 @@ async function handleSend() {
             // Use scoped reference instead of document.getElementById
             if (!scopedTechDetails) { return; }
             scopedTechDetails.style.display = 'block';
-            if (scopedStatusPanel) scopedStatusPanel.open = true;
+            // Panel stays collapsed by default — user expands on demand
             const d = [];
             d.push(`<b>🧠 Thought Process:</b> ${data.reasoningSummary || 'auto-routed'}`);
             d.push(`<hr style="border:0;border-top:1px solid var(--border);margin:4px 0">`);
@@ -2578,8 +2571,7 @@ function formatMarkdown(text) {
   let inCodeBlock = false;
   let codeBlockLang = '';
   let codeBlockContent = '';
-  let inList = false;
-  let listType = ''; // 'ul' or 'ol'
+  let listStack = []; // [{ type: 'ul'|'ol', indent: number }] for nesting
   
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -2676,7 +2668,7 @@ function formatMarkdown(text) {
     const isUnorderedItem = /^\s*[\-\*]\s+/.test(line);
     const isOrderedItem = /^\s*\d+\.\s+/.test(line);
 
-    if (inList && !isUnorderedItem && !isOrderedItem && line.trim() !== '') {
+    if (listStack.length > 0 && !isUnorderedItem && !isOrderedItem && line.trim() !== '') {
       // Append non-list line as continuation inside current <li>.
       // Without this, LLM multi-line items close &lt;ol&gt; prematurely
       // and every item starts a new list at 1.
@@ -2699,29 +2691,45 @@ function formatMarkdown(text) {
       continue;
     }
     
-    // Unordered list items
+    // Unordered list items — indent-aware nesting
     if (isUnorderedItem) {
-      if (!inList || listType !== 'ul') {
-        if (inList) html += listType === 'ul' ? '</ul>' : '</ol>';
-        html += '<ul style="margin: 0.5rem 0; padding-left: 1.5rem;">';
-        inList = true;
-        listType = 'ul';
+      const indent = line.match(/^(\s*)/)[1].length;
+      const itemContent = line.trim().replace(/^[\-\*]\s+/, '');
+      // Close deeper lists that don't match current indent
+      while (listStack.length > 0 && listStack[listStack.length - 1].indent > indent) {
+        const popped = listStack.pop();
+        html += '</li></' + popped.type + '>';
       }
-      const content = line.trim().replace(/^[\-\*]\s+/, '');
-      html += `<li style="margin: 0.25rem 0;">${inlineFormat(content)}</li>`;
+      if (listStack.length === 0 || listStack[listStack.length - 1].indent < indent) {
+        // Deeper indent — nest inside current <li> (reopen it)
+        const marker = listStack.length > 0 ? html.replace(/<\/li>$/, '') : html;
+        if (listStack.length > 0) html = marker;
+        html += '<ul style="margin: 0.25rem 0; padding-left: 1.5rem;">';
+        listStack.push({ type: 'ul', indent });
+      } else if (listStack[listStack.length - 1].indent === indent) {
+        html += '</li>';
+      }
+      html += `<li style="margin: 0.25rem 0;">${inlineFormat(itemContent)}`;
       continue;
     }
     
-    // Ordered list items
+    // Ordered list items — indent-aware nesting
     if (isOrderedItem) {
-      if (!inList || listType !== 'ol') {
-        if (inList) html += listType === 'ul' ? '</ul>' : '</ol>';
-        html += '<ol style="margin: 0.5rem 0; padding-left: 1.5rem;">';
-        inList = true;
-        listType = 'ol';
+      const indent = line.match(/^(\s*)/)[1].length;
+      const itemContent = line.trim().replace(/^\d+\.\s+/, '');
+      while (listStack.length > 0 && listStack[listStack.length - 1].indent > indent) {
+        const popped = listStack.pop();
+        html += '</li></' + popped.type + '>';
       }
-      const content = line.trim().replace(/^\d+\.\s+/, '');
-      html += `<li style="margin: 0.25rem 0;">${inlineFormat(content)}</li>`;
+      if (listStack.length === 0 || listStack[listStack.length - 1].indent < indent) {
+        const marker = listStack.length > 0 ? html.replace(/<\/li>$/, '') : html;
+        if (listStack.length > 0) html = marker;
+        html += '<ol style="margin: 0.25rem 0; padding-left: 1.5rem;">';
+        listStack.push({ type: 'ol', indent });
+      } else if (listStack[listStack.length - 1].indent === indent) {
+        html += '</li>';
+      }
+      html += `<li style="margin: 0.25rem 0;">${inlineFormat(itemContent)}`;
       continue;
     }
     
@@ -2742,9 +2750,10 @@ function formatMarkdown(text) {
     html += `<p style="margin: 0.25rem 0;">${inlineFormat(line)}</p>`;
   }
   
-  // Close any open list
-  if (inList) {
-    html += listType === 'ul' ? '</ul>' : '</ol>';
+  // Close any open lists
+  while (listStack.length > 0) {
+    const popped = listStack.pop();
+    html += '</li></' + popped.type + '>';
   }
   
   // Close any unclosed code block
@@ -2762,8 +2771,8 @@ function inlineFormat(text) {
     .replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>')
     // Bold
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    // Italic
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    // Italic (require non-space around content, avoid munching * at line start)
+    .replace(/(?<!\*)\*(?!\s)([^*\n]+?)(?<!\s)\*(?!\*)/g, '<em>$1</em>')
     // Inline code
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     // Links
@@ -2857,8 +2866,17 @@ async function submitFeedback() {
   if (text.length < 10) { errorEl.textContent = 'Details must be at least 10 characters'; errorEl.style.display = 'block'; return; }
 
   try {
-    const contentEl = window._feedbackMessageEl?.querySelector('.assistant-text-content');
+    const msgEl = window._feedbackMessageEl;
+    const contentEl = msgEl?.querySelector('.assistant-text-content');
     const finalResponse = contentEl ? contentEl.innerText || contentEl.textContent || '' : '';
+
+    // Capture user prompt from the last sent message
+    const lastUserMsg = document.querySelector('.message.user:last-child .message-content');
+    const userPrompt = lastUserMsg ? lastUserMsg.textContent?.trim() || '' : '';
+
+    // Extract routing context from the message's status panel tech-details
+    const techEl = msgEl?.querySelector('#tech-details');
+    const routingContext = techEl ? techEl.innerText || '' : '';
 
     const res = await fetch(API_BASE + '/feedback', {
       method: 'POST',
@@ -2868,6 +2886,8 @@ async function submitFeedback() {
         errorCategory: category,
         userFeedback: text,
         finalResponse: finalResponse,
+        userPrompt: userPrompt,
+        routingContext: routingContext,
       }),
     });
 
@@ -3416,8 +3436,8 @@ function checkModelCompatibility() {
   // Check if any attached files are images
   const hasImages = attachedFiles.some(f => f.type.startsWith('image/'));
 
-  // If auto mode (empty value), auto_v2, or no images, no warning needed
-  if (!modelId || modelId === 'auto_v2' || !hasImages || capability !== 'text-only') {
+  // If auto mode (empty value) or no images, no warning needed
+  if (!modelId || !hasImages || capability !== 'text-only') {
     warningEl.classList.remove('visible');
   } else {
     warningEl.classList.add('visible');

@@ -25,13 +25,21 @@ export interface FewShotEntry {
 const FEW_SHOTS: Partial<Record<SkillType, FewShotEntry[]>> = {
   // ── Generation ──────────────────────────────────────────────────────────
 
-  email: [
+  business_writing: [
     {
       user: 'draft a {type} for {recipient} about {topic}',
       assistant:
         'Subject: {subject_line}\n\nDear {recipient},\n\n{body}\n\nBest regards,\n[Your Name]',
     },
   ],
+  creative_writing: [
+    {
+      user: 'write a {genre} piece about {topic}',
+      assistant:
+        '{creative_piece_output}',
+    },
+  ],
+  prompt_optimizer: [],  // Zero-shot — refinement prompt handles prompt engineering
 
   brainstorming: [
     {
@@ -53,7 +61,7 @@ const FEW_SHOTS: Partial<Record<SkillType, FewShotEntry[]>> = {
 
   translation: [],  // Empty — refinement prompt + global rules handle translation. Few-shot caused contamination (model regurgitated example content).
 
-  data_conversion: [
+  data_transformation: [
     {
       user: 'convert this {format}: {source_data}',
       assistant:
@@ -61,21 +69,11 @@ const FEW_SHOTS: Partial<Record<SkillType, FewShotEntry[]>> = {
     },
   ],
 
-  editing_critique: [
+  editing: [
     {
       user: 'improve this {text_type}: "{original_text}"',
       assistant:
         '**Original**: {original_text}\n\n**Revised**: {revised_text}\n\n**Changes**:\n- {change_1}\n- {change_2}\n- {change_3}',
-    },
-  ],
-
-  // ── Interaction ─────────────────────────────────────────────────────────
-
-  document_qna: [
-    {
-      user: '{question_about_document}',
-      assistant:
-        '**Answer**\n\n{answer_text}\n\n**Supporting details:**\n- {detail_1}\n- {detail_2}',
     },
   ],
 
@@ -96,6 +94,45 @@ const FEW_SHOTS: Partial<Record<SkillType, FewShotEntry[]>> = {
       user: 'assess this for {regulation} compliance: {scenario_description}',
       assistant:
         '## {Regulation} Compliance Pre-Assessment\n\n**Scope**: {scope}\n\n**Risk Level**: {risk_level}\n\n**Findings:**\n\n| Area | Status | Notes |\n|---|---|---|\n| {Area 1} | ✅ {status} | {notes} |\n| {Area 2} | ⚠️ {status} | {notes} |\n| {Area 3} | ❌ {status} | {notes} |\n\n**Recommendations:**\n1. {recommendation_1}\n2. {recommendation_2}\n3. {recommendation_3}',
+    },
+  ],
+
+  risk_analyst: [
+    {
+      user: 'assess risk for {scenario_or_asset}',
+      assistant:
+        '## Risk Assessment: {Title}\n\n**Risk Score**: {likelihood}/{impact}\n\n**Identified Risks:**\n- {Risk 1}: {description} (Mitigation: {mitigation})\n- {Risk 2}: {description} (Mitigation: {mitigation})\n\n**Overall Rating**: {rating}',
+    },
+    {
+      user: 'analisis risiko untuk {skenario_atau_aset}',
+      assistant:
+        '## Penilaian Risiko: {Judul}\n\n**Skor Risiko**: {kemungkinan}/{dampak}\n\n**Risiko Teridentifikasi:**\n- {Risiko 1}: {deskripsi} (Mitigasi: {mitigasi})\n- {Risiko 2}: {deskripsi} (Mitigasi: {mitigasi})\n\n**Rating Keseluruhan**: {rating}',
+    },
+  ],
+
+  process_optimization: [
+    {
+      user: 'optimize our {process_name} process',
+      assistant:
+        '## Process Improvement: {Process}\n\n**Current State**: {as_is}\n\n**Bottlenecks**:\n- {bottleneck_1}\n- {bottleneck_2}\n\n**Recommendations**:\n1. {recommendation_1}\n2. {recommendation_2}\n\n**Expected Impact**: {impact}',
+    },
+    {
+      user: 'optimalkan proses {nama_proses} kami',
+      assistant:
+        '## Perbaikan Proses: {Proses}\n\n**Kondisi Saat Ini**: {kondisi_sekarang}\n\n**Hambatan**:\n- {hambatan_1}\n- {hambatan_2}\n\n**Rekomendasi**:\n1. {rekomendasi_1}\n2. {rekomendasi_2}\n\n**Dampak yang Diharapkan**: {dampak}',
+    },
+  ],
+
+  data_analysis: [
+    {
+      user: 'analyze this data: {dataset_description}',
+      assistant:
+        '## Data Analysis: {Title}\n\n**Summary**: {overview}\n\n**Key Findings**:\n- {finding_1}\n- {finding_2}\n- {finding_3}\n\n**Insights**: {insights}',
+    },
+    {
+      user: 'analisis data ini: {deskripsi_dataset}',
+      assistant:
+        '## Analisis Data: {Judul}\n\n**Ringkasan**: {gambaran_umum}\n\n**Temuan Utama**:\n- {temuan_1}\n- {temuan_2}\n- {temuan_3}\n\n**Insight**: {wawasan}',
     },
   ],
 };

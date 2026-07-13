@@ -4,7 +4,6 @@
  */
 
 import type { ContentBlock } from './upload.types.js';
-import type { SubAgentSpec } from './subagent.types.js';
 
 export interface InferenceRequest {
   maskedPrompt: string;
@@ -61,7 +60,7 @@ export interface RoutingMetadataEvent {
   refinedPrompt?: string;
   complexityScore?: number;
   scoreBand?: string;
-  routingState: 'auto' | 'auto_v2' | 'manual';
+  routingState: 'auto' | 'manual';
   executedModelId: string;
   routingReasonCode: string;
   reasoningSummary: string;
@@ -107,37 +106,7 @@ export interface RoutingMetadataEvent {
   _refinementPrompt?: string;     // Prompt sent to refiner
 }
 
-/**
- * SSE event emitted after the Planner LLM produces a plan.
- * data: { specs: SubAgentSpec[], reasoning: string }
- */
-export interface OrchestrationPlanEvent {
-  specs: SubAgentSpec[];
-  reasoning: string;
-}
-
-/**
- * SSE event emitted per sub-agent during execution.
- * When status=running, text contains incremental token stream (not accumulated).
- * Frontend should buffer per-agent to reconstruct full text.
- */
-export interface SubAgentDeltaEvent {
-  agentId: string;
-  status: 'running' | 'done' | 'failed';
-  /** Incremental token when running; final text when done; error message when failed. */
-  text?: string;
-}
-
-/**
- * SSE event emitted during synthesis streaming.
- * Reuses the same delta format as the main inference stream.
- */
-export interface SynthesisDeltaEvent {
-  type: 'text';
-  content: string;
-}
-
-// ── Sequential Reasoning (auto_v2 mode) ────────────────────────────────
+// ── Sequential Reasoning ───────────────────────────────────────────────
 
 export interface SequentialStep {
   order: number;          // 1-indexed
