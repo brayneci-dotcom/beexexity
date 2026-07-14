@@ -60,6 +60,9 @@ app.use(express.static(join(__dirname, '..', 'public'), {
     if (path.endsWith('.html')) {
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Expires', '0');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Surrogate-Control', 'no-store');
     } else if (path.endsWith('.css')) {
       res.setHeader('Content-Type', 'text/css; charset=utf-8');
     } else if (path.endsWith('.js')) {
