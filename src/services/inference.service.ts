@@ -17,6 +17,7 @@ import type {
   ConversationInferenceRequest,
   ConversationInferenceResult,
 } from '../types/session.types.js';
+import { getModelMaxOutputTokens } from '../config/model-capabilities.js';
 import { query } from '../config/database.js';
 
 /**
@@ -297,10 +298,9 @@ export async function generate(
     messages = [{ role: 'user' as Message['role'], content }];
   }
 
-  // Default maxTokens to 8192 if not specified — prevents models from using
-  // their own low defaults (often 512-1024) which cuts off longer responses.
+  // Use per-model max output token limit, or frontend override if provided.
   const inferenceConfig = {
-    maxTokens: request.inferenceConfig?.maxTokens ?? 16384,
+    maxTokens: request.inferenceConfig?.maxTokens ?? getModelMaxOutputTokens(request.modelId),
     ...(request.inferenceConfig?.temperature !== undefined && { temperature: request.inferenceConfig.temperature }),
     ...(request.inferenceConfig?.topP !== undefined && { topP: request.inferenceConfig.topP }),
   };
@@ -314,13 +314,20 @@ export async function generate(
     inferenceConfig,
   });
 
-  // Set a 60-second timeout for the initial Bedrock connection.
-  // Once streaming begins, clear the timeout — streaming can take longer
-  // depending on response length. The timeout only guards against connection hangs.
+  // Dynamic timeout: larger inputs need more time before first token.
+  // Estimate input token count (~4 chars/token) and allow ~2ms per token,
+  // with a 30s floor for tiny prompts and 180s ceiling for huge ones.
+  const inputCharCount = messages.reduce((sum, msg) => {
+    const texts = (msg.content || []).filter((c: any) => c.text).map((c: any) => c.text);
+    return sum + texts.join('').length;
+  }, 0);
+  const estimatedInputTokens = Math.ceil(inputCharCount / 4);
+  const connectionTimeoutMs = Math.min(Math.max(estimatedInputTokens * 2, 30_000), 180_000);
+
   const controller = new AbortController();
   const inferenceTimeout = setTimeout(() => {
     controller.abort();
-  }, 120_000);
+  }, connectionTimeoutMs);
 
   let response;
   try {
