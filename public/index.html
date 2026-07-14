@@ -2141,15 +2141,16 @@ async function handleSend() {
   // Create assistant message placeholder with thinking indicator
   const assistantEl = addMessage('assistant', '');
   const modelLabel = modelId ? getModelDisplayName(modelId) : 'Auto';
-  // Status panel — collapsible, default closed. Shows background progress.
+  // Status bar — always visible, shows live processing state.
+  // seq-steps and step-status are OUTSIDE the collapsible details.
   assistantEl.querySelector('.assistant-content').innerHTML =
-    `<details id="status-panel" style="font-size:0.85em;color:var(--text-tertiary)">
-      <summary style="cursor:pointer;user-select:none;font-weight:500">🧠 Background Process</summary>
-      <div id="step-status" style="margin-top:6px;line-height:1.6"><span style="color:var(--accent)">⏳ Initializing...</span></div>
-      <div id="seq-steps" style="margin-top:8px;display:none"></div>
-      <div id="tech-details" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);display:none"></div>
-    </details>
-    <div class="assistant-text-content"></div>`;
+    `<div id="step-status" style="font-size:0.85em;line-height:1.6;margin-bottom:4px;display:flex;align-items:center;gap:6px"><span style="color:var(--accent)">⏳ Initializing...</span></div>
+     <div id="seq-steps" style="margin-bottom:6px;display:none"></div>
+     <details id="status-panel" style="font-size:0.85em;color:var(--text-tertiary)">
+       <summary style="cursor:pointer;user-select:none;font-weight:500">🧠 Detail Proses</summary>
+       <div id="tech-details" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);display:none"></div>
+     </details>
+     <div class="assistant-text-content"></div>`;
   // Scoped references to status panel elements (avoids duplicate ID issue)
   const scopedStepStatus = assistantEl.querySelector('#step-status');
   const scopedTechDetails = assistantEl.querySelector('#tech-details');
@@ -2397,12 +2398,18 @@ async function handleSend() {
               seqStepTotal = data.steps.length;
               seqStepCurrent = 0;
               scopedSeqSteps.style.display = 'flex';
-              scopedStepStatus.innerHTML = '<span style=\'color:var(--accent)\'>🧠 Planning ' + seqStepTotal + ' reasoning steps</span>';
-              let stepsHtml = '';
+              scopedSeqSteps.style.flexDirection = 'column';
+              scopedSeqSteps.style.gap = '2px';
+              scopedStepStatus.innerHTML = '<span style=\'color:var(--accent)\'>🧠 Menyusun ' + seqStepTotal + ' langkah pemrosesan</span>';
+              let stepsHtml = '<div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:4px">Progress: 0 / ' + seqStepTotal + ' langkah</div>';
               for (const s of data.steps) {
-                stepsHtml += '<div class="seq-step" data-step="' + s.order + '" style="display:flex;align-items:center;gap:6px;margin:2px 0;font-size:0.85em;opacity:0.5">' +
-                  '<span class="seq-step-icon" style="width:18px;text-align:center">○</span>' +
-                  '<span class="seq-step-name">' + escapeHtml(s.name) + '</span>' +
+                stepsHtml += '<div class="seq-step" data-step="' + s.order + '" style="display:flex;align-items:flex-start;gap:6px;margin:1px 0;font-size:0.85em;opacity:0.5;padding:2px 4px;border-radius:4px">' +
+                  '<span class="seq-step-icon" style="width:18px;text-align:center;flex-shrink:0">○</span>' +
+                  '<div style="flex:1;min-width:0">' +
+                    '<div class="seq-step-name" style="font-weight:500;color:var(--text-primary)">' + escapeHtml(s.name) + '</div>' +
+                    '<div class="seq-step-desc" style="font-size:0.8em;color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escapeHtml(s.description) + '</div>' +
+                  '</div>' +
+                  '<span class="seq-step-duration" style="flex-shrink:0;font-size:0.75em;color:var(--text-tertiary)"></span>' +
                 '</div>';
               }
               scopedSeqSteps.innerHTML = stepsHtml;
@@ -2411,6 +2418,11 @@ async function handleSend() {
             // Sequential reasoning step progress
             if (!scopedSeqSteps) continue;
             seqStepCurrent = data.step;
+            // Update progress line
+            const progressDiv = scopedSeqSteps.querySelector('div:first-child');
+            if (progressDiv && seqStepTotal > 0) {
+              progressDiv.textContent = 'Progress: ' + seqStepCurrent + ' / ' + seqStepTotal + ' langkah';
+            }
             const stepEl = scopedSeqSteps.querySelector('.seq-step[data-step="' + data.step + '"]');
             if (stepEl) {
               const icon = stepEl.querySelector('.seq-step-icon');
@@ -2418,21 +2430,27 @@ async function handleSend() {
                 if (data.status === 'running') {
                   icon.textContent = '⏳';
                   stepEl.style.opacity = '1';
+                  stepEl.style.background = 'var(--bg-tertiary)';
+                  if (scopedStepStatus) {
+                    scopedStepStatus.innerHTML = '<span style=\'color:var(--accent);font-weight:600\'>⏳ Langkah ' + data.step + '/' + seqStepTotal + ': ' + escapeHtml(data.description || data.name) + '</span>';
+                  }
                 } else if (data.status === 'completed') {
                   icon.textContent = '✅';
-                  stepEl.style.opacity = '0.7';
+                  stepEl.style.opacity = '0.6';
+                  stepEl.style.background = 'transparent';
                   if (data.durationMs) {
-                    const nameEl = stepEl.querySelector('.seq-step-name');
-                    if (nameEl) nameEl.textContent += ' (' + (data.durationMs / 1000).toFixed(1) + 's)';
+                    const durEl = stepEl.querySelector('.seq-step-duration');
+                    if (durEl) durEl.textContent = (data.durationMs / 1000).toFixed(1) + 's';
                   }
                 } else if (data.status === 'failed') {
                   icon.textContent = '❌';
-                  stepEl.style.opacity = '0.7';
+                  stepEl.style.opacity = '0.6';
+                  stepEl.style.background = 'transparent';
                 }
               }
             }
-            if (scopedStepStatus && data.status === 'running') {
-              scopedStepStatus.innerHTML = '<span style=\'color:var(--accent)\'>🔍 ' + escapeHtml(data.description || data.name) + '</span>';
+            if (scopedStepStatus && data.status === 'running' && !data.step) {
+              scopedStepStatus.innerHTML = '<span style=\'color:var(--accent);font-weight:600\'>🔍 ' + escapeHtml(data.description || data.name) + '</span>';
             }
           } else if (eventType === 'orchestration_interim') {
             window._debugEvents.push({ type: 'orchestration_interim', data: JSON.parse(JSON.stringify(data)) });
