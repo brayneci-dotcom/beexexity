@@ -20,17 +20,17 @@ export type SkillType =
   // Interaction
   | 'roleplay' | 'logic_math' | 'planning_strategy'
   // Enterprise
-  | 'requirement_generation' | 'compliance_pre_assessment' | 'risk_analyst' | 'process_optimization'
+  | 'requirement_generation' | 'compliance_pre_assessment' | 'risk_analyst' | 'process_optimization' | 'credit_analyst'
   // Engineering
-  | 'code' | 'log_troubleshooting' | 'data_analysis' | 'fallback';
+  | 'code' | 'log_troubleshooting' | 'data_analysis' | 'cloud_security' | 'it_specialist' | 'fallback';
 
 /** Ordered list of all skill types for regex extraction. */
 export const ALL_SKILLS: SkillType[] = [
   'business_writing', 'creative_writing', 'brainstorming', 'prompt_optimizer',
   'summarization', 'translation', 'data_transformation', 'editing',
   'roleplay', 'logic_math', 'planning_strategy',
-  'requirement_generation', 'compliance_pre_assessment', 'risk_analyst', 'process_optimization',
-  'code', 'log_troubleshooting', 'data_analysis', 'fallback',
+  'requirement_generation', 'compliance_pre_assessment', 'risk_analyst', 'process_optimization', 'credit_analyst',
+  'code', 'log_troubleshooting', 'data_analysis', 'cloud_security', 'it_specialist', 'fallback',
 ];
 
 /**

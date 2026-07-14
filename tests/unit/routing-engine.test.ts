@@ -110,6 +110,48 @@ describe('validateSkillInvariants', () => {
     expect(_validateSkillInvariants('process_optimization', input)).toBe('fallback');
   });
 
+  it('passes cloud_security with cloud context', () => {
+    const input = makeInput({
+      originalPrompt: 'evaluasi keamanan WAF GCP untuk API Mitra Ajaib',
+    });
+    expect(_validateSkillInvariants('cloud_security', input)).toBe('cloud_security');
+  });
+
+  it('demotes cloud_security without cloud context', () => {
+    const input = makeInput({
+      originalPrompt: 'resep masakan nasi goreng',
+    });
+    expect(_validateSkillInvariants('cloud_security', input)).toBe('fallback');
+  });
+
+  it('passes credit_analyst with credit context', () => {
+    const input = makeInput({
+      originalPrompt: 'review dokumen SLIK atas nama calon debitur',
+    });
+    expect(_validateSkillInvariants('credit_analyst', input)).toBe('credit_analyst');
+  });
+
+  it('demotes credit_analyst without credit context', () => {
+    const input = makeInput({
+      originalPrompt: 'jadwal kereta api jakarta surabaya',
+    });
+    expect(_validateSkillInvariants('credit_analyst', input)).toBe('fallback');
+  });
+
+  it('passes it_specialist with IT context', () => {
+    const input = makeInput({
+      originalPrompt: 'analisis arsitektur sistem pembayaran BI-FAST',
+    });
+    expect(_validateSkillInvariants('it_specialist', input)).toBe('it_specialist');
+  });
+
+  it('demotes it_specialist without IT context', () => {
+    const input = makeInput({
+      originalPrompt: 'cerita pendek tentang liburan',
+    });
+    expect(_validateSkillInvariants('it_specialist', input)).toBe('fallback');
+  });
+
   it('passes through non-guarded skills unchanged', () => {
     const input = makeInput({ originalPrompt: 'draft an email' });
     expect(_validateSkillInvariants('business_writing', input)).toBe('business_writing');

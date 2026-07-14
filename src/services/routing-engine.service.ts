@@ -356,6 +356,39 @@ const SKILL_PROMPTS: Record<SkillType, string> = {
     '{ "role": "<data analyst>", "context": "<dataset/domain>", "task": "<analyze data for insights on>", "intent": "<...>", "ambiguities": ["<what is unclear>"], "clarification_needed": false }',
   ].join('\n'),
 
+  cloud_security: [
+    'You are an expert AI prompt engineer specializing in CLOUD SECURITY.',
+    'Refine the request into structural JSON.',
+    '',
+    'RULES: Language preservation. JSON keys English, values in detected language. Concise. JSON only.',
+    '',
+    'Focus: GCP/AWS/WAF security assessment, infrastructure hardening, firewall rules, threat detection.',
+    '',
+    '{ "role": "<cloud security engineer>", "context": "<cloud platform/scope>", "task": "<assess/analyze cloud security for>", "intent": "<...>", "ambiguities": ["<what is unclear>"], "clarification_needed": false }',
+  ].join('\n'),
+
+  credit_analyst: [
+    'You are an expert AI prompt engineer specializing in CREDIT ANALYSIS.',
+    'Refine the request into structural JSON.',
+    '',
+    'RULES: Language preservation. JSON keys English, values in detected language. Concise. JSON only.',
+    '',
+    'Focus: SLIK review, credit risk assessment, financial documents, loan analysis.',
+    '',
+    '{ "role": "<credit analyst>", "context": "<document/credit type>", "task": "<analyze/review credit for>", "intent": "<...>", "ambiguities": ["<what is unclear>"], "clarification_needed": false }',
+  ].join('\n'),
+
+  it_specialist: [
+    'You are an expert AI prompt engineer specializing in IT SYSTEMS ANALYSIS.',
+    'Refine the request into structural JSON.',
+    '',
+    'RULES: Language preservation. JSON keys English, values in detected language. Concise. JSON only.',
+    '',
+    'Focus: system architecture, technical documentation, payment systems, infrastructure analysis.',
+    '',
+    '{ "role": "<IT specialist>", "context": "<system/domain>", "task": "<analyze/evaluate IT system for>", "intent": "<...>", "ambiguities": ["<what is unclear>"], "clarification_needed": false }',
+  ].join('\n'),
+
   // ── Fallback (catch-all) ────────────────────────────────────────
   fallback: [
     'You are an expert AI prompt engineer. Your task is to refine the user\'s raw input into a strict, highly effective, and CONCISE structural prompt format.',
@@ -566,8 +599,8 @@ async function unifiedClassifyAndScore(
       '[Generation] business_writing | creative_writing | brainstorming | prompt_optimizer',
       '[Transformation] summarization | translation | data_transformation | editing',
       '[Interaction] roleplay | logic_math | planning_strategy',
-      '[Enterprise] requirement_generation | compliance_pre_assessment | risk_analyst | process_optimization',
-      '[Engineering] code | log_troubleshooting | data_analysis | fallback',
+      '[Enterprise] requirement_generation | compliance_pre_assessment | risk_analyst | process_optimization | credit_analyst',
+      '[Engineering] code | log_troubleshooting | data_analysis | cloud_security | it_specialist | fallback',
       '',
       'Skill definitions:',
       '- business_writing: compose or reply to business emails, memos, professional correspondence',
@@ -591,6 +624,9 @@ async function unifiedClassifyAndScore(
       '- fallback: catch-all for everything else',
       '',
       '### CRITICAL CLASSIFICATION RULES',
+      '- Cloud security/infrastructure context → "cloud_security"',
+      '- Credit/financial/SLIK assessment → "credit_analyst"',
+      '- IT system/technical documentation → "it_specialist"',
       '- Document contains code to analyze/fix → "code"',
       '- Financial/regulatory/legal content → "compliance_pre_assessment"',
       '- Request to write code → "code"',
@@ -820,6 +856,24 @@ function validateSkillInvariants(skill: SkillType, input: RoutingInput): SkillTy
   if (skill === 'process_optimization') {
     const hasProcessContext = /process|workflow|optimize|bottleneck|efisiensi|alur/.test(fullContext);
     if (!hasProcessContext) return 'fallback';
+  }
+
+  // Rule 6: Cloud security requires cloud/infrastructure context
+  if (skill === 'cloud_security') {
+    const hasCloudContext = /cloud|gcp|aws|waf|firewall|infrastructure|keamanan.*cloud/.test(fullContext);
+    if (!hasCloudContext) return 'fallback';
+  }
+
+  // Rule 7: Credit analyst requires credit/financial context
+  if (skill === 'credit_analyst') {
+    const hasCreditContext = /credit|loan|slik|financial|kredit|pinjaman|keuangan/.test(fullContext);
+    if (!hasCreditContext) return 'fallback';
+  }
+
+  // Rule 8: IT specialist requires IT/system context
+  if (skill === 'it_specialist') {
+    const hasITContext = /it system|technical|infrastructure|architecture|payment|sistem|infrastruktur/.test(fullContext);
+    if (!hasITContext) return 'fallback';
   }
 
   return skill;

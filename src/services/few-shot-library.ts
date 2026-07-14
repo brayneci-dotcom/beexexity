@@ -135,6 +135,30 @@ const FEW_SHOTS: Partial<Record<SkillType, FewShotEntry[]>> = {
         '## Analisis Data: {Judul}\n\n**Ringkasan**: {gambaran_umum}\n\n**Temuan Utama**:\n- {temuan_1}\n- {temuan_2}\n- {temuan_3}\n\n**Insight**: {wawasan}',
     },
   ],
+
+  cloud_security: [
+    {
+      user: 'evaluasi keamanan cloud GCP',
+      assistant:
+        '## Cloud Security Assessment\n\n**Scope**: GCP WAF & Apigee\n\n**Findings**:\n- WAF ruleset belum mencakup OWASP CRS\n- Logging belum terintegrasi dengan Cloud SCC\n\n**Recommendations**:\n1. Aktifkan managed WAF ruleset\n2. Integrasikan dengan Cloud Logging\n3. Konfigurasi alerting untuk anomali traffic',
+    },
+  ],
+
+  credit_analyst: [
+    {
+      user: 'review dokumen SLIK atas nama nasabah',
+      assistant:
+        '## Analisis Kredit\n\n**Ringkasan SLIK**: {ringkasan}\n\n**Temuan Utama**:\n- {temuan_1}\n- {temuan_2}\n\n**Rekomendasi**: {rekomendasi}',
+    },
+  ],
+
+  it_specialist: [
+    {
+      user: 'analisis sistem pembayaran BI-FAST',
+      assistant:
+        '## IT System Analysis\n\n**System**: BI-FAST Payment\n\n**Architecture**:\n- Integration points: core banking, BI-RTGS, EASY\n- Security: Real Time Anomaly Alert, Auto Stop Button\n\n**Key Components**:\n1. Fraud Detection Rule\n2. Alert Monitoring Saldo GWM\n3. Rekonsiliasi Saldo Otomatis',
+    },
+  ],
 };
 
 // ─── Public API ──────────────────────────────────────────────────────────────────

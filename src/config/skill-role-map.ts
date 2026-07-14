@@ -36,6 +36,9 @@ export const SKILL_TO_ROLE: Record<SkillType, string> = {
   code: 'Principal Software Engineer',
   log_troubleshooting: 'DevOps & Site Reliability Engineer',
   data_analysis: 'Data Insights & Statistical Analyst',
+  cloud_security: 'Cloud Security Engineer',
+  credit_analyst: 'Ahli Kredit dan Keuangan',
+  it_specialist: 'Spesialis Teknologi Informasi',
 
   // Fallback (explicit, not "general")
   fallback: 'General Purpose Assistant',

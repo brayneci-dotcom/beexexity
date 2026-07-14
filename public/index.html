@@ -2718,11 +2718,10 @@ function formatMarkdown(text) {
     const isTableSeparator = /^\|[\s\-:|]+\|$/.test(line.trim()) && /-/.test(line); // separator contains dashes
 
     if (isTableRow && i + 1 < lines.length && /^\|[\s\-:|]+\|$/.test(lines[i + 1].trim()) && /-/.test(lines[i + 1])) {
-      // Close any open list before the table
-      if (inList) {
-        html += listType === 'ul' ? '</ul>' : '</ol>';
-        inList = false;
-        listType = '';
+      // Close any open lists before the table
+      while (listStack.length > 0) {
+        const popped = listStack.pop();
+        html += '</li></' + popped.type + '>';
       }
 
       // Collect table lines: header + separator + data rows
@@ -2988,7 +2987,9 @@ async function submitFeedback() {
 
   try {
     const msgEl = window._feedbackMessageEl;
-    const contentEl = msgEl?.querySelector('.assistant-text-content');
+    // Try streaming div first, fall back to rendered assistant-content
+    let contentEl = msgEl?.querySelector('.assistant-text-content');
+    if (!contentEl) contentEl = msgEl?.querySelector('.assistant-content');
     const finalResponse = contentEl ? contentEl.innerText || contentEl.textContent || '' : '';
 
     // Capture user prompt from the last sent message
