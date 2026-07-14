@@ -63,6 +63,10 @@ export interface AuditEntry {
     summarizeTriggered: boolean;
   };
 
+  // Routing context from the PromptContract
+  routingContext?: string;
+  routingIntent?: string;
+
   // Sequential reasoning orchestration fields
   orchestrationGroupId?: string;
   orchestrationStepOrder?: number;

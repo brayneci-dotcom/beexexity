@@ -609,6 +609,8 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
         contextTruncated: contextOutput.truncated,
         contextSummarized: false,
         orchestrationMeta,
+        routingContext: routingDecision?.contract?.context,
+        routingIntent: routingDecision?.contract?.intent,
       }).catch(() => { /* fire-and-forget */ });
 
       // 14. Memory update if messages were evicted (fire-and-forget)
@@ -660,6 +662,8 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
         contextTruncated: contextOutput.truncated,
         contextSummarized: false,
         orchestrationMeta,
+        routingContext: routingDecision?.contract?.context,
+        routingIntent: routingDecision?.contract?.intent,
       }).catch(() => { /* fire-and-forget */ });
     }
   } finally {
@@ -1420,6 +1424,8 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
       contextTruncated: contextOutput.truncated,
       contextSummarized: false,
       orchestrationMeta,
+      routingContext: routingDecision?.contract?.context,
+      routingIntent: routingDecision?.contract?.intent,
     }).catch(() => { /* fire-and-forget */ });
 
     // Memory update if messages were evicted (fire-and-forget)
@@ -1475,6 +1481,8 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
       contextTruncated: contextOutput.truncated,
       contextSummarized: false,
       orchestrationMeta,
+      routingContext: routingDecision?.contract?.context,
+      routingIntent: routingDecision?.contract?.intent,
     }).catch(() => { /* fire-and-forget */ });
   } finally {
     // Memory cleanup: release file buffers

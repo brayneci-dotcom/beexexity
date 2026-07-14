@@ -375,18 +375,19 @@ export async function listUserSessions(
     `SELECT
        s.id, s.user_id, s.status, s.turn_count,
        s.created_at, s.updated_at, s.last_activity_at, s.expires_at,
-       LEFT(REGEXP_REPLACE(pv.sanitized_content, '[*#_]', '', 'g'), 60) AS preview,
        COALESCE(st.total_input_tokens, '0')  AS total_input_tokens,
        COALESCE(st.total_output_tokens, '0') AS total_output_tokens,
-       COALESCE(st.request_count, '0')       AS request_count
+       COALESCE(st.request_count, '0')       AS request_count,
+       COALESCE(rt.routing_context, rt.routing_intent, '') AS preview
      FROM sessions s
      LEFT JOIN LATERAL (
-       SELECT sanitized_content
-       FROM messages
-       WHERE session_id = s.id AND role = 'assistant'
-       ORDER BY created_at ASC, id ASC
+       SELECT routing_context, routing_intent
+       FROM audit_logs
+       WHERE session_id = s.id AND status = 'success'
+         AND (routing_context IS NOT NULL OR routing_intent IS NOT NULL)
+       ORDER BY timestamp DESC
        LIMIT 1
-     ) pv ON true
+     ) rt ON true
      LEFT JOIN LATERAL (
        SELECT
          COALESCE(SUM(input_tokens), 0)  AS total_input_tokens,
