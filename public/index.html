@@ -2783,6 +2783,16 @@ function formatMarkdown(text) {
     const isUnorderedItem = /^\s*[\-\*]\s+/.test(line);
     const isOrderedItem = /^\s*\d+\.\s+/.test(line);
 
+    // Section heading (bracketed or all-caps) — close any open list and promote
+    if (listStack.length > 0 && (/^(\d+\.\s*)?[A-Z][A-Z\s]{2,}$/.test(line.trim()) || /^\[.+\]$/.test(line.trim()))) {
+      while (listStack.length > 0) {
+        const popped = listStack.pop();
+        html += '</li></' + popped.type + '>';
+      }
+      html += `<div style="margin: 1.5rem 0 0.5rem;font-weight:800;font-size:1.15rem;color:var(--text-primary);text-transform:uppercase;letter-spacing:0.04em;border-bottom:2px solid var(--accent);padding-bottom:0.3rem">${inlineFormat(line.trim())}</div>`;
+      continue;
+    }
+
     if (listStack.length > 0 && !isUnorderedItem && !isOrderedItem && line.trim() !== '') {
       // Append non-list line as continuation inside current <li>.
       // Without this, LLM multi-line items close &lt;ol&gt; prematurely
@@ -2862,8 +2872,8 @@ function formatMarkdown(text) {
     }
     
     // Section heading: all-caps standalone line or [bracketed] title
-    if (/^[A-Z][A-Z\s]{2,}$/.test(line.trim()) || /^\[.+\]$/.test(line.trim())) {
-      html += `<div style="margin: 1.25rem 0 0.5rem;font-weight:700;font-size:1rem;color:var(--text-primary);text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid var(--border);padding-bottom:0.25rem">${inlineFormat(line.trim())}</div>`;
+    if (/^(\d+\.\s*)?[A-Z][A-Z\s]{2,}$/.test(line.trim()) || /^\[.+\]$/.test(line.trim())) {
+      html += `<div style="margin: 1.5rem 0 0.5rem;font-weight:800;font-size:1.15rem;color:var(--text-primary);text-transform:uppercase;letter-spacing:0.04em;border-bottom:2px solid var(--accent);padding-bottom:0.3rem">${inlineFormat(line.trim())}</div>`;
       continue;
     }
     // Regular paragraph

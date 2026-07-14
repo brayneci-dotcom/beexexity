@@ -406,7 +406,12 @@ User request: ${input.refinedPrompt}`;
         ? `\n\nNote: The following steps could not complete:\n${skippedSteps.join('\n')}\n\nAcknowledge these gaps and provide the best response possible.`
         : '';
 
-      synthPrompt = `You are a synthesis expert. Combine the findings from the step-by-step analysis into one cohesive, narrative response.
+      const outputFormat = input.routingDecision?.contract?.output_format;
+      const formatInstruction = outputFormat
+        ? `\n\nYou MUST follow this output format exactly:\n${outputFormat}`
+        : '\n\nUse clear section headings (ALL-CAPS or [bracketed]) to separate sections. Use numbered lists for items within sections.';
+
+      synthPrompt = `You are a synthesis expert. Combine the findings from the step-by-step analysis into one cohesive, well-structured response.
 
 Completed steps: ${completedCount}/${stepResults.length}
 ${gaps}
@@ -414,7 +419,7 @@ ${gaps}
 Analysis output:
 ${accumulatedContext}
 
-Provide a well-structured final response that reads naturally, resolves any contradictions, and directly addresses the user's original request.`;
+Produce a structured response that directly addresses the user's original request.${formatInstruction}`;
     }
 
     const modelId = this.resolveModel(input.routingDecision);
