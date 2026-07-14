@@ -2,6 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>be.ex.ex.ity</title>
   <style>
@@ -678,6 +681,7 @@
       margin-bottom: 0;
       padding-top: 0.4rem;
       padding-bottom: 0.4rem;
+      font-weight: 400;
     }
     .assistant-text-content ul li + li {
       border-top: 1px solid var(--border);
@@ -702,32 +706,25 @@
     }
 
     .assistant-text-content ol {
-      list-style: none;
-      counter-reset: item;
       padding-left: 0;
       margin: 0.5rem 0;
     }
-    .assistant-text-content ol li {
+    .assistant-text-content ol:not(:has(> li:only-child)) {
+      counter-reset: item;
+    }
+    .assistant-text-content ol:not(:has(> li:only-child)) > li {
       counter-increment: item;
       padding-left: 1.75rem;
       position: relative;
       margin-bottom: 0.25rem;
     }
-    .assistant-text-content ol li::before {
+    .assistant-text-content ol:not(:has(> li:only-child)) > li::before {
       content: counter(item) ".";
       position: absolute;
       left: 0;
       font-weight: 600;
       color: var(--accent);
       min-width: 1.25rem;
-    }
-
-    /* Hide number marker when ol has only one li (single heading item) */
-    .assistant-text-content ol:has(li:only-child) {
-      counter-reset: none !important;
-    }
-    .assistant-text-content ol:has(li:only-child) li::before {
-      content: none !important;
     }
 
     /* Bold text for top-level numbered li items only (not nested sub-items) */
@@ -2831,8 +2828,8 @@ function formatMarkdown(text) {
     const isUnorderedItem = /^\s*[\-\*]\s+/.test(line);
     const isOrderedItem = /^\s*\d+\.\s+/.test(line);
 
-    // Section heading (bracketed or all-caps) — close any open list and promote
-    if (listStack.length > 0 && (/^(\d+\.\s*)?[A-Z][A-Z\s]{2,}$/.test(line.trim()) || /^\[.+\]$/.test(line.trim()))) {
+    // Section heading (bracketed, all-caps, or follow-up) — close any open list and promote
+    if (listStack.length > 0 && (/^(\d+\.\s*)?[A-Z][A-Z\s]{2,}$/.test(line.trim()) || /^\[.+\]$/.test(line.trim()) || /^Follow.up/i.test(line.trim()))) {
       while (listStack.length > 0) {
         const popped = listStack.pop();
         html += '</li></' + popped.type + '>';
@@ -2919,8 +2916,8 @@ function formatMarkdown(text) {
       continue;
     }
     
-    // Section heading: all-caps standalone line or [bracketed] title
-    if (/^(\d+\.\s*)?[A-Z][A-Z\s]{2,}$/.test(line.trim()) || /^\[.+\]$/.test(line.trim())) {
+    // Section heading: all-caps, [bracketed], or follow-up title
+    if (/^(\d+\.\s*)?[A-Z][A-Z\s]{2,}$/.test(line.trim()) || /^\[.+\]$/.test(line.trim()) || /^Follow.up/i.test(line.trim())) {
       html += `<div style="margin: 1.5rem 0 0.5rem;font-weight:800;font-size:1.15rem;color:var(--text-primary);text-transform:uppercase;letter-spacing:0.04em;border-bottom:2px solid var(--accent);padding-bottom:0.3rem">${inlineFormat(line.trim())}</div>`;
       continue;
     }

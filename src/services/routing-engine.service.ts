@@ -64,7 +64,7 @@ function parseRefinementContract(raw: string): {
   const ambiguities = Array.isArray(parsed.ambiguities)
     ? parsed.ambiguities.filter((a): a is string => typeof a === 'string')
     : [];
-  const clarificationNeeded = parsed.clarification_needed === true;
+  const clarificationNeeded = parsed.clarification_needed === true || (Array.isArray(parsed.ambiguities) && parsed.ambiguities.length > 0);
   const behavioral_instructions = typeof parsed.behavioral_instructions === 'string'
     ? parsed.behavioral_instructions.trim()
     : undefined;

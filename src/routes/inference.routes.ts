@@ -438,6 +438,16 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
         } else {
           s += ' Respond in plain text without markdown formatting.';
         }
+
+        // Append ambiguities as follow-up questions for the user
+        const ambiguities = routingDecision?.contract?.ambiguities;
+        if (ambiguities && ambiguities.length > 0) {
+          s += '\n\nAfter completing the requested format above and closing any open lists, add a section heading "[FOLLOW-UP QUESTIONS]" followed by items listed in contract.ambiguities (only if any). Do NOT put the follow-up questions inside the previous list.\n';
+          ambiguities.forEach((a: string, i: number) => {
+            s += (i + 1) + '. ' + a + '\n';
+          });
+        }
+
         return s;
       })(),
       ...(inferenceConfig && {
@@ -1271,6 +1281,16 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
         } else {
           s += ' Respond in plain text without markdown formatting.';
         }
+
+        // Append ambiguities as follow-up questions for the user
+        const ambiguities = routingDecision?.contract?.ambiguities;
+        if (ambiguities && ambiguities.length > 0) {
+          s += '\n\nAfter completing the requested format above and closing any open lists, add a section heading "[FOLLOW-UP QUESTIONS]" followed by items listed in contract.ambiguities (only if any). Do NOT put the follow-up questions inside the previous list.\n';
+          ambiguities.forEach((a: string, i: number) => {
+            s += (i + 1) + '. ' + a + '\n';
+          });
+        }
+
         return s;
       })(),
         ...(inferenceConfig && {
