@@ -705,6 +705,19 @@
       min-width: 1.25rem;
     }
 
+    /* Hide number marker when ol has only one li (single heading item) */
+    .assistant-text-content ol:has(li:only-child) {
+      counter-reset: none !important;
+    }
+    .assistant-text-content ol:has(li:only-child) li::before {
+      content: none !important;
+    }
+
+    /* Bold text for top-level numbered li items only (not nested sub-items) */
+    .assistant-text-content ol > li {
+      font-weight: 600;
+    }
+
     .assistant-text-content pre {
       background: var(--bg-primary);
       border: 1px solid var(--border);
