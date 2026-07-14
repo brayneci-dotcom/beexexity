@@ -94,8 +94,10 @@ class AuditService {
           model_pricing_snapshot,
           orchestration_meta,
           orchestration_group_id,
-          orchestration_step_order
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31)`,
+          orchestration_step_order,
+          routing_context,
+          routing_intent
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33)`,
         [
           entry.timestamp,
           entry.userId,
@@ -128,6 +130,8 @@ class AuditService {
           entry.orchestrationMeta ? JSON.stringify(entry.orchestrationMeta) : null,
           entry.orchestrationGroupId ?? null,
           entry.orchestrationStepOrder ?? null,
+          entry.routingContext ?? null,
+          entry.routingIntent ?? null,
         ],
       );
     } catch (error) {

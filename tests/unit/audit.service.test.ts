@@ -157,7 +157,7 @@ describe('AuditService', () => {
 
       // Verify the params array only contains the expected metadata fields
       const params = mockedQuery.mock.calls[0][1] as unknown[];
-      expect(params).toHaveLength(31);
+      expect(params).toHaveLength(33);
       expect(params).toEqual([
         validEntry.timestamp,
         validEntry.userId,
