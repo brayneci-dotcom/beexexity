@@ -1140,7 +1140,7 @@ const STRUCTURED_SKILLS: Set<SkillType> = new Set([
 
 export function getDefaultFormatTemplate(skill: SkillType): string | null {
   if (STRUCTURED_SKILLS.has(skill)) {
-    return 'Gunakan [NAMA SECTION] untuk judul section pada baris sendiri tanpa nomor.\nUntuk setiap poin dalam section, gunakan format: N. Judul\n   - Detail sub-poin\n\nPisahkan setiap section dengan baris kosong.';
+    return 'Gunakan heading yang deskriptif dan alami untuk setiap section (tanpa tanda kurung siku).\nUntuk setiap poin dalam section, gunakan format: N. Judul\n   - Detail sub-poin\n\nPisahkan setiap section dengan baris kosong.';
   }
   return null;
 }
