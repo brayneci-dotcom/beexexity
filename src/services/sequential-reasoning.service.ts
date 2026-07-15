@@ -406,20 +406,25 @@ User request: ${input.refinedPrompt}`;
         ? `\n\nNote: The following steps could not complete:\n${skippedSteps.join('\n')}\n\nAcknowledge these gaps and provide the best response possible.`
         : '';
 
-      const outputFormat = input.routingDecision?.contract?.output_format;
-      const formatInstruction = outputFormat
-        ? `\n\nYou MUST follow this output format exactly:\n${outputFormat}`
-        : '\n\nUse clear section headings (ALL-CAPS or [bracketed]) to separate sections. Use numbered lists for items within sections.';
+      const skill = input.routingDecision?.skill || 'fallback';
+      const { getDefaultFormatTemplate } = await import('./routing-engine.service.js');
+      const formatTemplate = getDefaultFormatTemplate(skill) || input.routingDecision?.contract?.output_format;
+      const formatInstruction = formatTemplate
+        ? `\n\nFollow this output structure:\n${formatTemplate}`
+        : '';
 
-      synthPrompt = `You are a synthesis expert. Combine the findings from the step-by-step analysis into one cohesive, well-structured response.
+      synthPrompt = `You are answering the user based on step-by-step analysis findings.
+
+User\'s original request:
+${input.refinedPrompt}
 
 Completed steps: ${completedCount}/${stepResults.length}
 ${gaps}
 
-Analysis output:
+Step findings:
 ${accumulatedContext}
 
-Produce a structured response that directly addresses the user's original request.${formatInstruction}`;
+Produce a focused response that answers the user\'s request directly. Use the findings as evidence.${formatInstruction}`;
     }
 
     const modelId = this.resolveModel(input.routingDecision);

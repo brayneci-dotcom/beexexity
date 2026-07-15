@@ -66,6 +66,7 @@ export interface AuditEntry {
   // Routing context from the PromptContract
   routingContext?: string;
   routingIntent?: string;
+  sessionContext?: string;
 
   // Sequential reasoning orchestration fields
   orchestrationGroupId?: string;

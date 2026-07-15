@@ -389,6 +389,17 @@ const SKILL_PROMPTS: Record<SkillType, string> = {
     '{ "role": "<IT specialist>", "context": "<system/domain>", "task": "<analyze/evaluate IT system for>", "intent": "<...>", "ambiguities": ["<what is unclear>"], "clarification_needed": false }',
   ].join('\n'),
 
+  document_analysis: [
+    'You are an expert AI prompt engineer specializing in DOCUMENT ANALYSIS.',
+    'Refine the request into structural JSON.',
+    '',
+    'RULES: Language preservation. JSON keys English, values in detected language. Concise. JSON only.',
+    '',
+    'Focus: document type, specific questions, analysis depth, key information extraction.',
+    '',
+    '{ "role": "<document analyst>", "context": "<document type>", "task": "<analyze/explain document>", "intent": "<...>", "ambiguities": ["<what is unclear>"], "clarification_needed": false }',
+  ].join('\n'),
+
   // ── Fallback (catch-all) ────────────────────────────────────────
   fallback: [
     'You are an expert AI prompt engineer. Your task is to refine the user\'s raw input into a strict, highly effective, and CONCISE structural prompt format.',
@@ -429,7 +440,7 @@ const SKILL_REFINEMENT_PROMPT = [
   '2. LANGUAGE PRESERVATION: The "context", "intent", "behavioral_instructions", and "output_format" fields MUST be written in the EXACT SAME LANGUAGE as the user\'s original prompt ({{detected_language}}). NEVER use English if the user wrote in Indonesian.',
   '3. DYNAMIC FIELDS: Based on the task and skill, generate specific guidance for the final model.',
   '   - "behavioral_instructions": Specific criteria, focus areas, or behavioral rules (e.g., "Fokus pada keamanan dan skalabilitas").',
-  '   - "output_format": Be VERY specific about the exact structure the final model must follow. Include section heading format, list style, spacing, and indentation. \\n\\nCRITICAL RULES for output_format:\\n1. Section headings MUST use [bracketed] format ONLY (e.g., "[ANALISIS]", "[REKOMENDASI]"). NEVER use "1. NAMA" for headings.\\n2. For list items within sections, use "N. Judul\\n   - Detail".\\n3. Separate sections with blank lines.\\n4. Example output_format:\\n   "Gunakan [ANALISIS USULAN] sebagai heading section.\\n   Gunakan format:\\n   \\n   [ANALISIS USULAN]\\n   1. Poin utama\\n      - Detail sub-poin\\n   \\n   [REKOMENDASI]\\n   1. Poin utama\\n      - Detail sub-poin"\\n\\nThe more specific the output_format, the better the model will follow it.',
+  '   - "behavioral_instructions": Specific criteria, focus areas, or behavioral rules to guide the inference model (e.g., "Fokus pada keamanan dan skalabilitas").',
   '4. BE CONCISE. High signal, zero noise.',
   '5. JSON ONLY. No markdown, no explanations.',
   '',
@@ -440,7 +451,6 @@ const SKILL_REFINEMENT_PROMPT = [
   '  "task": "<EXACT VERBATIM USER PROMPT>",',
   '  "intent": "<what the user wants to achieve, in user\'s language>",',
   '  "behavioral_instructions": "<dynamic guidance in user\'s language>",',
-  '  "output_format": "<structure guidance in user\'s language>",',
   '  "ambiguities": ["<list missing info in user\'s language>"],',
   '  "clarification_needed": false',
   '}',
@@ -458,7 +468,7 @@ const FOLLOW_UP_REFINEMENT_PROMPT = [
   '### DYNAMIC INSTRUCTION GENERATION',
   'Based on the user\'s follow-up and conversation history, generate specific guidance for the inference model.',
   '1. "behavioral_instructions": Specific focus areas or behavioral rules the model must follow (e.g., "Focus on security and scalability", "Use formal tone").',
-  '2. "output_format": Be specific about the exact structure the final model must follow. Include section heading format, list style, and spacing (e.g., "Gunakan [NAMA SECTION] untuk judul section. Gunakan N. untuk nomor poin. Pisahkan dengan baris kosong."). The more specific, the better the model will follow it.',
+  '2. "output_format": OBSOLETE — do NOT generate this field. Output format is handled by deterministic templates.',
   '3. CRITICAL: Both fields MUST be in the EXACT SAME LANGUAGE as the user\'s follow-up. NEVER use English if the user wrote in Indonesian.',
   '4. For simple tasks (e.g., greetings, basic translation), you may omit these fields.',
   '',
@@ -467,7 +477,7 @@ const FOLLOW_UP_REFINEMENT_PROMPT = [
   '  "task": "User\'s original follow-up prompt VERBATIM in original language",',
   '  "intent": "What this specific follow-up wants to accomplish",',
   '  "behavioral_instructions": "Specific guidance in user\'s language (optional)",',
-  '  "output_format": "Structural guidance in user\'s language (optional)",',
+
   '  "ambiguities": ["What is unclear (if anything)"],',
   '  "clarification_needed": false',
   '}',
@@ -561,10 +571,10 @@ async function unifiedClassifyAndScore(
   conversationContext?: string,
   hasEmptyPrompt?: boolean,
   hasImages?: boolean,
-): Promise<{ skill: SkillType; complexityScore: number; confidence: number; language: string; languageConfidence: number; _rawResponse?: string; _rawPrompt?: string } | null> {
+): Promise<{ skill: SkillType; complexityScore: number; confidence: number; language: string; languageConfidence: number; sessionContext?: string; _rawResponse?: string; _rawPrompt?: string } | null> {
   // Silent upload: files but no prompt → fallback (ask user what they want)
   if (hasEmptyPrompt && (hasImages || documentText)) {
-    return { skill: 'fallback', complexityScore: 2, confidence: 0.9, language: 'indonesian', languageConfidence: 0.9, _rawResponse: '(silent upload - no LLM call)', _rawPrompt: '(silent upload - no LLM call)' };
+    return { skill: 'fallback', complexityScore: 2, confidence: 0.9, language: 'indonesian', languageConfidence: 0.9, sessionContext: 'Silent upload — bertanya ke user', _rawResponse: '(silent upload - no LLM call)', _rawPrompt: '(silent upload - no LLM call)' };
   }
 
   const controller = new AbortController();
@@ -577,10 +587,11 @@ async function unifiedClassifyAndScore(
     if (documentText) {
       // Extract head + tail for best coverage: title/caveats are usually at start,
       // conclusions/next-steps at end. Middle is often filler that adds less signal.
-      const HEAD = 2000, TAIL = 1000;
+      const HEAD = 1500, MID = 800, TAIL = 700;
       let snippet: string;
       if (documentText.length > HEAD + TAIL) {
-        snippet = documentText.slice(0, HEAD) + '\n\n... [truncated] ...\n\n' + documentText.slice(-TAIL);
+        const midStart = Math.floor((documentText.length - MID) / 2);
+        snippet = documentText.slice(0, HEAD) + '\n\n[...]\n\n' + documentText.slice(midStart, midStart + MID) + '\n\n[...]\n\n' + documentText.slice(-TAIL);
       } else {
         snippet = documentText;
       }
@@ -598,7 +609,7 @@ async function unifiedClassifyAndScore(
       '### SKILLS (Choose exactly one)',
       '[Generation] business_writing | creative_writing | brainstorming | prompt_optimizer',
       '[Transformation] summarization | translation | data_transformation | editing',
-      '[Interaction] roleplay | logic_math | planning_strategy',
+      '[Interaction] roleplay | logic_math | planning_strategy | document_analysis',
       '[Enterprise] requirement_generation | compliance_pre_assessment | risk_analyst | process_optimization | credit_analyst',
       '[Engineering] code | log_troubleshooting | data_analysis | cloud_security | it_specialist | fallback',
       '',
@@ -692,7 +703,11 @@ async function unifiedClassifyAndScore(
       ? Math.max(0, Math.min(1, parsed.language_confidence))
       : 0.5;
 
-    return { skill, complexityScore, confidence, language, languageConfidence, _rawResponse: outputText, _rawPrompt: systemPrompt.slice(0, 800) + '\n\n[User]: ' + userContent.slice(0, 500) };
+    const sessionContext = typeof parsed.reasoning === 'string'
+      ? parsed.reasoning.slice(0, 120)
+      : undefined;
+
+    return { skill, complexityScore, confidence, language, languageConfidence, sessionContext, _rawResponse: outputText, _rawPrompt: systemPrompt.slice(0, 800) + '\n\n[User]: ' + userContent.slice(0, 500) };
   } catch {
     return null;
   } finally {
@@ -790,6 +805,33 @@ export function verifyOutput(
     }
   }
 
+  // 6. Format quality check — unclosed markdown delimiters
+  const unclosedBold = (assistantText.match(/\*\*/g) || []).length % 2 !== 0;
+  if (unclosedBold) {
+    checks.push({ name: 'Format: unclosed bold', passed: false, detail: 'Unclosed ** detected' });
+    violations.push({ field: 'format.markdown', issue: 'Unclosed bold (**) markers', severity: 'warn' });
+  } else {
+    checks.push({ name: 'Format: unclosed bold', passed: true, detail: 'OK' });
+  }
+
+  const unclosedCode = (assistantText.match(/`/g) || []).length % 2 !== 0;
+  if (unclosedCode) {
+    checks.push({ name: 'Format: unclosed code', passed: false, detail: 'Unclosed ` detected' });
+    violations.push({ field: 'format.markdown', issue: 'Unclosed inline code (`) markers', severity: 'warn' });
+  } else {
+    checks.push({ name: 'Format: unclosed code', passed: true, detail: 'OK' });
+  }
+
+  // 7. Heading consistency check — detect mixed [bracketed] and ALL-CAPS headings
+  const bracketedHeadings = assistantText.match(/^\[.+\]$/gm) || [];
+  const allCapsHeadings = assistantText.match(/^[A-Z][A-Z\s]{3,}$/gm) || [];
+  if (bracketedHeadings.length > 0 && allCapsHeadings.length > 0) {
+    checks.push({ name: 'Format: heading consistency', passed: false, detail: `Mixed [bracketed] (${bracketedHeadings.length}) and ALL-CAPS (${allCapsHeadings.length}) headings` });
+    violations.push({ field: 'format.headings', issue: 'Inconsistent heading format: mixed [bracketed] and ALL-CAPS', severity: 'warn' });
+  } else {
+    checks.push({ name: 'Format: heading consistency', passed: true, detail: `${bracketedHeadings.length || allCapsHeadings.length} headings, consistent style` });
+  }
+
   const passed = violations.filter(v => v.severity === 'error').length === 0;
   return { passed, violations, checks };
 }
@@ -858,19 +900,24 @@ function validateSkillInvariants(skill: SkillType, input: RoutingInput): SkillTy
     if (!hasProcessContext) return 'fallback';
   }
 
-  // Rule 6: Cloud security requires cloud/infrastructure context
+  // Rule 6: Document analysis requires an attached document
+  if (skill === 'document_analysis') {
+    if (!input.maskedDocumentText) return 'fallback';
+  }
+
+  // Rule 7: Cloud security requires cloud/infrastructure context
   if (skill === 'cloud_security') {
     const hasCloudContext = /cloud|gcp|aws|waf|firewall|infrastructure|keamanan.*cloud/.test(fullContext);
     if (!hasCloudContext) return 'fallback';
   }
 
-  // Rule 7: Credit analyst requires credit/financial context
+  // Rule 8: Credit analyst requires credit/financial context
   if (skill === 'credit_analyst') {
     const hasCreditContext = /credit|loan|slik|financial|kredit|pinjaman|keuangan/.test(fullContext);
     if (!hasCreditContext) return 'fallback';
   }
 
-  // Rule 8: IT specialist requires IT/system context
+  // Rule 9: IT specialist requires IT/system context
   if (skill === 'it_specialist') {
     const hasITContext = /it system|technical|infrastructure|architecture|payment|sistem|infrastruktur/.test(fullContext);
     if (!hasITContext) return 'fallback';
@@ -919,6 +966,7 @@ export async function routeRequest(input: RoutingInput): Promise<RoutingDecision
       flags,
       skill: 'fallback',
       contract: null,
+      sessionContext: undefined,
     };
   }
 
@@ -1066,6 +1114,7 @@ export async function routeRequest(input: RoutingInput): Promise<RoutingDecision
     skill,
     contract,
     detectedLanguage: unifiedResult?.language ?? 'indonesian',
+    sessionContext: unifiedResult?.sessionContext,
     routingDurationMs: Date.now() - routingStart,
     classificationDurationMs,
     refinementDurationMs,
@@ -1075,6 +1124,25 @@ export async function routeRequest(input: RoutingInput): Promise<RoutingDecision
     _refineRaw: (refinementResult as any)?._rawResponse,
     _refinePrompt: (refinementResult as any)?._rawPrompt,
   } as any;
+}
+
+/**
+ * Returns a deterministic format template for the given skill.
+ * Replaces dynamic output_format generation by the refinement LLM.
+ * Templates are grouped by skill category.
+ */
+const STRUCTURED_SKILLS: Set<SkillType> = new Set([
+  'compliance_pre_assessment', 'requirement_generation', 'risk_analyst',
+  'process_optimization', 'credit_analyst', 'code', 'log_troubleshooting',
+  'data_analysis', 'cloud_security', 'it_specialist', 'editing',
+  'document_analysis', 'planning_strategy', 'logic_math',
+]);
+
+export function getDefaultFormatTemplate(skill: SkillType): string | null {
+  if (STRUCTURED_SKILLS.has(skill)) {
+    return 'Gunakan [NAMA SECTION] untuk judul section pada baris sendiri tanpa nomor.\nUntuk setiap poin dalam section, gunakan format: N. Judul\n   - Detail sub-poin\n\nPisahkan setiap section dengan baris kosong.';
+  }
+  return null;
 }
 
 /** Exposed for testing — allows injecting a mock Bedrock client. */

@@ -472,7 +472,7 @@ export async function repairResponse(
 // ─── Semantic Verification ─────────────────────────────────────────────────────────
 
 /** Skills that get LLM-as-a-judge semantic verification after inference. */
-const SEMANTIC_VERIFY_SKILLS = ['compliance_pre_assessment', 'logic_math', 'code', 'risk_analyst', 'data_analysis'];
+const SEMANTIC_VERIFY_SKILLS = ['compliance_pre_assessment', 'logic_math', 'code', 'risk_analyst', 'data_analysis', 'document_analysis'];
 
 /**
  * Lightweight LLM-as-a-judge — checks whether the assistant response is

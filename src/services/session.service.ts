@@ -378,16 +378,24 @@ export async function listUserSessions(
        COALESCE(st.total_input_tokens, '0')  AS total_input_tokens,
        COALESCE(st.total_output_tokens, '0') AS total_output_tokens,
        COALESCE(st.request_count, '0')       AS request_count,
-       COALESCE(rt.routing_context, rt.routing_intent, '') AS preview
+       COALESCE(al.session_context, rt.routing_context, rt.routing_intent, '') AS preview
      FROM sessions s
      LEFT JOIN LATERAL (
-       SELECT routing_context, routing_intent
+       SELECT session_context, routing_context, routing_intent
        FROM audit_logs
        WHERE session_id = s.id AND status = 'success'
-         AND (routing_context IS NOT NULL OR routing_intent IS NOT NULL)
+         AND (session_context IS NOT NULL OR routing_context IS NOT NULL OR routing_intent IS NOT NULL)
        ORDER BY timestamp DESC
        LIMIT 1
      ) rt ON true
+     LEFT JOIN LATERAL (
+       SELECT session_context
+       FROM audit_logs
+       WHERE session_id = s.id AND status = 'success'
+         AND session_context IS NOT NULL
+       ORDER BY timestamp DESC
+       LIMIT 1
+     ) al ON true
      LEFT JOIN LATERAL (
        SELECT
          COALESCE(SUM(input_tokens), 0)  AS total_input_tokens,

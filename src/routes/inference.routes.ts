@@ -11,7 +11,7 @@ import { extractDocumentText } from '../services/document-extractor.service.js';
 import { processImages } from '../services/image-processor.service.js';
 import { buildContentBlocks } from '../services/content-builder.service.js';
 import { auditService } from '../services/audit.service.js';
-import { routeRequest, verifyOutput } from '../services/routing-engine.service.js';
+import { routeRequest, verifyOutput, getDefaultFormatTemplate } from '../services/routing-engine.service.js';
 import {
   getActiveSession,
   getSessionMessages,
@@ -428,26 +428,14 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
         const role = routingDecision?.contract?.role || getRoleForSkill(routingDecision?.skill || 'fallback');
         const lang = routingDecision?.detectedLanguage || 'indonesian';
         const bi = routingDecision?.contract?.behavioral_instructions;
-        const of = routingDecision?.contract?.output_format;
-        let s = 'You are ' + role + '. IMPORTANT: Respond in ' + lang + '.';
+        const skill = routingDecision?.skill || 'fallback';
+        // Use deterministic template if available (preferred), fall back to legacy dynamic output_format
+        const formatTemplate = getDefaultFormatTemplate(skill) || routingDecision?.contract?.output_format;
+        let s = 'You are ' + role + '. Respond in ' + lang + '.';
         if (bi) s += '\n\n' + bi;
-        if (of) {
-          s += '\n\nCRITICAL FORMAT INSTRUCTION — you MUST follow this output format exactly:\n' + of;
-          s += '\n\nWhen using numbered lists: start each item on its own line with the number ("1.", "2.", etc.), separate items with a blank line, and never leave a line without a number between two numbered items.';
-          s += '\n\nUse consistent section formatting throughout the entire response. If you use a section label like "Domain Bisnis" in plain text, ALL sections must use the same plain text format. Do NOT mix plain text headings with markdown ### headings — pick one style and use it for every section.';
-        } else {
-          s += ' Respond in plain text without markdown formatting.';
+        if (formatTemplate) {
+          s += '\n\nFollow this output structure:\n' + formatTemplate;
         }
-
-        // Append ambiguities as follow-up questions for the user
-        const ambiguities = routingDecision?.contract?.ambiguities;
-        if (ambiguities && ambiguities.length > 0) {
-          s += '\n\nAfter completing the requested format above and closing any open lists, add a section heading "[FOLLOW-UP QUESTIONS]" followed by items listed in contract.ambiguities (only if any). Do NOT put the follow-up questions inside the previous list.\n';
-          ambiguities.forEach((a: string, i: number) => {
-            s += (i + 1) + '. ' + a + '\n';
-          });
-        }
-
         return s;
       })(),
       ...(inferenceConfig && {
@@ -621,6 +609,7 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
         orchestrationMeta,
         routingContext: routingDecision?.contract?.context,
         routingIntent: routingDecision?.contract?.intent,
+        sessionContext: routingDecision?.sessionContext,
       }).catch(() => { /* fire-and-forget */ });
 
       // 14. Memory update if messages were evicted (fire-and-forget)
@@ -674,6 +663,7 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
         orchestrationMeta,
         routingContext: routingDecision?.contract?.context,
         routingIntent: routingDecision?.contract?.intent,
+        sessionContext: routingDecision?.sessionContext,
       }).catch(() => { /* fire-and-forget */ });
     }
   } finally {
@@ -1271,26 +1261,14 @@ async function handleMultipartInference(req: Request, res: Response, next: NextF
         const role = routingDecision?.contract?.role || getRoleForSkill(routingDecision?.skill || 'fallback');
         const lang = routingDecision?.detectedLanguage || 'indonesian';
         const bi = routingDecision?.contract?.behavioral_instructions;
-        const of = routingDecision?.contract?.output_format;
-        let s = 'You are ' + role + '. IMPORTANT: Respond in ' + lang + '.';
+        const skill = routingDecision?.skill || 'fallback';
+        // Use deterministic template if available (preferred), fall back to legacy dynamic output_format
+        const formatTemplate = getDefaultFormatTemplate(skill) || routingDecision?.contract?.output_format;
+        let s = 'You are ' + role + '. Respond in ' + lang + '.';
         if (bi) s += '\n\n' + bi;
-        if (of) {
-          s += '\n\nCRITICAL FORMAT INSTRUCTION — you MUST follow this output format exactly:\n' + of;
-          s += '\n\nWhen using numbered lists: start each item on its own line with the number ("1.", "2.", etc.), separate items with a blank line, and never leave a line without a number between two numbered items.';
-          s += '\n\nUse consistent section formatting throughout the entire response. If you use a section label like "Domain Bisnis" in plain text, ALL sections must use the same plain text format. Do NOT mix plain text headings with markdown ### headings — pick one style and use it for every section.';
-        } else {
-          s += ' Respond in plain text without markdown formatting.';
+        if (formatTemplate) {
+          s += '\n\nFollow this output structure:\n' + formatTemplate;
         }
-
-        // Append ambiguities as follow-up questions for the user
-        const ambiguities = routingDecision?.contract?.ambiguities;
-        if (ambiguities && ambiguities.length > 0) {
-          s += '\n\nAfter completing the requested format above and closing any open lists, add a section heading "[FOLLOW-UP QUESTIONS]" followed by items listed in contract.ambiguities (only if any). Do NOT put the follow-up questions inside the previous list.\n';
-          ambiguities.forEach((a: string, i: number) => {
-            s += (i + 1) + '. ' + a + '\n';
-          });
-        }
-
         return s;
       })(),
         ...(inferenceConfig && {

@@ -25,6 +25,7 @@ export const SKILL_TO_ROLE: Record<SkillType, string> = {
   roleplay: 'Character Roleplay Actor',
   logic_math: 'Mathematics & Logic Problem Solver',
   planning_strategy: 'Strategic Planning & Business Consultant',
+  document_analysis: 'Document Intelligence & Research Analyst',
 
   // Enterprise
   requirement_generation: 'Senior Business & Requirements Analyst',

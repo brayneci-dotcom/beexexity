@@ -96,8 +96,9 @@ class AuditService {
           orchestration_group_id,
           orchestration_step_order,
           routing_context,
-          routing_intent
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33)`,
+          routing_intent,
+          session_context
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34)`,
         [
           entry.timestamp,
           entry.userId,
@@ -132,6 +133,7 @@ class AuditService {
           entry.orchestrationStepOrder ?? null,
           entry.routingContext ?? null,
           entry.routingIntent ?? null,
+          entry.sessionContext ?? null,
         ],
       );
     } catch (error) {

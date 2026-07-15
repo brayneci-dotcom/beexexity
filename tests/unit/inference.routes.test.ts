@@ -172,6 +172,7 @@ vi.mock('../../src/services/routing-engine.service.js', () => ({
     manualOverrideApplied: false,
     flags: [],
   }),
+  getDefaultFormatTemplate: vi.fn().mockReturnValue(null),
 }));
 
 vi.mock('../../src/services/upload-validator.service.js', () => ({

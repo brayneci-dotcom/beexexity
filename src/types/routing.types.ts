@@ -18,7 +18,7 @@ export type SkillType =
   // Transformation
   | 'summarization' | 'translation' | 'data_transformation' | 'editing'
   // Interaction
-  | 'roleplay' | 'logic_math' | 'planning_strategy'
+  | 'roleplay' | 'logic_math' | 'planning_strategy' | 'document_analysis'
   // Enterprise
   | 'requirement_generation' | 'compliance_pre_assessment' | 'risk_analyst' | 'process_optimization' | 'credit_analyst'
   // Engineering
@@ -28,7 +28,7 @@ export type SkillType =
 export const ALL_SKILLS: SkillType[] = [
   'business_writing', 'creative_writing', 'brainstorming', 'prompt_optimizer',
   'summarization', 'translation', 'data_transformation', 'editing',
-  'roleplay', 'logic_math', 'planning_strategy',
+  'roleplay', 'logic_math', 'planning_strategy', 'document_analysis',
   'requirement_generation', 'compliance_pre_assessment', 'risk_analyst', 'process_optimization', 'credit_analyst',
   'code', 'log_troubleshooting', 'data_analysis', 'cloud_security', 'it_specialist', 'fallback',
 ];
@@ -95,6 +95,8 @@ export interface RoutingDecision {
   contract: PromptContract | null;  // structured contract from refinement
   /** Detected language from unified classify+score (e.g. "indonesian", "english"). */
   detectedLanguage?: string;
+  /** Short classifier reasoning for session row preview. */
+  sessionContext?: string;
 
   // Per-step timing (ms) — populated by routeRequest()
   routingDurationMs?: number;
