@@ -1790,7 +1790,7 @@
 
     <div class="messages" id="messages">
       <div class="empty-state">
-        <h2 id="greeting">Hi, Ask me anything</h2>
+        <h2 id="greeting"></h2>
         <p>Running on a local LLM, hosted internally. Your data stays private—never stored, shared, or used for external training.</p>
       </div>
     </div>
@@ -1840,6 +1840,13 @@ let token = null;
 let resetToken = null;
 let user = null;
 let pricingConfig = null;
+/** Return empty state HTML with user's display name in greeting. */
+function emptyStateHTML() {
+  const name = user?.displayName || '';
+  const greeting = name ? 'Hi ' + name + ', ask me anything' : 'Hi, ask me anything';
+  return '<div class="empty-state"><h2 id="greeting">' + escapeHtml(greeting) + '</h2><p>Running on a local LLM, hosted internally. Your data stays private—never stored, shared, or used for external training.</p></div>';
+}
+
 let sessionCosts = [];
 let sessionTotal = 0;
 let isStreaming = false;
@@ -2253,10 +2260,7 @@ async function handleSend() {
         setStreaming(false);
         document.getElementById('prompt-input').placeholder = 'Ask anything...';
         document.getElementById('messages').innerHTML = `
-          <div class="empty-state">
-            <h2 id="greeting">Hi, Ask me anything</h2>
-            <p>Running on a local LLM, hosted internally. Your data stays private—never stored, shared, or used for external training.</p>
-          </div>
+          ${emptyStateHTML()}
         `;
         updateCostBar();
         loadSessions(1);
@@ -2592,10 +2596,7 @@ async function handleSend() {
               setInputEnabled(true);
               document.getElementById('prompt-input').placeholder = 'Ask anything...';
               document.getElementById('messages').innerHTML = `
-                <div class="empty-state">
-                  <h2 id="greeting">Hi, Ask me anything</h2>
-        <p>Running on a local LLM, hosted internally. Your data stays private—never stored, shared, or used for external training.</p>
-                </div>
+                ${emptyStateHTML()}
               `;
               updateCostBar();
               loadSessions(1);
@@ -2818,7 +2819,7 @@ function formatMarkdown(text) {
     const isOrderedItem = /^\s*\d+\.\s+/.test(line);
 
     // Section heading (bracketed, all-caps, or follow-up) — close any open list and promote
-    if (listStack.length > 0 && (/^(\d+\.\s*)?[A-Z][A-Z\s]{2,}$/.test(line.trim()) || /^\[.+\]$/.test(line.trim()) || /^Follow.up/i.test(line.trim()))) {
+    if (listStack.length > 0 && (/^(\d+\.\s*)?[A-Z][A-Z\s]{2,}$/.test(line.trim()) || /^\[.+\]$/.test(line.trim()) || /^Follow.up/i.test(line.trim()) || /^[A-Z][a-zA-Z]+[\s\w-]{10,}(?<!\.)$/.test(line.trim()))) {
       while (listStack.length > 0) {
         const popped = listStack.pop();
         html += '</li></' + popped.type + '>';
@@ -2906,7 +2907,7 @@ function formatMarkdown(text) {
     }
     
     // Section heading: all-caps, [bracketed], or follow-up title
-    if (/^(\d+\.\s*)?[A-Z][A-Z\s]{2,}$/.test(line.trim()) || /^\[.+\]$/.test(line.trim()) || /^Follow.up/i.test(line.trim())) {
+    if (/^(\d+\.\s*)?[A-Z][A-Z\s]{2,}$/.test(line.trim()) || /^\[.+\]$/.test(line.trim()) || /^Follow.up/i.test(line.trim()) || /^[A-Z][a-zA-Z]+[\s\w-]{10,}(?<!\.)$/.test(line.trim())) {
       html += `<div style="margin: 1.5rem 0 0.5rem;font-weight:800;font-size:1.15rem;color:var(--text-primary);text-transform:uppercase;letter-spacing:0.04em;border-bottom:2px solid var(--accent);padding-bottom:0.3rem">${inlineFormat(line.trim())}</div>`;
       continue;
     }
@@ -3287,10 +3288,7 @@ function handleLogout() {
   document.getElementById('password-reset-screen').style.display = 'none';
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('messages').innerHTML = `
-    <div class="empty-state">
-      <h2 id="greeting">Hi, Ask me anything</h2>
-      <p>Running on a local LLM, hosted internally. Your data stays private—never stored, shared, or used for external training.</p>
-    </div>
+    ${emptyStateHTML()}
   `;
   document.getElementById('viewing-banner').classList.remove('visible');
   setInputEnabled(true);
@@ -3412,10 +3410,7 @@ async function handleNewChat() {
   setInputEnabled(true);
   document.getElementById('prompt-input').placeholder = 'Ask anything...';
   document.getElementById('messages').innerHTML = `
-    <div class="empty-state">
-      <h2 id="greeting">Hi, Ask me anything</h2>
-      <p>Running on a local LLM, hosted internally. Your data stays private—never stored, shared, or used for external training.</p>
-    </div>
+    ${emptyStateHTML()}
   `;
   updateCostBar();
   loadSessions(1);
