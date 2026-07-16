@@ -278,9 +278,29 @@ const SKILL_PROMPTS: Record<SkillType, string> = {
     '',
     'RULES: Language preservation. JSON keys English, values in detected language. Concise. JSON only.',
     '',
-    'Focus: stakeholder, feature scope, acceptance criteria, constraints.',
+    'The user needs a MASTER REQUIREMENT DOCUMENT (BRD/PRD) with these sections:',
+    '1. Ringkasan Eksekutif — business context, baseline KPIs, target KPIs',
+    '2. Non-Functional Requirements — latency SLA, throughput, availability, resiliency (with numbers)',
+    '3. Strategi Fase — logical phase breakdown (MVP → Advanced → Full), focus per phase',
+    '4. Prinsip Desain & Arsitektur — design constraints, key architectural decisions',
+    '5. User Story & UAC per Domain — organized by domain/phase:',
+    '   - Actor: who (System/Human + role)',
+    '   - Story: "Sebagai X, saya ingin Y, agar Z" format',
+    '   - UAC: numbered, Given/When/Then format, each with measurable criteria (numbers, thresholds, SLAs)',
+    '6. Strategi Data & Governance — data strategy, AI/ML approach, compliance',
+    '7. Instruksi Handover — for downstream system design/engineering team',
     '',
-    '{ "role": "<business analyst>", "context": "<feature/domain>", "task": "<generate requirements for>", "intent": "<...>", "ambiguities": ["<what is unclear>"], "clarification_needed": false }',
+    'CRITICAL UAC QUALITY RULES:',
+    '- Every UAC uses Given/When/Then (Diberikan/Ketika/Maka) structure',
+    '- Every UAC includes at least one measurable number (<500ms, 99.9%, >50%, 957 TPS)',
+    '- User stories grouped by domain with clear Actor identification',
+    '- Cross-reference US numbers to phases',
+    '',
+    'If the user has NOT provided domain context (industry, existing systems, scale), set clarification_needed: true with specific questions.',
+    '',
+    'Set "format.mustInclude" to: ["Ringkasan Eksekutif", "Non-Functional Requirements", "Strategi Fase", "Prinsip Desain", "User Story & UAC", "Governance", "Instruksi Handover"]',
+    '',
+    '{ "role": "<senior business analyst>", "context": "<industry/domain/system>", "task": "<generate master requirement document for>", "intent": "<...>", "ambiguities": ["<what is unclear>"], "clarification_needed": false }',
   ].join('\n'),
 
   compliance_pre_assessment: [
@@ -1139,6 +1159,31 @@ const STRUCTURED_SKILLS: Set<SkillType> = new Set([
 ]);
 
 export function getDefaultFormatTemplate(skill: SkillType): string | null {
+  if (skill === 'requirement_generation') {
+    return [
+      'Gunakan heading yang deskriptif dan alami untuk setiap section (tanpa tanda kurung siku).',
+      '',
+      'STRUKTUR WAJIB (7 section):',
+      '1. Ringkasan Eksekutif — berisi Konteks Bisnis, Baseline KPI, dan Target KPI dengan angka terukur.',
+      '2. Non-Functional Requirements — dalam format tabel: Latency SLA, Throughput, Availability, Resiliensi. Setiap NFR harus memiliki angka spesifik.',
+      '3. Strategi Implementasi per Fase — minimal 2 fase dengan fokus dan batasan yang jelas per fase.',
+      '4. Prinsip Desain & Arsitektur — daftar bernomor, setiap prinsip satu kalimat tegas.',
+      '5. User Story & Acceptance Criteria per Domain — dikelompokkan berdasarkan fase dan domain:',
+      '   Format setiap User Story:',
+      '   **US X.Y: Judul**',
+      '   - Actor: [peran spesifik]',
+      '   - Story: Sebagai [actor], saya ingin [tujuan], agar [manfaat].',
+      '   - UAC:',
+      '     1. Given [kondisi awal], When [aksi], Then [hasil yang diharapkan — dengan angka/metrik].',
+      '6. Strategi Data, AI/ML & Governance — daftar prinsip bernomor.',
+      '7. Instruksi Handover — poin-poin untuk tim System Design/Engineering.',
+      '',
+      'ATURAN KUALITAS UAC:',
+      '- SETIAP UAC wajib mengandung Given/When/Then (Diberikan/Ketika/Maka).',
+      '- SETIAP UAC wajib memiliki minimal satu kriteria terukur (angka, persentase, SLA waktu).',
+      '- SETIAP User Story wajib memiliki Actor yang spesifik (bukan "User" generik).',
+    ].join('\n');
+  }
   if (STRUCTURED_SKILLS.has(skill)) {
     return 'Gunakan heading yang deskriptif dan alami untuk setiap section (tanpa tanda kurung siku).\nUntuk setiap poin dalam section, gunakan format: N. Judul\n   - Detail sub-poin\n\nPisahkan setiap section dengan baris kosong.';
   }

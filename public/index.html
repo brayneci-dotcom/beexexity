@@ -3425,7 +3425,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const savedRole = sessionStorage.getItem('admin_role');
   if (savedToken && savedRole) {
     try {
-      const verify = await fetch(`${window.location.origin}/api/v1/models`, {
+      const verify = await fetch(`${API_BASE}/health`, {
         headers: { 'Authorization': `Bearer ${savedToken}` }
       });
       if (verify.ok) {
