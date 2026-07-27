@@ -16,13 +16,15 @@
 | Bedrock SDK | `@aws-sdk/client-bedrock-runtime` | ^3.700 |
 | Document parsing | `pdf-parse`, `mammoth`, `officeparser`, `cheerio`, `xlsx`, `turndown` + GFM | PDF, DOCX, PPTX, XLSX, HTML, Markdown output |
 | Office conversion | Gotenberg (sidecar Cloud Run service) | .doc, .ppt → PDF → text |
-| Auth | JWT (`jsonwebtoken`) + bcrypt + Google OAuth (`google-auth-library`) + X-API-Key | HS256, local + Google sign-in + M2M batch |
+| Auth | JWT (`jsonwebtoken`) + bcrypt + Google OAuth (`google-auth-library`) + X-API-Key | HS256, local + Google sign-in + M2M batch + passthrough mode |
 | File uploads | `multer` | Memory storage, 10MB/file, max 5 files |
 | Testing | Vitest | `@/` alias → `./src/*` |
 | Linting | ESLint 9 + `typescript-eslint` | Flat config |
 | Build | `tsc` | Output: `dist/` |
 | Dev server | `tsx watch` | Hot reload |
 | Property testing | `fast-check` | For PII masker |
+| JSON body limit | 10MB | Previously 10KB, raised for long prompts |
+| Default model | Qwen3 235B A22B | Previously Auto (now user-facing default)
 
 ### Deployment targets
 
@@ -47,7 +49,7 @@ GhostMeet (M2M) → POST /api/v1/inference/batch (API key auth)
 ```
 src/
 ├── server.ts              # HTTP listener entry + EventEmitter.defaultMaxListeners = 50
-├── app.ts                 # Express app: middleware, routes, error handler, /health, Cache-Control on HTML
+├── app.ts                 # Express app: middleware, routes, error handler, /health, /config/passthrough, Cache-Control on HTML
 ├── config/
 │   ├── index.ts           # All env-var config with defaults
 │   ├── database.ts        # pg Pool + query() helper + closePool()
@@ -61,6 +63,7 @@ src/
 ├── routes/
 │   ├── auth.routes.ts        # POST /login, POST /google, GET /google/config, POST /change-password
 │   ├── admin.routes.ts       # POST|PUT /users, GET /usage/cost, POST /users/bulk
+│   │                         # + GET/PUT /config (passthrough_mode)
 │   │                         # + GET/POST /discovered-roles (accept/reject/deploy)
 │   ├── models.routes.ts      # GET / (available models with pricing)
 │   ├── inference.routes.ts   # POST /generate (JSON + multipart), POST /batch (API key auth)
@@ -88,6 +91,7 @@ src/
 │   ├── upload-validator.service.ts     # Classify files → documents/images, MIME checks
 │   ├── audit.service.ts                # Fire-and-forget audit logs + billing context columns
 │   ├── cost-reporting.service.ts       # Per-user cost aggregation
+│   ├── config.service.ts               # App config (passthrough_mode) with DB + in-memory cache
 │   ├── few-shot-library.ts             # Per-skill golden examples for format adherence (+ meeting_summary)
 │   ├── gotenberg.service.ts            # Legacy Office (.doc, .ppt) → PDF → text via Gotenberg
 │   └── file-signature-validator.ts     # Magic byte heuristic gate
@@ -113,7 +117,9 @@ data/                            # Runtime data (not committed to git)
 └── discovered-roles-state.json   # Accept/reject/deploy state per role
 
 migrations/
-├── 001_initial_schema.sql ... 019_add_billing_context.sql  (19 migrations)
+├── 001_initial_schema.sql ... 019_add_billing_context.sql
+├── 020_add_passthrough_flag.sql  # Passthrough mode flag on audit_logs
+└── 021_app_config.sql            # App config table (passthrough_mode toggle)
 
 tests/
 └── unit/                           # 26 test files
@@ -125,21 +131,16 @@ docs/
 ├── tech-reference.md            # This file
 ├── prompt-reference.md          # System prompt catalog
 ├── admin-dashboard.md           # Admin UI docs
-├── mockup.html                  # Early UI mockup
-├── prompt-improve.md            # Prompt engineering notes
-├── req-model-route.md           # Routing requirements
-├── session-mem.md               # Session memory design
-├── prd-init.md                  # Original PRD
+├── beautify-render.md           # SSE markdown rendering proposal
 ├── features/
 │   ├── google-auth/             # Google OAuth feature (design + tasks)
 │   ├── model-access/            # Model access control design
+│   ├── passthrough-mode/        # Passthrough mode feature (req + design + tasks)
 │   ├── sequential-reasoning/    # Sequential reasoning feature (req + design + tasks + notes)
 │   ├── thinking-mode/           # Thinking mode requirements
 │   └── sub-agent/               # Sub-agent orchestration design
 ├── design-notes/                # Historical design explorations
-│   ├── improvement.md, improvement-CoT.md
-│   ├── llm2-enhance.md
-│   ├── model-private-public.md
+│   ├── improvement.md, llm2-enhance.md
 │   ├── new-agents.md, new-agents-v4.md
 │   ├── routing-enhance.md
 │   └── user-feeback.md
@@ -232,7 +233,30 @@ Client → POST /api/v1/inference/batch
   10. Return JSON             — { summary, decisions, actionItems, metadata }
 ```
 
-### 3.3 Multipart inference (with file uploads)
+### 3.3 Passthrough mode (Standard Mode toggle)
+
+When admin enables "Standard Mode" via the admin dashboard, ALL requests bypass routing/refinement.
+Triggered by global config flag `app_config.passthrough_mode = true`.
+
+```
+Client → POST /api/v1/inference/generate
+  Same as JSON flow, except:
+
+  4b. Check global passthrough — configService.getPassthroughMode() (cached in-memory)
+  4c. If enabled → force routingState = 'passthrough'
+  9b. routeRequest() returns minimal decision (skill=fallback, no contract, no refinement)
+
+  11b. System prompt: "You are a helpful assistant. Respond in {lang}."
+       + FORMAT_INSTRUCTION (7 explicit markdown rules)
+
+  12b. NO few-shots injected
+  13c. Skip sequential reasoning
+  14d. NO verification/repair
+  15e. Audit with passthrough=true flag
+  16f. Chat UI shows "⚡ Standard Mode" banner (read-only)
+```
+
+### 3.4 Multipart inference (with file uploads)
 
 ```
 Same as JSON flow, with additions:
@@ -780,6 +804,8 @@ Convert binary Office formats (.doc, .ppt) that pure Node.js cannot parse. Deplo
 | `ROUTING_CLASSIFIER_TIMEOUT_MS` | 2000 | Classifier timeout |
 | `ROUTING_DEFAULT_FALLBACK_SCORE` | 2 | Default complexity on scoring failure |
 | `BATCH_MAX_PROMPT_LENGTH` | 262144 | Max prompt length for batch endpoint (256KB) |
+| `GHOSTMEET_API_KEY` | — | API key for M2M batch inference (timingSafeEqual) |
+| `BODY_LIMIT` | 10mb | JSON body parser limit (raised for long prompts) |
 | `MAX_SEQUENTIAL_STEPS` | 6 | Max steps in sequential reasoning plan |
 | `LARGE_DOCUMENT_THRESHOLD` | 50000 | Char threshold for map-reduce trigger |
 | `ORCHESTRATION_TIMEOUT_MS` | 120000 | Max wall-clock for orchestration |
@@ -944,6 +970,12 @@ Content-Type: application/json
 - **Fail-closed PII**: If masker throws, inference rejected (500). Never sends unmasked data. Applied per-step in sequential reasoning. Post-inference PII scan for batch endpoint.
 - **Graceful degradation**: Routing step failures fall back gracefully. Sequential reasoning falls back to single-shot on planner failure.
 - **API key auth**: Constant-time comparison via `timingSafeEqual`. Resolves to `ghostmeet` system user.
+- **Passthrough mode (Standard Mode)**: Admin-toggleable global setting that bypasses all routing/refinement/verification. Stored in `app_config` table with in-memory cache. Audit logs record `passthrough=true`. Chat UI shows read-only banner.
+- **Session preview from assistant response**: Session sidebar preview uses first assistant message (not user prompt) — better UX for document uploads where prompt is just "jelaskan dokumen ini".
+- **Markdown format instruction**: Manual/passthrough modes include explicit `FORMAT_INSTRUCTION` with 7 markdown rules in system prompt — guides model to produce clean markdown output.
+- **Emoji heading detection**: Frontend parser treats emoji-prefixed lines (🔹, ✅, etc.) as `<h3>` when the content looks like a title — catches non-standard heading patterns.
+- **List-aware heading closing**: When a `###` heading, `---` HR, or emoji heading appears inside a list context, the list is automatically closed before rendering the heading.
+- **Surrogate pair support**: Emoji detection regex uses the `u` flag for proper Unicode surrogate pair handling (SMP emojis like 🔹, 🏢).
 - **No full content logging**: Audit logs record metadata only.
 - **Sanitized errors**: Bedrock errors sanitized — no ARNs, request IDs, or stack traces.
 - **Pricing snapshots**: Model pricing captured at inference time for historical accuracy.

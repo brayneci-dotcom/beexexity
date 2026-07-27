@@ -1,0 +1,37 @@
+# Passthrough Mode — Tasks
+
+- [x] **Evaluate** — Requirements & design approved [Req 1-4]
+- [ ] **1. Add `'passthrough'` type** — `src/types/routing.types.ts` [Req 1]
+  - Add to `routingState` union
+  - Add `passthrough?: boolean` to `RoutingDecision`
+- [ ] **2. Add passthrough guard in routing engine** — `src/services/routing-engine.service.ts` [Req 1]
+  - New `if (input.routingState === 'passthrough')` block after manual guard
+  - Returns minimal decision: skill=fallback, refinedPrompt=original, flags=['passthrough']
+- [ ] **3. Create config service** — `src/services/config.service.ts` (NEW) [Req 2]
+  - `getPassthroughMode()` — reads from `app_config` table, cached in-memory
+  - `setPassthroughMode(value)` — upserts to `app_config`
+- [ ] **4. Add admin config endpoints** — `src/routes/admin.routes.ts` [Req 2]
+  - `GET /config` — returns all app_config values
+  - `PUT /config` — updates passthrough_mode (admin-only, validated)
+- [ ] **5. Wire passthrough in inference route** — `src/routes/inference.routes.ts` [Req 1, 2]
+  - Read `passthroughMode` from config service early in request
+  - If enabled → force `routingState = 'passthrough'` automatically
+  - On passthrough: skip system prompt construction, few-shots, verification, repair
+  - Emit routing SSE with `mode: 'passthrough'`
+- [ ] **6. Audit passthrough field** — `src/types/audit.types.ts` + `src/services/audit.service.ts` [Req 3]
+  - Add `passthrough?: boolean` to `AuditEntry`
+  - Add to INSERT params
+- [ ] **7. Migration 020** — `migrations/020_add_passthrough_flag.sql` [Req 3]
+  - `ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS passthrough BOOLEAN NOT NULL DEFAULT false;`
+- [ ] **8. Migration 021** — `migrations/021_app_config.sql` (NEW) [Req 2]
+  - `CREATE TABLE app_config (key VARCHAR(64) PRIMARY KEY, value JSONB NOT NULL)`
+  - Seed row: `passthrough_mode = false`
+- [ ] **9. Admin dashboard toggle** — `public/admin.html` [Req 2]
+  - Add "Passthrough Mode" toggle card
+  - GET current state on load, PUT on toggle
+- [ ] **10. Chat UI passthrough indicator** — `public/index.html` [Req 4]
+  - Fetch passthrough status on page load
+  - If enabled: show persistent "⚡ Standard Mode" badge
+  - Routing SSE: minimal display for passthrough
+- [ ] **11. Checkpoint — tests pass** — `npm test`
+- [ ] **12. Manual test** — toggle ON via admin, send request in chat, verify raw output vs normal

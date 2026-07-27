@@ -4,6 +4,7 @@ import { forcePasswordResetMiddleware } from '../middleware/password-reset.middl
 import { adminMiddleware } from '../middleware/admin.middleware.js';
 import { createUser, updateUser, upsertUser } from '../services/auth.service.js';
 import { getCostReport } from '../services/cost-reporting.service.js';
+import { configService } from '../services/config.service.js';
 import { ALLOWED_MODELS } from '../types/inference.types.js';
 import { query } from '../config/database.js';
 import { TokenPayload } from '../types/auth.types.js';
@@ -485,6 +486,45 @@ router.post('/discovered-roles/deploy', async (req: Request, res: Response): Pro
     );
     res.json({ ok: true });
   } catch { res.status(500).json({ error: 'Failed to deploy role' }); }
+});
+
+/**
+ * GET /api/v1/admin/config
+ * Return current app configuration values.
+ */
+router.get('/config', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const result = await query<{ key: string; value: string }>('SELECT key, value FROM app_config');
+    const config: Record<string, unknown> = {};
+    for (const row of result.rows) {
+      try { config[row.key] = JSON.parse(row.value); } catch { config[row.key] = row.value; }
+    }
+    res.json(config);
+  } catch {
+    res.status(500).json({ error: 'FAILED_TO_LOAD_CONFIG', message: 'Failed to load configuration' });
+  }
+});
+
+/**
+ * PUT /api/v1/admin/config
+ * Update app configuration values.
+ */
+router.put('/config', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { passthroughMode } = req.body;
+
+    if (passthroughMode !== undefined) {
+      if (typeof passthroughMode !== 'boolean') {
+        res.status(400).json({ error: 'VALIDATION_ERROR', message: 'passthroughMode must be a boolean' });
+        return;
+      }
+      await configService.setPassthroughMode(passthroughMode);
+    }
+
+    res.json({ ok: true });
+  } catch {
+    res.status(500).json({ error: 'FAILED_TO_UPDATE_CONFIG', message: 'Failed to update configuration' });
+  }
 });
 
 export default router;

@@ -21,7 +21,7 @@ export interface AuditEntry {
   isMultimodal?: boolean;
 
   // Routing metadata fields
-  routingState?: 'auto' | 'manual';
+  routingState?: 'auto' | 'manual' | 'passthrough';
   complexityScore?: number;
   routingReasonCode?: string;
   reasoningSummary?: string;
@@ -76,4 +76,7 @@ export interface AuditEntry {
   billedUserId?: string;
   billedGroup?: string;
   apiKeyUsed?: boolean;
+
+  // Passthrough mode flag
+  passthrough?: boolean;
 }

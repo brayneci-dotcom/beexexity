@@ -74,6 +74,7 @@ describe('AuditService', () => {
           null, // billedUserId
           null, // billedGroup
           false, // apiKeyUsed
+          false, // passthrough
         ],
       );
     });
@@ -163,7 +164,7 @@ describe('AuditService', () => {
 
       // Verify the params array only contains the expected metadata fields
       const params = mockedQuery.mock.calls[0][1] as unknown[];
-      expect(params).toHaveLength(37);
+      expect(params).toHaveLength(38);
       expect(params).toEqual([
         validEntry.timestamp,
         validEntry.userId,
@@ -202,6 +203,7 @@ describe('AuditService', () => {
         null, // billedUserId
         null, // billedGroup
         false, // apiKeyUsed
+        false, // passthrough
       ]);
     });
 

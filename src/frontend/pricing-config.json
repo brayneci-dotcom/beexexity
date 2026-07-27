@@ -23,7 +23,7 @@
       "outputPricePer1MTokens": 0.91
     },
     "qwen.qwen3-32b-v1:0": {
-      "displayName": "Qwen3 32B (Default)",
+      "displayName": "Qwen3 32B",
       "inputPricePer1MTokens": 0.16,
       "outputPricePer1MTokens": 0.62
     },

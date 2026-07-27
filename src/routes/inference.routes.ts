@@ -11,6 +11,7 @@ import { extractDocumentText } from '../services/document-extractor.service.js';
 import { processImages } from '../services/image-processor.service.js';
 import { buildContentBlocks } from '../services/content-builder.service.js';
 import { auditService } from '../services/audit.service.js';
+import { configService } from '../services/config.service.js';
 import { routeRequest, verifyOutput, getDefaultFormatTemplate } from '../services/routing-engine.service.js';
 import {
   getActiveSession,
@@ -530,13 +531,41 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
     const contextOutput = buildContext(historyMessages, maskedPrompt, contextConfig);
 
     // 9. Determine routing state and execute routing logic
-    const routingState: 'auto' | 'manual' = (!modelId || modelId.trim().length === 0) ? 'auto' : 'manual';
+    // Check global passthrough mode (cached in-memory, fast path)
+    const globalPassthrough = await configService.getPassthroughMode();
+    const routingState: 'auto' | 'manual' | 'passthrough' =
+      globalPassthrough ? 'passthrough' :
+      (!modelId || modelId.trim().length === 0) ? 'auto' : 'manual';
 
     let executedModelId: string = validatedModelId;
     let effectivePrompt: string = maskedPrompt;
+    let isPassthrough = routingState === 'passthrough';
+
+    // Construct routing decision once, used in both auto and manual paths below
     let routingDecision: RoutingDecision | undefined;
 
-    if (routingState === 'auto') {
+    if (routingState === 'passthrough') {
+      // Passthrough: no routing, no refinement, minimal decision
+      executedModelId = validatedModelId || 'qwen.qwen3-32b-v1:0';
+      effectivePrompt = maskedPrompt;
+      routingDecision = {
+        executedModelId,
+        routingState: 'passthrough',
+        complexityScore: 0,
+        scoreBand: 'direct-answer',
+        confidence: 1.0,
+        refinedPrompt: maskedPrompt,
+        routingReasonCode: 'passthrough',
+        reasoningSummary: 'Passthrough mode — raw prompt, no routing',
+        modalityFlags: { textOnly: true, documentText: false, image: false, mixed: false },
+        manualOverrideApplied: false,
+        passthrough: true,
+        flags: ['passthrough'],
+        skill: 'fallback',
+        contract: null,
+        sessionContext: maskedPrompt.slice(0, 120), // first 120 chars as preview
+      };
+    } else if (routingState === 'auto') {
       // Use routing_payload from contextOutput as conversation context
       const conversationContext = contextOutput.routing_payload;
 
@@ -671,10 +700,16 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
       role: 'user',
       content: [{ text: effectivePrompt }],
     };
-    // Inject skill-specific few-shot examples for format adherence
-    const fewShotPairs = getFewShotExamples(routingDecision?.skill || 'fallback');
-    const conversationMessages: BedrockMessage[] = [...inferenceMessages, ...fewShotPairs, currentUserMessage];
+    // Inject skill-specific few-shot examples for format adherence (skip in passthrough)
+    let conversationMessages: BedrockMessage[];
+    if (isPassthrough) {
+      conversationMessages = [...inferenceMessages, currentUserMessage];
+    } else {
+      const fewShotPairs = getFewShotExamples(routingDecision?.skill || 'fallback');
+      conversationMessages = [...inferenceMessages, ...fewShotPairs, currentUserMessage];
+    }
 
+    const passthroughRole = 'a helpful assistant';
     const conversationRequest: ConversationInferenceRequest = {
       messages: conversationMessages,
       modelId: resolveModelForInvocation(executedModelId),
@@ -686,11 +721,36 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
         const skill = routingDecision?.skill || 'fallback';
         // Use deterministic template if available (preferred), fall back to legacy dynamic output_format
         const formatTemplate = getDefaultFormatTemplate(skill) || routingDecision?.contract?.output_format;
-        let s = 'You are ' + role + '. Respond in ' + lang + '.';
-        if (bi) s += '\n\n' + bi;
-        if (formatTemplate) {
+
+        // Start with a clear instruction or role identity, then language
+        let s: string;
+        if (isPassthrough) {
+          s = 'You are ' + passthroughRole + '. Respond in ' + lang + '.';
+        } else {
+          s = 'You are ' + role + '. Respond in ' + lang + '.';
+        }
+
+        // Markdown formatting instruction — explicit, works for both EN and ID
+        const FORMAT_INSTRUCTION = [
+          'IMPORTANT FORMAT RULES:',
+          '- Use ## and ### for section headings (not just bold or emoji)',
+          '- Use - for bullet lists',
+          '- Use 1. for numbered lists',
+          '- Use ``` for code blocks with language label',
+          '- Use **bold** for emphasis, *italic* for secondary',
+          '- Use > for quotes',
+          '- Use |---| for tables',
+        ].join('\n');
+
+        if (isPassthrough || !formatTemplate) {
+          s += '\n\n' + FORMAT_INSTRUCTION;
+        } else {
           s += '\n\nFollow this output structure:\n' + formatTemplate;
         }
+
+        // Append behavioral instructions if present
+        if (bi) s += '\n\n' + bi;
+
         return s;
       })(),
       ...(inferenceConfig && {
@@ -711,7 +771,8 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
       let result: ConversationInferenceResult;
 
       // Unified dispatch: sequential reasoning for complex queries (≥4), single-shot otherwise
-      if ((routingDecision?.complexityScore ?? 0) >= 4 && routingDecision?.routingState !== 'manual') {
+      // Skip sequential reasoning in passthrough mode
+      if ((routingDecision?.complexityScore ?? 0) >= 4 && routingDecision?.routingState !== 'manual' && !isPassthrough) {
         const seqInput = {
           originalPrompt: maskedPrompt,
           refinedPrompt: effectivePrompt,
@@ -747,8 +808,8 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
       // generate() already emitted done internally. This ensures repair results
       // arrive BEFORE done on the frontend so they can be processed.
 
-      // 12. Run verifier if we have a contract
-      if (routingDecision?.contract && result.assistantText) {
+      // 12. Run verifier if we have a contract (skip in passthrough)
+      if (!isPassthrough && routingDecision?.contract && result.assistantText) {
         try {
           const verification = verifyOutput(routingDecision.contract, result.assistantText);
           res.write(`event: verification\ndata: ${JSON.stringify(verification)}\n\n`);
@@ -812,7 +873,7 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
       // Emit done event after verifier + semantic repair so repair results
       // arrive BEFORE done on the frontend. generate() already emitted done
       // internally — sequential reasoning path bypassed it and needs it here.
-      if ((routingDecision?.complexityScore ?? 0) >= 4 && routingDecision?.routingState !== 'manual') {
+      if (!isPassthrough && (routingDecision?.complexityScore ?? 0) >= 4 && routingDecision?.routingState !== 'manual') {
         res.write('event: done\ndata: {}\n\n');
       }
 
@@ -850,6 +911,7 @@ async function handleJsonInference(req: Request, res: Response): Promise<void> {
         outputTokens: result.outputTokens,
         status: 'success',
         durationMs,
+        passthrough: isPassthrough || undefined,
         routingState: routingDecision?.routingState,
         complexityScore: routingDecision?.complexityScore,
         routingReasonCode: routingDecision?.routingReasonCode,

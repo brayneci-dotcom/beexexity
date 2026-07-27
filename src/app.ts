@@ -31,7 +31,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
   maxAge: 86400,
 }));
-app.use(express.json({ limit: '10kb' })); // limit body size to prevent abuse
+app.use(express.json({ limit: '10mb' })); // limit body size to prevent abuse
 app.use(apiRateLimit);
 
 // --- Health Check (database connectivity test) ---
@@ -51,6 +51,21 @@ app.get('/api/v1/health', async (_req, res) => {
       error: (err as Error).message,
       timestamp: new Date().toISOString(),
     });
+  }
+});
+
+/**
+ * GET /api/v1/config/passthrough
+ * Public endpoint — returns whether passthrough mode is globally active.
+ * Used by the chat UI to show a read-only badge.
+ */
+app.get('/api/v1/config/passthrough', async (_req, res) => {
+  try {
+    const { configService } = await import('./services/config.service.js');
+    const enabled = await configService.getPassthroughMode();
+    res.json({ enabled });
+  } catch {
+    res.json({ enabled: false });
   }
 });
 

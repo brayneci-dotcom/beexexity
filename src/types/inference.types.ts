@@ -61,7 +61,7 @@ export interface RoutingMetadataEvent {
   refinedPrompt?: string;
   complexityScore?: number;
   scoreBand?: string;
-  routingState: 'auto' | 'manual';
+  routingState: 'auto' | 'manual' | 'passthrough';
   executedModelId: string;
   routingReasonCode: string;
   reasoningSummary: string;

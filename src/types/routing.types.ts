@@ -69,7 +69,7 @@ export interface RoutingInput {
   maskedDocumentText?: string;      // Extracted + masked doc text
   hasImages: boolean;
   imageModelRequired: boolean;
-  routingState: 'auto' | 'manual';
+  routingState: 'auto' | 'manual' | 'passthrough';
   manualModelId?: string;           // Set when routingState = 'manual'
   userId: string;
   conversationContext?: string;     // Compact recent-turns text for scoring (prior user messages, capped)
@@ -81,7 +81,7 @@ export interface RoutingInput {
  */
 export interface RoutingDecision {
   executedModelId: string;
-  routingState: 'auto' | 'manual';
+  routingState: 'auto' | 'manual' | 'passthrough';
   complexityScore: number;          // 1-5
   scoreBand: 'direct-answer' | 'moderate-reasoning' | 'advanced-reasoning';
   confidence: number;               // 0.0-1.0
@@ -93,6 +93,8 @@ export interface RoutingDecision {
   flags: string[];                  // e.g. ['refinement-failed']
   skill: SkillType;                 // classified request type for transparency
   contract: PromptContract | null;  // structured contract from refinement
+  /** True if passthrough mode was active (no routing/refinement). */
+  passthrough?: boolean;
   /** Detected language from unified classify+score (e.g. "indonesian", "english"). */
   detectedLanguage?: string;
   /** Short classifier reasoning for session row preview. */
@@ -136,7 +138,7 @@ export interface PolicyInput {
   complexityScore: number;
   hasImages: boolean;
   isLongContext: boolean;
-  routingState: 'auto' | 'manual';
+  routingState: 'auto' | 'manual' | 'passthrough';
   manualModelId?: string;
 }
 

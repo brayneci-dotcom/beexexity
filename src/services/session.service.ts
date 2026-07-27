@@ -378,7 +378,7 @@ export async function listUserSessions(
        COALESCE(st.total_input_tokens, '0')  AS total_input_tokens,
        COALESCE(st.total_output_tokens, '0') AS total_output_tokens,
        COALESCE(st.request_count, '0')       AS request_count,
-       COALESCE(al.session_context, rt.routing_context, rt.routing_intent, '') AS preview
+       COALESCE(al.session_context, rt.routing_context, rt.routing_intent, am.sanitized_content, '') AS preview
      FROM sessions s
      LEFT JOIN LATERAL (
        SELECT session_context, routing_context, routing_intent
@@ -396,6 +396,13 @@ export async function listUserSessions(
        ORDER BY timestamp DESC
        LIMIT 1
      ) al ON true
+     LEFT JOIN LATERAL (
+       SELECT sanitized_content
+       FROM messages
+       WHERE session_id = s.id AND role = 'assistant'
+       ORDER BY created_at ASC
+       LIMIT 1
+     ) am ON true
      LEFT JOIN LATERAL (
        SELECT
          COALESCE(SUM(input_tokens), 0)  AS total_input_tokens,

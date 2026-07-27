@@ -1013,6 +1013,28 @@ export async function routeRequest(input: RoutingInput): Promise<RoutingDecision
     };
   }
 
+  // Passthrough state: skip all routing, use minimal system prompt
+  if (input.routingState === 'passthrough') {
+    const modelId = input.manualModelId || 'qwen.qwen3-32b-v1:0';
+    return {
+      executedModelId: modelId,
+      routingState: 'passthrough',
+      complexityScore: config.routing.defaultFallbackScore,
+      scoreBand: scoreToBand(config.routing.defaultFallbackScore),
+      confidence: 1.0,
+      refinedPrompt: input.originalPrompt,
+      routingReasonCode: 'passthrough',
+      reasoningSummary: `Passthrough mode — raw prompt, no routing`,
+      modalityFlags,
+      manualOverrideApplied: false,
+      passthrough: true,
+      flags: ['passthrough'],
+      skill: 'fallback',
+      contract: null,
+      sessionContext: input.originalPrompt.slice(0, 120), // first 120 chars as preview
+    };
+  }
+
   // Auto state: unified classify+score → refine → route
   let refinedPrompt: string = input.originalPrompt;
   let complexityScore: number = config.routing.defaultFallbackScore;

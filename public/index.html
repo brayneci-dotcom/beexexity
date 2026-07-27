@@ -1281,6 +1281,21 @@
       display: block;
     }
 
+    .passthrough-banner {
+      display: none;
+      background: #457b9d;
+      color: #fff;
+      text-align: center;
+      padding: 0.35rem 1rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+      z-index: 99;
+    }
+
+    .passthrough-banner.visible {
+      display: block;
+    }
+
     /* Toast notification */
     .toast-notification {
       position: fixed;
@@ -1787,6 +1802,7 @@
 
 
     <div class="degraded-banner" id="degraded-banner">Chat history save failed. Future context may be lost.</div>
+    <div class="passthrough-banner" id="passthrough-banner">⚡ Standard Mode — routing &amp; refinement bypassed</div>
 
     <div class="messages" id="messages">
       <div class="empty-state">
@@ -2009,19 +2025,23 @@ async function showChatScreen() {
     const select = document.getElementById('model-select');
     select.innerHTML = '';
 
-    // Add "Auto (recommended)" as the first/default option
-    const autoOpt = document.createElement('option');
-    autoOpt.value = '';
-    autoOpt.textContent = 'Auto';
-    autoOpt.selected = true;
-    select.appendChild(autoOpt);
-
-    data.models.forEach(m => {
+    // Set qwen3-235b as default model, keep Auto as an option at the end
+    const defaultModelId = 'qwen.qwen3-235b-a22b-2507-v1:0';
+    const sorted = [...data.models].sort((a, b) =>
+      a.modelId === defaultModelId ? -1 : b.modelId === defaultModelId ? 1 : 0
+    );
+    sorted.forEach(m => {
       const opt = document.createElement('option');
       opt.value = m.modelId;
       opt.textContent = m.displayName;
+      if (m.modelId === defaultModelId) opt.selected = true;
       select.appendChild(opt);
     });
+    // Add Auto as the last option
+    const autoOpt = document.createElement('option');
+    autoOpt.value = '';
+    autoOpt.textContent = 'Auto';
+    select.appendChild(autoOpt);
 
     pricingConfig = { models: {} };
     data.models.forEach(m => {
@@ -2045,6 +2065,9 @@ async function showChatScreen() {
 
   // Load session list into sidebar
   loadSessions(1);
+
+  // Fetch passthrough mode status for read-only indicator
+  checkPassthroughStatus();
 
   document.getElementById('prompt-input').focus();
 }
@@ -2299,7 +2322,8 @@ async function handleSend() {
               startedGenerating = true;
               if (scopedStepStatus) scopedStepStatus.innerHTML = '<span style=\'color:var(--accent)\'>🤖 Generating response...</span>';
             }
-            assistantEl.querySelector('.assistant-text-content').innerHTML = formatMessage(sanitizePartialMarkdown(fullText));
+            const contentEl = assistantEl.querySelector('.assistant-text-content');
+            if (contentEl) contentEl.innerHTML = formatMessage(sanitizePartialMarkdown(fullText));
             scrollToBottom();
           } else if (eventType === 'session') {
             // Store the session ID from the server
@@ -2544,7 +2568,8 @@ async function handleSend() {
                 startedGenerating = true;
                 if (scopedStepStatus) scopedStepStatus.innerHTML += '<br><span style=\'color:var(--accent)\'>🔄 Combining results...</span>';
               }
-              assistantEl.querySelector('.assistant-text-content').innerHTML = formatMessage(fullText);
+              const contentEl = assistantEl.querySelector('.assistant-text-content');
+              if (contentEl) contentEl.innerHTML = formatMessage(fullText);
               scrollToBottom();
             }
           } else if (eventType === 'verification') {
@@ -2574,7 +2599,7 @@ async function handleSend() {
             }
           } else if (eventType === 'done') {
             // Inference complete — final render without sanitization
-            try { assistantEl.querySelector('.assistant-text-content').innerHTML = formatMessage(fullText); } catch (e) { console.error('[ui] Render error:', e); }
+            try { const contentEl = assistantEl.querySelector('.assistant-text-content'); if (contentEl) contentEl.innerHTML = formatMessage(fullText); } catch (e) { console.error('[ui] Render error:', e); }
             if (scopedStepStatus) {
               const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
               scopedStepStatus.innerHTML = '<span style=\'color:var(--text-tertiary)\'>✅ Done (' + elapsed + 's)</span>';
@@ -2818,14 +2843,19 @@ function formatMarkdown(text) {
     const isUnorderedItem = /^\s*[\-\*]\s+/.test(line);
     const isOrderedItem = /^\s*\d+\.\s+/.test(line);
 
-    // Section heading (bracketed, all-caps, or follow-up) — close any open list and promote
-    if (listStack.length > 0 && (/^(\d+\.\s*)?[A-Z][A-Z\s]{2,}$/.test(line.trim()) || /^\[.+\]$/.test(line.trim()) || /^Follow.up/i.test(line.trim()) || /^[A-Z][a-zA-Z]+[\s\w-]{10,}(?<!\.)$/.test(line.trim()))) {
+    // Before list continuation check: close list if line is a heading, HR, or emoji section
+    const trimmedLine = line.trimStart();
+    const isHR = /^(---|\*\*\*|___)\s*$/.test(trimmedLine);
+    const isMDHeading = /^#{1,6}(?:\s|$)/.test(trimmedLine);
+    const isEmojiHeading = /^([^\x00-\x7F])\s*(.+)$/u.test(trimmedLine);
+    const isSectionHeading = /^(\d+\.\s*)?[A-Z][A-Z\s]{2,}$/.test(trimmedLine) || /^\[.+\]$/.test(trimmedLine) || /^[A-Z][a-zA-Z]+[\s\w-]{10,}(?<!\.)$/.test(trimmedLine);
+
+    if (listStack.length > 0 && (isHR || isMDHeading || isEmojiHeading || isSectionHeading)) {
       while (listStack.length > 0) {
         const popped = listStack.pop();
         html += '</li></' + popped.type + '>';
       }
-      html += `<div style="margin: 1.5rem 0 0.5rem;font-weight:800;font-size:1.15rem;color:var(--text-primary);text-transform:uppercase;letter-spacing:0.04em;border-bottom:2px solid var(--accent);padding-bottom:0.3rem">${inlineFormat(line.trim())}</div>`;
-      continue;
+      // Don't continue — let the line fall through to heading/HR checks below
     }
 
     if (listStack.length > 0 && !isUnorderedItem && !isOrderedItem && line.trim() !== '') {
@@ -2835,18 +2865,27 @@ function formatMarkdown(text) {
       html += '<div style="margin:0 0 0.5rem 1.5rem">' + inlineFormat(line) + '</div>';
       continue;
     }
-    
-    // Headers
-    if (/^#{1,6}\s/.test(line)) {
-      const level = line.match(/^(#{1,6})\s/)[1].length;
-      const content = line.replace(/^#{1,6}\s+/, '');
+
+    // Emoji/symbol-prefixed headings: 🔹 1. Ringkasan, ✅ Kesimpulan, 🟩 Langkah, etc.
+    const nonAsciiMatch = trimmedLine.match(/^([^\x00-\x7F])\s*(.+)$/u);
+    if (nonAsciiMatch) {
+      const headContent = nonAsciiMatch[2];
+      if (/^\d+[\.\)]/.test(headContent) || /^[A-Z][A-Z\s]{3,}/.test(headContent) || (headContent.length > 15 && /^[A-Za-z]/.test(headContent))) {
+        html += `<h3 style="margin:1.25rem 0 0.5rem;font-weight:600;scroll-margin-top:80px;font-size:1.1rem;">${inlineFormat(trimmedLine)}</h3>`;
+        continue;
+      }
+    }
+
+    if (isMDHeading) {
+      const level = trimmedLine.match(/^(#{1,6})(?:\s|$)/)[1].length;
+      const content = trimmedLine.replace(/^#{1,6}(?:\s+|$)/, '');
       const anchor = content.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
       html += `<h${level} id="${anchor}" style="margin: 1.25rem 0 0.5rem; font-weight:600;scroll-margin-top:80px;font-size:${1.4 - level * 0.1}rem;">${inlineFormat(content)}</h${level}>`;
       continue;
     }
-    
+
     // Horizontal rule
-    if (/^(---|\*\*\*|___)\s*$/.test(line)) {
+    if (/^(---|\*\*\*|___)\s*$/.test(line.trim())) {
       html += '<hr style="border: none; border-top: 1px solid var(--border); margin: 1rem 0;">';
       continue;
     }
@@ -3093,8 +3132,15 @@ function sanitizePartialMarkdown(text) {
   if ((codeMatch || []).length % 2 !== 0) {
     text = text.replace(/`([^`]*)$/, '$1');
   }
+  // Unclosed code fence (```) — count lines starting with ```
+  // Same detection logic as formatMarkdown (line.startsWith('```'))
+  const fenceCount = (text.match(/^```/gm) || []).length;
+  if (fenceCount % 2 !== 0) {
+    text += '\n```';
+  }
   return text;
 }
+
 
 // --- Cost Calculation ---
 function calculateCost(modelId, inputTokens, outputTokens) {
@@ -3204,6 +3250,20 @@ function createCopyButton(messageEl) {
 function scrollToBottom() {
   const msgs = document.getElementById('messages');
   msgs.scrollTop = msgs.scrollHeight;
+}
+
+/** Fetch passthrough status and toggle the read-only banner. */
+async function checkPassthroughStatus() {
+  try {
+    const res = await fetch(`${API_BASE}/config/passthrough`);
+    const data = await res.json();
+    const banner = document.getElementById('passthrough-banner');
+    if (banner) {
+      banner.classList.toggle('visible', data.enabled === true);
+    }
+  } catch {
+    // Silent — passthrough indicator is non-critical
+  }
 }
 
 function copyAssistantMessage(btn, messageEl) {

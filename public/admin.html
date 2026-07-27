@@ -55,6 +55,9 @@
     .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
     .tab-content { display: none; padding: 1.5rem; max-width: 900px; }
     .tab-content.active { display: block; }
+    .toggle-slider::before { content:""; position:absolute; height:18px; width:18px; left:3px; bottom:3px; background:#fff; border-radius:50%; transition:0.2s; }
+    #passthrough-toggle:checked + .toggle-slider { background: #e63946; }
+    #passthrough-toggle:checked + .toggle-slider::before { transform: translateX(20px); }
 
     /* Forms */
     label { display: block; font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 0.25rem; }
@@ -153,6 +156,7 @@
     <button class="tab-btn" data-tab="bulk">Bulk Upload</button>
     <button class="tab-btn" data-tab="cost">Usage & Cost</button>
     <button class="tab-btn" data-tab="settings">Account Settings</button>
+    <button class="tab-btn" data-tab="config">Config</button>
     <button class="tab-btn" data-tab="models">Model Access</button>
     <button class="tab-btn" data-tab="feedback">Feedback Reports</button>
     <button class="tab-btn" data-tab="discovered">Discovered Roles</button>
@@ -246,7 +250,25 @@
     </div>
   </div>
 
-  <!-- Tab 5: Model Access -->
+  <!-- Tab 5: Config -->
+  <div class="tab-content" id="tab-config">
+    <h3>Application Configuration</h3>
+    <div style="max-width:500px">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:1rem 0;border-bottom:1px solid var(--border)">
+        <div>
+          <div style="font-weight:600;margin-bottom:0.25rem">Passthrough Mode</div>
+          <div style="font-size:0.85rem;color:var(--text-tertiary)">Bypass all routing, skill classification, and prompt refinement. Sends raw prompt directly to the model with a minimal system prompt. Useful for evaluating base model output.</div>
+        </div>
+        <label class="toggle-switch" style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;margin-left:1rem">
+          <input type="checkbox" id="passthrough-toggle" onchange="togglePassthrough(this.checked)" style="opacity:0;width:0;height:0">
+          <span class="toggle-slider" style="position:absolute;cursor:pointer;inset:0;background:var(--toggle-bg,#555);border-radius:24px;transition:0.2s"></span>
+        </label>
+      </div>
+      <div id="passthrough-status" style="margin-top:0.75rem;font-size:0.85rem;color:var(--text-tertiary)">Loading...</div>
+    </div>
+  </div>
+
+  <!-- Tab 6: Model Access -->
   <div class="tab-content" id="tab-models">
     <h3>Model Access Management</h3>
     <p style="color:var(--text-tertiary);margin-bottom:1rem">Manage which users can access private models. Models with no whitelisted users are public (all users can access).</p>
@@ -833,8 +855,44 @@
       } catch (e) { showToast(e.message, 'error'); }
     }
 
-    // Load cost report on first render
+    // ─── Tab 5: Config ──────────────────────────────────────────────
+    async function loadConfig() {
+      const statusEl = document.getElementById('passthrough-status');
+      const toggle = document.getElementById('passthrough-toggle');
+      try {
+        const config = await api(`${API_BASE}/admin/config`);
+        const enabled = config.passthrough_mode === true;
+        toggle.checked = enabled;
+        statusEl.textContent = enabled
+          ? '⚡ Passthrough mode is ACTIVE — all requests bypass routing'
+          : 'Routing engine is enabled (normal mode)';
+      } catch (e) {
+        statusEl.textContent = 'Failed to load config: ' + e.message;
+      }
+    }
+
+    async function togglePassthrough(enabled) {
+      const statusEl = document.getElementById('passthrough-status');
+      statusEl.textContent = enabled ? 'Enabling passthrough...' : 'Disabling passthrough...';
+      try {
+        await api(`${API_BASE}/admin/config`, {
+          method: 'PUT',
+          body: JSON.stringify({ passthroughMode: enabled }),
+        });
+        statusEl.textContent = enabled
+          ? '⚡ Passthrough mode is ACTIVE — all requests bypass routing'
+          : 'Routing engine is enabled (normal mode)';
+        showToast(enabled ? 'Passthrough mode enabled' : 'Passthrough mode disabled');
+      } catch (e) {
+        document.getElementById('passthrough-toggle').checked = !enabled;
+        statusEl.textContent = 'Failed: ' + e.message;
+        showToast('Failed to update config', 'error');
+      }
+    }
+
+    // Load cost report + config on first render
     setTimeout(loadCostReport, 100);
+    setTimeout(loadConfig, 200);
   </script>
 </body>
 </html>
