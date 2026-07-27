@@ -10,7 +10,7 @@ import type { ModalityFlags } from './inference.types.js';
 
 /**
  * Skill type for the hybrid router — classifies user requests into one of
- * 19 skills across 6 groups to select a skill-specific refinement prompt.
+ * 22 skills across 6 groups to select a skill-specific refinement prompt.
  */
 export type SkillType =
   // Generation
@@ -20,7 +20,7 @@ export type SkillType =
   // Interaction
   | 'roleplay' | 'logic_math' | 'planning_strategy' | 'document_analysis'
   // Enterprise
-  | 'requirement_generation' | 'compliance_pre_assessment' | 'risk_analyst' | 'process_optimization' | 'credit_analyst'
+  | 'requirement_generation' | 'compliance_pre_assessment' | 'risk_analyst' | 'process_optimization' | 'credit_analyst' | 'meeting_summary'
   // Engineering
   | 'code' | 'log_troubleshooting' | 'data_analysis' | 'cloud_security' | 'it_specialist' | 'fallback';
 
@@ -29,7 +29,7 @@ export const ALL_SKILLS: SkillType[] = [
   'business_writing', 'creative_writing', 'brainstorming', 'prompt_optimizer',
   'summarization', 'translation', 'data_transformation', 'editing',
   'roleplay', 'logic_math', 'planning_strategy', 'document_analysis',
-  'requirement_generation', 'compliance_pre_assessment', 'risk_analyst', 'process_optimization', 'credit_analyst',
+  'requirement_generation', 'compliance_pre_assessment', 'risk_analyst', 'process_optimization', 'credit_analyst', 'meeting_summary',
   'code', 'log_troubleshooting', 'data_analysis', 'cloud_security', 'it_specialist', 'fallback',
 ];
 

@@ -39,6 +39,7 @@ export const SKILL_TO_ROLE: Record<SkillType, string> = {
   data_analysis: 'Data Insights & Statistical Analyst',
   cloud_security: 'Cloud Security Engineer',
   credit_analyst: 'Ahli Kredit dan Keuangan',
+  meeting_summary: 'Executive Meeting Analyst & Summarizer',
   it_specialist: 'Spesialis Teknologi Informasi',
 
   // Fallback (explicit, not "general")

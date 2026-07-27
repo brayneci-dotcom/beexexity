@@ -68,6 +68,12 @@ describe('AuditService', () => {
           null, // orchestrationMeta is undefined → null
           null, // orchestrationGroupId is undefined → null
           null, // orchestrationStepOrder is undefined → null
+          null, // routingContext
+          null, // routingIntent
+          null, // sessionContext
+          null, // billedUserId
+          null, // billedGroup
+          false, // apiKeyUsed
         ],
       );
     });
@@ -157,7 +163,7 @@ describe('AuditService', () => {
 
       // Verify the params array only contains the expected metadata fields
       const params = mockedQuery.mock.calls[0][1] as unknown[];
-      expect(params).toHaveLength(33);
+      expect(params).toHaveLength(37);
       expect(params).toEqual([
         validEntry.timestamp,
         validEntry.userId,
@@ -190,6 +196,12 @@ describe('AuditService', () => {
           null, // orchestrationMeta is undefined → null
         null, // orchestrationGroupId
         null, // orchestrationStepOrder
+        null, // routingContext
+        null, // routingIntent
+        null, // sessionContext
+        null, // billedUserId
+        null, // billedGroup
+        false, // apiKeyUsed
       ]);
     });
 

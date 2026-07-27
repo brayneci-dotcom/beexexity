@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
+import { timingSafeEqual } from 'node:crypto';
 import { verifyToken } from '../services/auth.service.js';
 import { TokenPayload } from '../types/auth.types.js';
+import { config } from '../config/index.js';
 
 /**
  * Extend Express Request to include the decoded user payload.
@@ -66,6 +68,58 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
       message,
     });
   }
+}
+
+/**
+ * API Key authentication middleware for machine-to-machine calls.
+ * Validates X-API-Key header via constant-time comparison.
+ * Resolves to a "ghostmeet" system user for audit attribution.
+ *
+ * Used by the batch inference endpoint (GhostMeet → beexexity).
+ */
+export function apiKeyAuthMiddleware(req: Request, res: Response, next: NextFunction): void {
+  const apiKey = req.headers['x-api-key'];
+
+  if (!apiKey || typeof apiKey !== 'string' || apiKey.length === 0) {
+    res.status(401).json({
+      error: 'MISSING_API_KEY',
+      message: 'X-API-Key header is required',
+    });
+    return;
+  }
+
+  const configuredKey = config.auth.apiKey;
+  if (!configuredKey) {
+    console.error('[api-key-auth] GHOSTMEET_API_KEY not configured');
+    res.status(500).json({
+      error: 'CONFIGURATION_ERROR',
+      message: 'API key authentication is not configured',
+    });
+    return;
+  }
+
+  const keyBuffer = Buffer.from(apiKey);
+  const expectedBuffer = Buffer.from(configuredKey);
+
+  if (keyBuffer.length !== expectedBuffer.length || !timingSafeEqual(keyBuffer, expectedBuffer)) {
+    res.status(401).json({
+      error: 'INVALID_API_KEY',
+      message: 'Invalid API key',
+    });
+    return;
+  }
+
+  // Resolve to ghostmeet system user for audit attribution
+  const now = Math.floor(Date.now() / 1000);
+  req.user = {
+    sub: '00000000-0000-0000-0000-000000000000', // ghostmeet system user
+    username: 'ghostmeet',
+    role: 'user',
+    iat: now,
+    exp: now + 3600,
+  };
+
+  next();
 }
 
 /**

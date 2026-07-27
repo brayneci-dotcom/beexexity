@@ -71,4 +71,9 @@ export interface AuditEntry {
   // Sequential reasoning orchestration fields
   orchestrationGroupId?: string;
   orchestrationStepOrder?: number;
+
+  // Billing context for machine-to-machine batch inference
+  billedUserId?: string;
+  billedGroup?: string;
+  apiKeyUsed?: boolean;
 }

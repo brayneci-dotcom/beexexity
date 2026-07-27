@@ -41,6 +41,11 @@
       "displayName": "GLM-5",
       "inputPricePer1MTokens": 1.20,
       "outputPricePer1MTokens": 3.84
+    },
+    "deepseek.v3.2": {
+      "displayName": "DeepSeek V3.2",
+      "inputPricePer1MTokens": 0.74,
+      "outputPricePer1MTokens": 2.22
     }
   }
 }

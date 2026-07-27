@@ -160,6 +160,14 @@ const FEW_SHOTS: Partial<Record<SkillType, FewShotEntry[]>> = {
     },
   ],
 
+  meeting_summary: [
+    {
+      user: 'Summarize this meeting transcript:\n\nBapak [NAMA_1]: Agenda hari ini membahas timeline project.\nIbu [NAMA_2]: Target launch Q4.\nBapak [NAMA_1]: Setuju. [NAMA_3] siapkan dokumen requirement.',
+      assistant:
+        '{"summary": "Meeting membahas timeline project. Launch Q4 disetujui.", "decisions": ["Timeline launch Q4 disetujui"], "actionItems": [{"task": "Siapkan dokumen requirement", "owner": "[NAMA_3]"}]}',
+    },
+  ],
+
   it_specialist: [
     {
       user: 'analisis sistem pembayaran BI-FAST',

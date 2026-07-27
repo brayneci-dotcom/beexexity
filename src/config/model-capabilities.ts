@@ -52,6 +52,12 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilityEntry> = {
     displayName: 'GLM-5',
     maxOutputTokens: 8192,
   },
+  'deepseek.v3.2': {
+    modelId: 'deepseek.v3.2',
+    capability: 'text-only',
+    displayName: 'DeepSeek V3.2',
+    maxOutputTokens: 81920,
+  },
 };
 
 /**

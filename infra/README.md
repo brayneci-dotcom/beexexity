@@ -1,4 +1,4 @@
-# Infrastructure: GCP Cloud Run + AWS Bedrock + AWS RDS
+# Infrastructure: GCP Cloud Run + AWS Bedrock + GCP Cloud SQL
 
 ## Architecture
 

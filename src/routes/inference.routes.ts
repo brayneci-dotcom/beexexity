@@ -1,5 +1,5 @@
-import { Router, Request, Response, NextFunction } from 'express';
-import { authMiddleware } from '../middleware/auth.middleware.js';
+import express, { Router, type Request, type Response, type NextFunction } from 'express';
+import { authMiddleware, apiKeyAuthMiddleware } from '../middleware/auth.middleware.js';
 import { forcePasswordResetMiddleware } from '../middleware/password-reset.middleware.js';
 import { inferenceRateLimit } from '../middleware/security.middleware.js';
 import { uploadMiddleware, multerErrorHandler } from '../middleware/upload.middleware.js';
@@ -48,7 +48,7 @@ import type { ConversationInferenceRequest, ConversationInferenceResult, Bedrock
 /**
  * Distributed turn lock via PostgreSQL advisory lock.
  * Prevents concurrent turns on the same session across all Cloud Run instances
- * sharing the same RDS. Lock is automatically released on connection close
+ * sharing the same PostgreSQL. Lock is automatically released on connection close
  * (crash-safe), but always call releaseSessionLock() in a finally block.
  *
  * @see database.ts → tryAcquireSessionLock / releaseSessionLock
@@ -122,6 +122,261 @@ inferenceRouter.post('/generate', authMiddleware, forcePasswordResetMiddleware, 
 
   return handleJsonInference(req, res);
 });
+
+/**
+ * POST /batch
+ *
+ * Non-streaming batch inference for machine-to-machine calls (GhostMeet → beexexity).
+ * Auth: X-API-Key header (apiKeyAuthMiddleware).
+ *
+ * Request body:
+ *   - prompt: string (required, non-empty, ≤256KB)
+ *   - modelId: string (required — manual routing always)
+ *   - config: { maxTokens?, temperature? } (optional)
+ *   - billingContext: { billedUserId: string, billedGroup?: string } (optional)
+ *   - responseFormat: "json" (optional, enables response_format: json_object)
+ *
+ * Response: Plain JSON { summary, decisions, actionItems, metadata }
+ *
+ * Flow:
+ *   1. API key auth → 2. Validate prompt → 3. PII mask (fail-closed)
+ *   → 4. Call Bedrock non-streaming → 5. Post-inference PII scan
+ *   → 6. Audit log with billing context → 7. Return structured JSON
+ */
+inferenceRouter.post('/batch',
+  // Use route-level JSON parser with larger limit for transcripts
+  express.json({ limit: config.batch.bodyLimit }),
+  apiKeyAuthMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    const startTime = Date.now();
+    const { prompt, modelId, config: inferenceConfig, billingContext, responseFormat } = req.body;
+    const user = req.user!;
+
+    // 1. Validate prompt
+    if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
+      res.status(400).json({ error: 'EMPTY_PROMPT', message: 'Prompt cannot be empty' });
+      return;
+    }
+
+    if (prompt.length > config.batch.maxPromptLength) {
+      res.status(400).json({
+        error: 'PROMPT_TOO_LONG',
+        message: `Prompt exceeds maximum length of ${config.batch.maxPromptLength.toLocaleString()} characters`,
+      });
+      return;
+    }
+
+    // 2. Validate modelId
+    let validatedModelId: string;
+    try {
+      validatedModelId = await validateModelId(modelId, user.sub);
+    } catch (error: unknown) {
+      const err = error as Error & { code?: string; statusCode?: number };
+      res.status(err.statusCode ?? 400).json({
+        error: err.code ?? 'INVALID_MODEL',
+        message: err.message,
+      });
+      return;
+    }
+
+    // 3. PII mask (fail-closed)
+    let maskedPrompt: string;
+    try {
+      maskedPrompt = mask(prompt).maskedText;
+    } catch {
+      res.status(500).json({
+        error: 'MASKING_ERROR',
+        message: 'Failed to process prompt. Please try again.',
+      });
+      return;
+    }
+
+    // 4. Build Bedrock Converse messages (single-turn, no session)
+    const forceJson = responseFormat === 'json';
+    const messages = [{ role: 'user' as const, content: [{ text: maskedPrompt }] }];
+
+    // Build system prompt — force JSON with exact schema
+    const systemPrompt = forceJson
+      ? [
+          'You are an executive meeting analyst for Indonesian banking.',
+          'Analyze the meeting transcript and output ONLY valid JSON — no markdown, no commentary.',
+          '',
+          'OUTPUT THIS EXACT JSON STRUCTURE:',
+          '{',
+          '  "summary": "Executive summary in 3-5 paragraphs. Cover key topics, discussion points, outcomes, and context. Use the same language as the transcript (Indonesian or English)."',
+          '  "decisions": ["Decision 1", "Decision 2", ...]',
+          '  "actionItems": [',
+          '    { "task": "Specific task description", "owner": "Person name or [NAMA_X] placeholder" }',
+          '  ]',
+          '}',
+          '',
+          'CRITICAL RULES:',
+          '- Output ONLY the raw JSON object. No ```json fences. No markdown headers. No "Here is the output" text.',
+          '- NEVER expand or change PII placeholders. [NIK_1], [NO_HP_1], [NAMA_1] etc. must stay exactly as-is.',
+          '- If no decisions were made, return empty array: "decisions": [].',
+          '- If no action items, return empty array: "actionItems": [].',
+          '- Owner field is optional — omit if no owner was mentioned.',
+          '- Be concise. Summary ~3-5 paragraphs.',
+        ].join('\n')
+      : [
+          'You are an AI meeting assistant for Indonesian banking.',
+          'Analyze the transcript and produce a structured summary with decisions and action items.',
+          'Keep PII placeholders intact. Be concise.',
+        ].join('\n');
+
+    // 5. Call Bedrock non-streaming
+    const maxTokens = inferenceConfig?.maxTokens ?? 8192;
+
+    let resultText = '';
+    try {
+      const { BedrockRuntimeClient, ConverseCommand } = await import('@aws-sdk/client-bedrock-runtime');
+      const bedrockClient = new BedrockRuntimeClient({ region: config.aws.region });
+
+      const converseParams: Record<string, unknown> = {
+        modelId: validatedModelId,
+        system: [{ text: systemPrompt }],
+        messages,
+        inferenceConfig: {
+          maxTokens,
+          temperature: forceJson ? 0.1 : (inferenceConfig?.temperature ?? 0.3),
+        },
+      };
+
+      // Force structured JSON output via Bedrock API
+      if (forceJson) {
+        converseParams.responseFormat = { type: 'json_object' };
+      }
+
+      // Retry once without json_object if model rejects it
+      let lastError: unknown;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const command = new ConverseCommand(converseParams as any);
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 120_000);
+          try {
+            const response = await bedrockClient.send(command, { abortSignal: controller.signal });
+            resultText = response.output?.message?.content?.[0]?.text ?? '';
+            lastError = null;
+            break;
+          } finally {
+            clearTimeout(timeout);
+          }
+        } catch (err: unknown) {
+          lastError = err;
+          const msg = (err as Error).message || '';
+          // If model rejects json_object, retry without it
+          if (forceJson && attempt === 0 && (msg.includes('json_object') || msg.includes('responseFormat') || msg.includes('ValidationException'))) {
+            console.warn('[batch] model rejected json_object, retrying without response_format');
+            delete converseParams.responseFormat;
+            continue;
+          }
+          throw err;
+        }
+      }
+      if (lastError) throw lastError;
+    } catch (error: unknown) {
+      const durationMs = Date.now() - startTime;
+      console.error('[batch] Bedrock inference failed:', (error as Error).message);
+      auditService.log({
+        timestamp: new Date().toISOString(),
+        userId: user.sub, username: user.username, modelId: validatedModelId,
+        inputTokens: Math.ceil(maskedPrompt.length / 4), outputTokens: 0,
+        status: 'failed', errorCategory: (error as Error).name === 'TimeoutError' ? 'timeout' : 'model_error',
+        durationMs, routingState: 'manual', routingReasonCode: 'batch-inference',
+        reasoningSummary: 'Batch inference (GhostMeet → beexexity)', executedModelId: validatedModelId,
+        manualOverrideApplied: true,
+        billedUserId: billingContext?.billedUserId ?? null,
+        billedGroup: billingContext?.billedGroup ?? null, apiKeyUsed: true,
+      }).catch(() => {});
+      res.status(500).json({ error: 'INFERENCE_ERROR', message: 'Model inference failed' });
+      return;
+    }
+
+    // 6. Post-inference PII scan (defense-in-depth)
+    let piiIssues = 0;
+    if (resultText) {
+      const outputMaskResult = mask(resultText);
+      piiIssues = outputMaskResult.entityCount;
+      if (piiIssues > 0) {
+        console.error(`[batch] PII_OUTPUT_SCAN_FAILED: ${piiIssues} entities`);
+        const durationMs = Date.now() - startTime;
+        auditService.log({
+          timestamp: new Date().toISOString(),
+          userId: user.sub, username: user.username, modelId: validatedModelId,
+          inputTokens: Math.ceil(maskedPrompt.length / 4), outputTokens: Math.ceil(resultText.length / 4),
+          status: 'failed', errorCategory: 'pii_output_scan', durationMs,
+          routingState: 'manual', routingReasonCode: 'batch-inference',
+          reasoningSummary: 'PII detected in model output — discarded', executedModelId: validatedModelId,
+          manualOverrideApplied: true,
+          billedUserId: billingContext?.billedUserId ?? null,
+          billedGroup: billingContext?.billedGroup ?? null, apiKeyUsed: true,
+        }).catch(() => {});
+        res.status(500).json({ error: 'PII_OUTPUT_SCAN_FAILED', message: 'PII detected in model output.' });
+        return;
+      }
+    }
+
+    // 7. Parse structured output — JSON first, then markdown fallback
+    let summary = resultText;
+    let decisions: string[] = [];
+    let actionItems: Array<{ task: string; owner?: string }> = [];
+
+    // Try JSON parse
+    const jsonParsed = tryParseJSON(resultText);
+    if (jsonParsed) {
+      summary = String(jsonParsed.summary ?? jsonParsed.Summary ?? resultText);
+      decisions = asStringArray(jsonParsed.decisions ?? jsonParsed.Decisions);
+      actionItems = asActionItems(jsonParsed.actionItems ?? jsonParsed.action_items ?? jsonParsed.ActionItems);
+    } else if (forceJson) {
+      // JSON parse failed but we requested JSON — try markdown extraction
+      console.warn('[batch] JSON parse failed, attempting markdown extraction');
+      const extracted = extractFromMarkdown(resultText);
+      if (extracted) {
+        summary = extracted.summary;
+        decisions = extracted.decisions;
+        actionItems = extracted.actionItems;
+      }
+    }
+
+    // 8. Audit log (success, fire-and-forget)
+    const durationMs = Date.now() - startTime;
+    auditService.log({
+      timestamp: new Date().toISOString(),
+      userId: user.sub,
+      username: user.username,
+      modelId: validatedModelId,
+      inputTokens: Math.ceil(maskedPrompt.length / 4),
+      outputTokens: Math.ceil(resultText.length / 4),
+      status: 'success',
+      durationMs,
+      routingState: 'manual',
+      routingReasonCode: 'batch-inference',
+      reasoningSummary: 'Batch inference (GhostMeet → beexexity)',
+      executedModelId: validatedModelId,
+      manualOverrideApplied: true,
+      billedUserId: billingContext?.billedUserId ?? null,
+      billedGroup: billingContext?.billedGroup ?? null,
+      apiKeyUsed: true,
+    }).catch(() => {});
+
+    // 9. Return structured response
+    res.status(200).json({
+      summary,
+      decisions,
+      actionItems,
+      metadata: {
+        modelId: validatedModelId,
+        inputTokens: Math.ceil(maskedPrompt.length / 4),
+        outputTokens: Math.ceil(resultText.length / 4),
+        durationMs,
+        piiMasked: true,
+        hasPostInferencePiiScan: true,
+        postInferencePiiIssues: 0,
+      },
+    });
+  },
+);
 
 // Apply multer error handler for multipart request errors
 inferenceRouter.use(multerErrorHandler);
@@ -1523,3 +1778,90 @@ inferenceRouter.post('/sessions/reset', authMiddleware, async (req: Request, res
     });
   }
 });
+
+// ── Batch Output Parsing Helpers ─────────────────────────────
+
+function tryParseJSON(text: string): Record<string, unknown> | null {
+  // Strip ```json fences if present
+  let cleaned = text.trim();
+  if (cleaned.startsWith('```')) {
+    cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+  }
+  try {
+    const parsed = JSON.parse(cleaned);
+    return typeof parsed === 'object' && parsed !== null ? parsed as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
+function asStringArray(val: unknown): string[] {
+  if (Array.isArray(val)) return val.map((v) => String(v).trim()).filter(Boolean);
+  return [];
+}
+
+function asActionItems(val: unknown): Array<{ task: string; owner?: string }> {
+  if (!Array.isArray(val)) return [];
+  return val.map((item: unknown) => {
+    if (typeof item === 'string') return { task: item };
+    if (typeof item === 'object' && item !== null) {
+      const o = item as Record<string, unknown>;
+      return {
+        task: String(o.task ?? o.Task ?? ''),
+        owner: (o.owner ?? o.Owner ?? undefined) as string | undefined,
+      };
+    }
+    return { task: String(item) };
+  }).filter((a) => a.task.length > 0);
+}
+
+/**
+ * Fallback: extract structured data from markdown output.
+ * Handles models that ignore response_format: json_object.
+ */
+function extractFromMarkdown(text: string): { summary: string; decisions: string[]; actionItems: Array<{ task: string; owner?: string }> } | null {
+  // Try to find summary section
+  const summaryMatch = text.match(/\*\*SUMMARY:?\*\*\s*\n?([\s\S]*?)(?=\*\*DECISIONS|\*\*ACTION|$)/i)
+    ?? text.match(/(?:^|\n)(?:Executive\s*)?Summary:?\s*\n?([\s\S]*?)(?=\n(?:Key\s*)?Decisions?:|\n(?:Key\s*)?Action\s*(?:Items|Plan)?:|\n\*\*|$)/im);
+  const summary = (summaryMatch?.[1] ?? text.split('\n\n')[0]).trim();
+
+  // Extract decisions — bullet or numbered lists after DECISIONS header
+  const decisionsBlock = text.match(/\*\*DECISIONS?:?\*\*\s*\n?([\s\S]*?)(?=\*\*ACTION|\*\*NEXT|$)/i)
+    ?? text.match(/(?:^|\n)(?:Key\s*)?Decisions?:?\s*\n([\s\S]*?)(?=\n(?:Key\s*)?Action\s*(?:Items|Plan)?:|\n\*\*|$)/im);
+  const decisions: string[] = [];
+  if (decisionsBlock?.[1]) {
+    const lines = decisionsBlock[1].split('\n').filter(Boolean);
+    for (const line of lines) {
+      const cleaned = line.replace(/^[-*•]\s*/, '').replace(/^\d+\.\s*/, '').trim();
+      if (cleaned && cleaned.length > 5) decisions.push(cleaned);
+    }
+  }
+
+  // Extract action items
+  const actionsBlock = text.match(/\*\*ACTION\s*(?:ITEMS?|PLAN)?:?\*\*\s*\n?([\s\S]*?)(?=\n\*\*|$)/i)
+    ?? text.match(/(?:^|\n)(?:Key\s*)?Action\s*(?:Items|Plan)?:?\s*\n([\s\S]*?)$/im);
+  const actionItems: Array<{ task: string; owner?: string }> = [];
+  if (actionsBlock?.[1]) {
+    const lines = actionsBlock[1].split('\n').filter(Boolean);
+    for (const line of lines) {
+      let cleaned = line.replace(/^[-*•]\s*/, '').replace(/^\d+\.\s*/, '').trim();
+      if (!cleaned || cleaned.length < 5) continue;
+      // Try to extract owner: "Task — Owner" or "Task (Owner)" or "Owner: Task"
+      let owner: string | undefined;
+      const ownerMatch = cleaned.match(/[-—–]\s*([^—-]+)$/);
+      if (ownerMatch) {
+        owner = ownerMatch[1].trim();
+        cleaned = cleaned.slice(0, ownerMatch.index!).trim();
+      } else {
+        const parenMatch = cleaned.match(/\(([^)]+)\)$/);
+        if (parenMatch) {
+          owner = parenMatch[1].trim();
+          cleaned = cleaned.slice(0, parenMatch.index!).trim();
+        }
+      }
+      if (cleaned) actionItems.push({ task: cleaned, owner });
+    }
+  }
+
+  return { summary, decisions, actionItems };
+}

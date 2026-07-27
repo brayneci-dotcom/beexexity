@@ -43,6 +43,7 @@ export const ALLOWED_MODELS = [
   'qwen.qwen3-235b-a22b-2507-v1:0',
   'qwen.qwen3-32b-v1:0',
   'zai.glm-5',
+  'deepseek.v3.2',
 ] as const;
 
 export type AllowedModelId = typeof ALLOWED_MODELS[number];

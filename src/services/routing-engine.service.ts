@@ -398,6 +398,21 @@ const SKILL_PROMPTS: Record<SkillType, string> = {
     '{ "role": "<credit analyst>", "context": "<document/credit type>", "task": "<analyze/review credit for>", "intent": "<...>", "ambiguities": ["<what is unclear>"], "clarification_needed": false }',
   ].join('\n'),
 
+  meeting_summary: [
+    'You are an expert AI prompt engineer specializing in MEETING TRANSCRIPT SUMMARIZATION.',
+    'Refine the request into structural JSON for meeting intelligence extraction.',
+    '',
+    '### CRITICAL RULES:',
+    '1. LANGUAGE PRESERVATION: Values MUST be in the EXACT SAME language as the transcript (Indonesian or English).',
+    '2. JSON keys in English. Values in the detected language.',
+    '3. BE EXTREMELY CONCISE. High signal, zero noise.',
+    '4. JSON ONLY. No markdown, no explanations.',
+    '',
+    'Focus: key discussion points, decisions made, action items with owners, PII placeholders must be preserved ([NIK_1], [NO_HP_1], etc.).',
+    '',
+    '{ "role": "<meeting analyst>", "context": "<meeting type/topic>", "task": "<extract summary, decisions, action items>", "intent": "<...>", "ambiguities": ["<what is unclear>"], "clarification_needed": false }',
+  ].join('\n'),
+
   it_specialist: [
     'You are an expert AI prompt engineer specializing in IT SYSTEMS ANALYSIS.',
     'Refine the request into structural JSON.',
@@ -630,7 +645,7 @@ async function unifiedClassifyAndScore(
       '[Generation] business_writing | creative_writing | brainstorming | prompt_optimizer',
       '[Transformation] summarization | translation | data_transformation | editing',
       '[Interaction] roleplay | logic_math | planning_strategy | document_analysis',
-      '[Enterprise] requirement_generation | compliance_pre_assessment | risk_analyst | process_optimization | credit_analyst',
+      '[Enterprise] requirement_generation | compliance_pre_assessment | risk_analyst | process_optimization | credit_analyst | meeting_summary',
       '[Engineering] code | log_troubleshooting | data_analysis | cloud_security | it_specialist | fallback',
       '',
       'Skill definitions:',
@@ -649,6 +664,7 @@ async function unifiedClassifyAndScore(
       '- compliance_pre_assessment: evaluate regulatory compliance',
       '- risk_analyst: risk assessment and mitigation analysis',
       '- process_optimization: business process improvement',
+      '- meeting_summary: extract summary, decisions, action items from meeting transcripts',
       '- code: write, review, debug code',
       '- log_troubleshooting: debug system logs, errors, incidents',
       '- data_analysis: statistical analysis, data insights',
@@ -656,6 +672,7 @@ async function unifiedClassifyAndScore(
       '',
       '### CRITICAL CLASSIFICATION RULES',
       '- Cloud security/infrastructure context → "cloud_security"',
+      '- Meeting transcript with "minutes", "meeting", "rapat", "notulen", or "transcript" context → "meeting_summary"',
       '- Credit/financial/SLIK assessment → "credit_analyst"',
       '- IT system/technical documentation → "it_specialist"',
       '- Document contains code to analyze/fix → "code"',
@@ -937,7 +954,13 @@ function validateSkillInvariants(skill: SkillType, input: RoutingInput): SkillTy
     if (!hasCreditContext) return 'fallback';
   }
 
-  // Rule 9: IT specialist requires IT/system context
+  // Rule 9: Meeting summary requires transcript/meeting context
+  if (skill === 'meeting_summary') {
+    const hasMeetingContext = /meeting|rapat|notulen|transcript|minutes|agenda|action.item|keputusan/.test(fullContext);
+    if (!hasMeetingContext) return 'fallback';
+  }
+
+  // Rule 10: IT specialist requires IT/system context
   if (skill === 'it_specialist') {
     const hasITContext = /it system|technical|infrastructure|architecture|payment|sistem|infrastruktur/.test(fullContext);
     if (!hasITContext) return 'fallback';
@@ -1153,12 +1176,32 @@ export async function routeRequest(input: RoutingInput): Promise<RoutingDecision
  */
 const STRUCTURED_SKILLS: Set<SkillType> = new Set([
   'compliance_pre_assessment', 'requirement_generation', 'risk_analyst',
-  'process_optimization', 'credit_analyst', 'code', 'log_troubleshooting',
+  'process_optimization', 'credit_analyst', 'meeting_summary', 'code', 'log_troubleshooting',
   'data_analysis', 'cloud_security', 'it_specialist', 'editing',
   'document_analysis', 'planning_strategy', 'logic_math',
 ]);
 
 export function getDefaultFormatTemplate(skill: SkillType): string | null {
+  if (skill === 'meeting_summary') {
+    return [
+      'Gunakan heading deskriptif untuk setiap section. PII placeholders ([NIK_1], [NO_HP_1], etc.) HARUS dipertahankan — jangan diexpand atau diganti.',
+      '',
+      'STRUKTUR OUTPUT (JSON):',
+      '{',
+      '  "summary": "Executive summary dalam 3-5 paragraf — mencakup topik utama, diskusi kunci, hasil, dan konteks."',
+      '  "decisions": ["Keputusan 1", "Keputusan 2", ...]',
+      '  "actionItems": [',
+      '    { "task": "Deskripsi tugas", "owner": "Nama pemilik (jika disebutkan)" }',
+      '  ]',
+      '}',
+      '',
+      'ATURAN:',
+      '- Summary dalam bahasa yang sama dengan transkrip (Indonesia atau Inggris).',
+      '- Decisions: kalimat singkat dan actionable.',
+      '- Action items: spesifik, dengan owner jika disebut dalam transkrip.',
+      '- JANGAN mengubah atau mengexpand PII placeholders.',
+    ].join('\n');
+  }
   if (skill === 'requirement_generation') {
     return [
       'Gunakan heading yang deskriptif dan alami untuk setiap section (tanpa tanda kurung siku).',

@@ -5,7 +5,7 @@
 **Version:** 3.0 (Final)  
 **Scope:** Evolution from "Smart Prompt Router" to "Self-Correcting Multi-Task Agent"  
 **Infrastructure:** GCP Cloud Run (Compute) + GCP Cloud SQL (DB - Future) + AWS Bedrock (LLM)  
-**Current DB:** AWS RDS PostgreSQL (will migrate to GCP Cloud SQL in separate phase)
+**Current DB:** GCP Cloud SQL PostgreSQL
 
 ---
 
@@ -940,7 +940,7 @@ Increase Q4 marketing budget by 25% to capture seasonal demand.`,
 | Concern | Strategy |
 |---------|----------|
 | Active graph state | Keep in Cloud Run memory (no DB writes during loop) |
-| Session locks | Continue using PG advisory locks (current AWS RDS, future GCP Cloud SQL) |
+| Session locks | Continue using PG advisory locks (GCP Cloud SQL) |
 | Cross-cloud LLM calls | Use GCP Workload Identity Federation → AWS IAM (no static keys) |
 | Telemetry writes | Async fire-and-forget to DB after response completes |
 | Network security | TLS 1.3 enforced; consider AWS Direct Connect ↔ GCP Cloud Interconnect for PII traffic |
@@ -1156,7 +1156,7 @@ UPDATE feedback_reports SET skill = 'document_analysis' WHERE skill = 'document_
 
 ### Phase 6: (Future) Database Migration to GCP Cloud SQL
 - [ ] Provision GCP Cloud SQL in `asia-southeast2`
-- [ ] Use Google Cloud DMS for replication from AWS RDS
+- [x] Database migration to GCP Cloud SQL completed
 - [ ] Cutover via environment variable update (zero code change)
 
 ---

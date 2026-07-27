@@ -78,6 +78,14 @@ export const config = {
   auth: {
     minPasswordLength: parseInt(process.env.MIN_PASSWORD_LENGTH || '8', 10),
     resetTokenExpiresIn: 300, // 5 minutes for password reset token
+    /** API key for machine-to-machine batch inference (GhostMeet → beexexity). */
+    apiKey: process.env.GHOSTMEET_API_KEY || '',
+  },
+  batch: {
+    /** Max prompt length for batch inference (256KB for meeting transcripts). */
+    maxPromptLength: parseInt(process.env.BATCH_MAX_PROMPT_LENGTH || '262144', 10),
+    /** JSON body parser limit for batch endpoint (512KB). */
+    bodyLimit: '512kb',
   },
   subagent: {
     /** Max concurrent sub-agents running in parallel. */
