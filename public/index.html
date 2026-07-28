@@ -2939,9 +2939,15 @@ function formatMarkdown(text) {
       continue;
     }
     
-    // Empty line = paragraph break
+    // Empty line — only emit <br> if next line is NOT a section break (heading/HR/emoji)
     if (line.trim() === '') {
-      html += '<br>';
+      const nextLine = lines[i + 1]?.trimStart() || '';
+      const isNextBreak = /^#{1,6}(?:\s|$)/.test(nextLine)        // ### heading
+        || /^(---|\*\*\*|___)\s*$/.test(nextLine.trim())          // HR
+        || /^([^\x00-\x7F])\s*(.+)$/u.test(nextLine);             // emoji heading
+      if (!isNextBreak) {
+        html += '<br>';
+      }
       continue;
     }
     
