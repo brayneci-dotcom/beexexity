@@ -109,6 +109,10 @@ export const config = {
     /** Emit interim synthesis every N steps (0 = disabled). */
     progressiveInterval: parseInt(process.env.PROGRESSIVE_INTERVAL || '3', 10),
   },
+  pptx: {
+    /** URL of the python-pptx microservice (Cloud Run internal URL). */
+    serviceUrl: process.env.PPTX_SERVICE_URL || '',
+  },
   session: {
     expiryHours: parseInt(process.env.SESSION_EXPIRY_HOURS || '24', 10),
     tokenBudget: parseInt(process.env.SESSION_TOKEN_BUDGET || '200000', 10),

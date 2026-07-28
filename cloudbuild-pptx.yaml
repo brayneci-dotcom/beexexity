@@ -1,13 +1,8 @@
-# Cloud Build configuration for Cloud Run deployment
-# Used by GCP's built-in continuous deployment from GitHub.
-#
-# Steps:
-#   1. Build Docker image from root Dockerfile
-#   2. Push to Artifact Registry
-#   3. Deploy to Cloud Run with secrets from Secret Manager
+# Cloud Build configuration for python-pptx microservice
+# Deploy from CLI: gcloud builds submit --config=cloudbuild-pptx.yaml pptx-service/
+# Or: set up Cloud Build trigger with directory filter: pptx-service/**
 
 steps:
-  # Build the container image
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
@@ -15,15 +10,15 @@ steps:
       - '${_ARTIFACT_REGISTRY}/${PROJECT_ID}/${_SERVICE_NAME}/${_SERVICE_NAME}:${_TAG}'
       - '-t'
       - '${_ARTIFACT_REGISTRY}/${PROJECT_ID}/${_SERVICE_NAME}/${_SERVICE_NAME}:latest'
+      - '-f'
+      - 'Dockerfile'
       - '.'
 
-  # Push to Artifact Registry (explicit — images section alone may not resolve vars)
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
       - '${_ARTIFACT_REGISTRY}/${PROJECT_ID}/${_SERVICE_NAME}/${_SERVICE_NAME}:${_TAG}'
 
-  # Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'gcloud'
     args:
@@ -37,31 +32,28 @@ steps:
       - '--platform'
       - 'managed'
       - '--port'
-      - '3000'
+      - '8080'
       - '--memory'
       - '512Mi'
       - '--cpu'
       - '1'
       - '--timeout'
-      - '300'
+      - '60'
       - '--max-instances'
-      - '10'
+      - '5'
+      - '--min-instances'
+      - '0'
       - '--concurrency'
-      - '80'
-      - '--allow-unauthenticated'
-      - '--set-env-vars'
-      - 'NODE_ENV=production,AWS_REGION=ap-southeast-3,DB_HOST=${_DB_HOST},DB_PORT=5432,DB_NAME=bedrock_gateway,DB_USER=${_DB_USER},DB_SSL=true,PPTX_SERVICE_URL=${_PPTX_SERVICE_URL}'
-      - '--set-secrets'
-      - 'DB_PASSWORD=db-password:latest,JWT_SECRET=jwt-secret:latest,AWS_ACCESS_KEY_ID=aws-access-key-id:latest,AWS_SECRET_ACCESS_KEY=aws-secret-access-key:latest,GOOGLE_CLIENT_ID=google-client-id:latest,GHOSTMEET_API_KEY=ghostmeet-api-key:latest'
+      - '10'
+      - '--no-allow-unauthenticated'
+      - '--ingress'
+      - 'internal'
 
 substitutions:
   _REGION: asia-southeast2
-  _SERVICE_NAME: beexexity
+  _SERVICE_NAME: beexexity-pptx
   _ARTIFACT_REGISTRY: asia-southeast2-docker.pkg.dev
   _TAG: latest
-  _DB_HOST: ''     # set in Cloud Build trigger → Variables
-  _DB_USER: ''     # set in Cloud Build trigger → Variables
-  _PPTX_SERVICE_URL: ''  # set after first ppx-service deploy → Variables
 
 images:
   - '${_ARTIFACT_REGISTRY}/${PROJECT_ID}/${_SERVICE_NAME}/${_SERVICE_NAME}:${_TAG}'

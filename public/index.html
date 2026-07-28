@@ -2147,6 +2147,26 @@ async function handleSend() {
   const prompt = input.value.trim();
   if (!prompt && attachedFiles.length === 0) return;
 
+  // /pptx prefix → generate PPTX file instead of chat
+  if (prompt.startsWith('/pptx ')) {
+    const pptxPrompt = prompt.slice(6).trim();
+    if (!pptxPrompt) { input.value = ''; return; }
+    input.value = '';
+    input.style.height = 'auto';
+    await handlePptxGeneration(pptxPrompt);
+    return;
+  }
+
+  // /pdf prefix → generate PDF file
+  if (prompt.startsWith('/pdf ')) {
+    const pdfPrompt = prompt.slice(5).trim();
+    if (!pdfPrompt) { input.value = ''; return; }
+    input.value = '';
+    input.style.height = 'auto';
+    await handlePdfGeneration(pdfPrompt);
+    return;
+  }
+
   const modelId = document.getElementById('model-select').value;
   input.value = '';
   input.style.height = 'auto';
@@ -2163,7 +2183,7 @@ async function handleSend() {
         currentSessionId = resumeData.session.id;
         currentViewingSessionId = null;
         document.getElementById('viewing-banner').classList.remove('visible');
-        document.getElementById('prompt-input').placeholder = 'Ask anything...';
+        document.getElementById('prompt-input').placeholder = 'Ask anything...  |  /pptx or /pdf to generate files';
         updateCostBar();
         loadSessions(1);
       } else {
@@ -2281,7 +2301,7 @@ async function handleSend() {
         document.getElementById('viewing-banner').classList.remove('visible');
         setInputEnabled(true);
         setStreaming(false);
-        document.getElementById('prompt-input').placeholder = 'Ask anything...';
+        document.getElementById('prompt-input').placeholder = 'Ask anything...  |  /pptx or /pdf to generate files';
         document.getElementById('messages').innerHTML = `
           ${emptyStateHTML()}
         `;
@@ -2619,7 +2639,7 @@ async function handleSend() {
               document.getElementById('viewing-banner').classList.remove('visible');
               setStreaming(false);
               setInputEnabled(true);
-              document.getElementById('prompt-input').placeholder = 'Ask anything...';
+              document.getElementById('prompt-input').placeholder = 'Ask anything...  |  /pptx or /pdf to generate files';
               document.getElementById('messages').innerHTML = `
                 ${emptyStateHTML()}
               `;
@@ -2656,6 +2676,186 @@ async function handleSend() {
   } catch (e) {
     assistantEl.remove();
     addMessage('error', `Network error: ${e.message}`);
+  }
+
+  setStreaming(false);
+}
+
+// --- PPTX/PDF Generation Handlers ---
+
+/**
+ * Collect recent conversation context from the active chat DOM.
+ * Returns last 3 user-assistant turns as a formatted string.
+ */
+function getConversationContext() {
+  const messages = document.querySelectorAll('#messages .message');
+  const turns = [];
+  let turn = null;
+  for (const msg of messages) {
+    const role = msg.classList.contains('user') ? 'User' : msg.classList.contains('assistant') ? 'AI' : null;
+    if (!role) continue;
+    const contentEl = msg.querySelector(role === 'User' ? '.user-content' : '.assistant-content');
+    const text = contentEl?.textContent?.trim();
+    if (!text) continue;
+    if (role === 'User') {
+      // Skip /pptx and /pdf commands
+      if (text.startsWith('/pptx ') || text.startsWith('/pdf ')) continue;
+      turn = { user: text, assistant: '' };
+    } else if (turn && !turn.assistant) {
+      turn.assistant = text;
+      turns.push(turn);
+      turn = null;
+    }
+  }
+  if (turns.length === 0) return '';
+  // Take last 4 turns max
+  const recent = turns.slice(-4);
+  return recent.map(t => `User: ${t.user}\n\nAI: ${t.assistant}`).join('\n\n---\n\n');
+}
+
+async function handlePptxGeneration(prompt) {
+  const modelId = document.getElementById('model-select').value;
+  const hasFiles = attachedFiles.length > 0;
+  addMessage('user', (hasFiles ? '📎 ' : '') + '/pptx ' + prompt);
+  const assistantEl = addMessage('assistant', hasFiles ? '⏳ Extracting document content & generating presentation...' : '⏳ Generating presentation...');
+  setStreaming(true);
+
+  try {
+    const context = getConversationContext();
+
+    let res;
+    if (hasFiles) {
+      const formData = new FormData();
+      formData.append('prompt', prompt);
+      if (modelId && modelId !== 'auto') formData.append('modelId', modelId);
+      if (context) formData.append('context', context);
+      attachedFiles.forEach(f => formData.append('files', f));
+      attachedFiles = [];
+      renderFilePreviews();
+
+      res = await fetch(`${API_BASE}/generate/pptx`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
+      });
+    } else {
+      const body = { prompt };
+      if (modelId && modelId !== 'auto') body.modelId = modelId;
+      if (context) body.context = context;
+
+      res = await fetch(`${API_BASE}/generate/pptx`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+    }
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: 'Unknown error' }));
+      throw new Error(err.message || `HTTP ${res.status}`);
+    }
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const disposition = res.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="?([^";\n]+)"?/);
+    const filename = match ? decodeURIComponent(match[1]) : 'presentation.pptx';
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    // Keep URL alive for manual download link in chat
+    // Revoked on next generation or page unload
+
+    const sizeMB = (blob.size / (1024 * 1024)).toFixed(1);
+    assistantEl.querySelector('.assistant-content').innerHTML =
+      '<div class="assistant-text-content">' +
+        '✅ <strong>Presentation ready!</strong> ' + sizeMB + ' MB<br><br>' +
+        '📥 <a href="' + url + '" download="' + filename + '" style="color:var(--accent);font-weight:600;font-size:1.1em;text-decoration:underline">Click here to download</a> — <code>' + filename + '</code><br>' +
+        '<span style="font-size:0.8em;color:var(--text-tertiary)">File also auto-downloaded to your Downloads folder</span>' +
+      '</div>';
+    // Clean up old blob URLs
+    if (window._lastPptxUrl) URL.revokeObjectURL(window._lastPptxUrl);
+    window._lastPptxUrl = url;
+    // Track cost for session list
+    if (currentSessionId) { loadSessions(sessionPage); updateCostBar(); }
+  } catch (e) {
+    assistantEl.querySelector('.assistant-content').innerHTML =
+      '<div class="assistant-text-content" style="color:var(--error)">❌ <strong>PPTX generation failed:</strong> ' + escapeHtml(e.message) + '</div>';
+  }
+
+  setStreaming(false);
+}
+
+async function handlePdfGeneration(prompt) {
+  const modelId = document.getElementById('model-select').value;
+  const hasFiles = attachedFiles.length > 0;
+  addMessage('user', (hasFiles ? '📎 ' : '') + '/pdf ' + prompt);
+  const assistantEl = addMessage('assistant', hasFiles ? '⏳ Extracting document & generating PDF...' : '⏳ Generating PDF...');
+  setStreaming(true);
+
+  try {
+    const context = getConversationContext();
+
+    let res;
+    if (hasFiles) {
+      const formData = new FormData();
+      formData.append('prompt', prompt);
+      if (modelId && modelId !== 'auto') formData.append('modelId', modelId);
+      if (context) formData.append('context', context);
+      attachedFiles.forEach(f => formData.append('files', f));
+      attachedFiles = [];
+      renderFilePreviews();
+
+      res = await fetch(`${API_BASE}/generate/pdf`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
+      });
+    } else {
+      const body = { prompt };
+      if (modelId && modelId !== 'auto') body.modelId = modelId;
+      if (context) body.context = context;
+
+      res = await fetch(`${API_BASE}/generate/pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+    }
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: 'Unknown error' }));
+      throw new Error(err.message || `HTTP ${res.status}`);
+    }
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const disposition = res.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="?([^";\n]+)"?/);
+    const filename = match ? decodeURIComponent(match[1]) : 'presentation.pdf';
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    const sizeMB = (blob.size / (1024 * 1024)).toFixed(1);
+    assistantEl.querySelector('.assistant-content').innerHTML =
+      '<div class="assistant-text-content">' +
+        '✅ <strong>PDF ready!</strong> ' + sizeMB + ' MB<br><br>' +
+        '📥 <a href="' + url + '" download="' + filename + '" style="color:var(--accent);font-weight:600;font-size:1.1em;text-decoration:underline">Click here to download</a> — <code>' + filename + '</code><br>' +
+        '<span style="font-size:0.8em;color:var(--text-tertiary)">File also auto-downloaded to your Downloads folder</span>' +
+      '</div>';
+    if (window._lastPdfUrl) URL.revokeObjectURL(window._lastPdfUrl);
+    window._lastPdfUrl = url;
+    if (currentSessionId) { loadSessions(sessionPage); updateCostBar(); }
+  } catch (e) {
+    assistantEl.querySelector('.assistant-content').innerHTML =
+      '<div class="assistant-text-content" style="color:var(--error)">❌ <strong>PDF generation failed:</strong> ' + escapeHtml(e.message) + '</div>';
   }
 
   setStreaming(false);
@@ -3358,7 +3558,7 @@ function handleLogout() {
   `;
   document.getElementById('viewing-banner').classList.remove('visible');
   setInputEnabled(true);
-  document.getElementById('prompt-input').placeholder = 'Ask anything...';
+  document.getElementById('prompt-input').placeholder = 'Ask anything...  |  /pptx or /pdf to generate files';
   document.getElementById('password').value = '';
   document.getElementById('prompt-input').value = '';
   document.getElementById('sidebar-list').innerHTML = '<div class="sidebar-empty">No conversations yet.</div>';
@@ -3474,7 +3674,7 @@ async function handleNewChat() {
   hideDegradedBanner();
   document.getElementById('viewing-banner').classList.remove('visible');
   setInputEnabled(true);
-  document.getElementById('prompt-input').placeholder = 'Ask anything...';
+  document.getElementById('prompt-input').placeholder = 'Ask anything...  |  /pptx or /pdf to generate files';
   document.getElementById('messages').innerHTML = `
     ${emptyStateHTML()}
   `;
@@ -3812,7 +4012,7 @@ async function viewSession(sessionId) {
     currentViewingSessionId = null;
     document.getElementById('viewing-banner').classList.remove('visible');
     setInputEnabled(true);
-    document.getElementById('prompt-input').placeholder = 'Ask anything...';
+    document.getElementById('prompt-input').placeholder = 'Ask anything...  |  /pptx or /pdf to generate files';
     updateCostBar();
     renderSessionList();
     return;

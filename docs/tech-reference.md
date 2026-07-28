@@ -18,6 +18,8 @@
 | Office conversion | Gotenberg (sidecar Cloud Run service) | .doc, .ppt → PDF → text |
 | Auth | JWT (`jsonwebtoken`) + bcrypt + Google OAuth (`google-auth-library`) + X-API-Key | HS256, local + Google sign-in + M2M batch + passthrough mode |
 | File uploads | `multer` | Memory storage, 10MB/file, max 5 files |
+| PPTX generation | `python-pptx` (FastAPI, Python 3.12) | Separate Cloud Run microservice, scale-to-zero |
+| PDF generation | Gotenberg (PPTX→PDF via LibreOffice) | Existing sidecar, reused |
 | Testing | Vitest | `@/` alias → `./src/*` |
 | Linting | ESLint 9 + `typescript-eslint` | Flat config |
 | Build | `tsc` | Output: `dist/` |
@@ -38,7 +40,8 @@
 ```
 Users → GCP Cloud Run (asia-southeast2)
            ├── AWS Bedrock Account #1 (LLM inference, ap-southeast-3)
-           └── GCP Cloud SQL (PostgreSQL, public IP + SSL)
+           ├── GCP Cloud SQL (PostgreSQL, public IP + SSL)
+           └── python-pptx service (Cloud Run internal, asia-southeast2)
 GhostMeet (M2M) → POST /api/v1/inference/batch (API key auth)
 ```
 
@@ -68,6 +71,7 @@ src/
 │   ├── models.routes.ts      # GET / (available models with pricing)
 │   ├── inference.routes.ts   # POST /generate (JSON + multipart), POST /batch (API key auth)
 │   │                         # + GET /sessions/active, POST /sessions/reset
+│   ├── generation.routes.ts  # POST /pptx, POST /pdf (file generation, multipart support, context injection)
 │   ├── session.routes.ts     # GET /, GET /:id/messages, GET /:id/stats, POST /:id/resume
 │   └── feedback.routes.ts    # POST / (submit), GET/PUT /admin (admin review + synthesis)
 ├── services/
@@ -93,7 +97,8 @@ src/
 │   ├── cost-reporting.service.ts       # Per-user cost aggregation
 │   ├── config.service.ts               # App config (passthrough_mode) with DB + in-memory cache
 │   ├── few-shot-library.ts             # Per-skill golden examples for format adherence (+ meeting_summary)
-│   ├── gotenberg.service.ts            # Legacy Office (.doc, .ppt) → PDF → text via Gotenberg
+│   ├── gotenberg.service.ts            # Legacy Office (.doc, .ppt) → PDF → text + PPTX→PDF conversion
+│   ├── pptx-generator.service.ts        # PPTX/PDF generation: LLM→JSON→python-pptx, retry+validation
 │   └── file-signature-validator.ts     # Magic byte heuristic gate
 ├── frontend/
 │   ├── cost-display.ts          # IDR rate fetch, session cost tracking
@@ -106,6 +111,7 @@ src/
 │   ├── pii.types.ts
 │   ├── upload.types.ts          # DocumentFile, ImageFile, ExtractionResult, ContentBuildInput, ContentBlock
 │   ├── audit.types.ts           # + billedUserId, billedGroup, apiKeyUsed
+│   ├── pptx.types.ts           # Content JSON schema (6 slide types: cover, content, divider, comparison, chart, closing)
 │   ├── pricing.types.ts
 │   ├── reporting.types.ts
 │   └── error.types.ts
@@ -116,15 +122,25 @@ data/                            # Runtime data (not committed to git)
 ├── fallback-roles.ndjson         # Raw discovery log for novel fallback roles
 └── discovered-roles-state.json   # Accept/reject/deploy state per role
 
+pptx-service/                     # Python PPTX microservice (separate Cloud Run deployment)
+├── main.py                       # FastAPI app: /health, /generate
+├── generator.py                  # Code-based design engine: 6 slide types, navy+gold theme
+├── schemas.py                    # Pydantic validation (mirrors TypeScript types)
+├── requirements.txt              # fastapi, uvicorn, python-pptx
+└── Dockerfile                    # Python 3.12-slim
+
+cloudbuild-pptx.yaml              # Separate Cloud Build trigger for python-pptx service
+
 migrations/
 ├── 001_initial_schema.sql ... 019_add_billing_context.sql
 ├── 020_add_passthrough_flag.sql  # Passthrough mode flag on audit_logs
 └── 021_app_config.sql            # App config table (passthrough_mode toggle)
 
 tests/
-└── unit/                           # 26 test files
+└── unit/                           # 27 test files
     ├── routing-engine.test.ts      # 14 tests (validateSkillInvariants + meeting_summary)
     ├── sequential-reasoning.test.ts # 16 tests (planner, executor, retry, PII, progressive, SSE, audit)
+    ├── pptx-generator.service.test.ts  # 5 tests (validation, types, slide structures)
     └── ... (24 other test files)
 
 docs/
@@ -132,10 +148,12 @@ docs/
 ├── prompt-reference.md          # System prompt catalog
 ├── admin-dashboard.md           # Admin UI docs
 ├── beautify-render.md           # SSE markdown rendering proposal
+├── ppt-doc-generation.md        # Original TRD for PPTX/PDF generation (superseded — see feature-pptx-generation/)
 ├── features/
 │   ├── google-auth/             # Google OAuth feature (design + tasks)
 │   ├── model-access/            # Model access control design
 │   ├── passthrough-mode/        # Passthrough mode feature (req + design + tasks)
+│   ├── pptx-generation/         # PPTX/PDF generation feature (req + design + tasks)
 │   ├── sequential-reasoning/    # Sequential reasoning feature (req + design + tasks + notes)
 │   ├── thinking-mode/           # Thinking mode requirements
 │   └── sub-agent/               # Sub-agent orchestration design
@@ -273,6 +291,53 @@ Same as JSON flow, with additions:
   5j. effectiveDocText      — ocrText (if available) overrides extraction text
   5k. Unified dispatch: complexity >= 4 → SequentialReasoner, else → generate()
   5l. Fallback: If enhance model fails → auto-fallback to original routing model
+```
+
+### 3.5 PPTX/PDF Generation (File Download)
+
+```
+Client → POST /api/v1/generate/pptx (or /pdf)
+  Auth: JWT Bearer (authMiddleware + forcePasswordResetMiddleware)
+  Body (JSON): { prompt, modelId?, template? }
+  Body (Multipart): prompt (field) + context (field, optional) + files (attachment)
+
+  1. Validate prompt — non-empty, < 16K chars
+  2. If multipart: extract text from uploaded files via extractDocumentText()
+     → append to prompt as "--- DOKUMEN TERLAMPIR ---"
+  3. If context provided: append to prompt as "--- KONTEKS PERCAKAPAN SEBELUMNYA ---"
+  4. Bedrock Converse (non-streaming, qwen3-235b default):
+     - system: JSON schema + slide type guide + design rules + full example
+     - messages: user prompt
+     - maxTokens: 4096, temperature: 0.2 (retry: 0.1)
+  5. Parse LLM output — strip ``` fences, fix trailing commas, JSON.parse
+  6. Validate Content JSON — 6 slide types, field-level checks, max 30 slides
+  7. Retry up to 3 attempts with specific error feedback on validation failure
+  8. POST python-pptx service /generate:
+     - { template, meta, slides } → .pptx Buffer
+     - Internal Cloud Run, IAM auth via GCP metadata token
+  9. Return .pptx as download (Content-Type + Content-Disposition)
+  10. (PDF only) Pipe .pptx → Gotenberg /forms/libreoffice/convert → .pdf download
+```
+
+### 3.6 Frontend Generation Commands
+
+```
+Chat input prefixes:
+  /pptx <prompt>     → Generate .pptx presentation
+  /pdf <prompt>      → Generate .pdf presentation
+
+When triggered:
+  1. getConversationContext() — collect last 4 user-assistant turns from DOM
+  2. If files attached: send as multipart with context
+  3. If no files: send as JSON with context
+  4. Loading state: "⏳ Generating presentation..."
+  5. Auto-download + clickable download link in chat
+  6. Chat shows: "✅ Presentation ready! 0.X MB — 📥 Click here to download"
+
+Context handling:
+  - Previous turns injected as "--- KONTEKS PERCAKAPAN SEBELUMNYA ---"
+  - /pptx and /pdf commands are excluded from context collection
+  - Max 4 turns collected, capped at 6000 chars on backend
 ```
 
 ---
@@ -645,7 +710,7 @@ if needsOCR:
 ## 11. Gotenberg — Legacy Office Conversion
 
 ### Purpose
-Convert binary Office formats (.doc, .ppt) that pure Node.js cannot parse. Deployed as a separate Cloud Run service.
+Convert binary Office formats (.doc, .ppt) that pure Node.js cannot parse. Also used for PPTX→PDF conversion in the file generation pipeline. Deployed as a separate Cloud Run service.
 
 ### Flow
 ```
@@ -655,6 +720,12 @@ Convert binary Office formats (.doc, .ppt) that pure Node.js cannot parse. Deplo
   → Gotenberg returns PDF
   → extractPdfText() extracts text from PDF
   → Text returned as ExtractionResult
+
+.pptx buffer (from python-pptx service)
+  → convertPptxToPdf() — new function
+  → POST buffer to Gotenberg /forms/libreoffice/convert
+  → Gotenberg returns PDF buffer
+  → PDF returned as download
 ```
 
 ### Deployment
@@ -818,6 +889,7 @@ Convert binary Office formats (.doc, .ppt) that pure Node.js cannot parse. Deplo
 | `EXTRACTION_MAX_PPTX_ENTRIES` | 2000 | Max PPTX ZIP entries |
 | `GOTENBERG_URL` | — | Gotenberg service URL |
 | `GOTENBERG_TIMEOUT_MS` | 30000 | Gotenberg conversion timeout |
+| `PPTX_SERVICE_URL` | — | python-pptx microservice URL (internal Cloud Run) |
 | `MIN_PASSWORD_LENGTH` | 8 | Minimum password length |
 
 ---
@@ -986,3 +1058,8 @@ Content-Type: application/json
 - **Cache-control on HTML**: HTML files served with `Cache-Control: no-cache, no-store, must-revalidate`.
 - **EventEmitter limit**: `EventEmitter.defaultMaxListeners = 50` in `server.ts`.
 - **Google OAuth JIT provisioning**: `loginWithGoogle()` verifies Google ID token server-side, then JIT-provisions via 3-step process.
+- **PPTX generation — content/design separation**: LLM generates structured Content JSON (slide types + text). python-pptx applies code-based design (navy+gold "corporate" theme, 6 slide layouts, geometric accents, Calibri typography). Zero design awareness in LLM prompt — cleaner separation, more reliable output.
+- **PPTX retry with targeted error feedback**: If LLM generates invalid JSON (missing `left`/`right` on comparison, wrong bullet count), retry prompt includes exact fix instructions based on error type. 3 attempts with decreasing temperature.
+- **Conversation context in file generation**: Frontend collects last 4 user-assistant turns from chat DOM, backend injects them as "KONTEKS PERCAKAPAN SEBELUMNYA" — enables multi-turn drafting before final file generation.
+- **Auto-download + clickable link**: Generated files auto-download AND show a clickable download link in chat. Blob URL kept alive until next generation. File size displayed in MB.
+- **python-pptx service scale-to-zero**: Deployed as separate Cloud Run service with min-instances=0, internal-only ingress, IAM auth. Cold start ~2s acceptable for generation latency.

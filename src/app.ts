@@ -8,6 +8,7 @@ import modelsRoutes from './routes/models.routes.js';
 import { inferenceRouter } from './routes/inference.routes.js';
 import { sessionRouter } from './routes/session.routes.js';
 import feedbackRoutes from './routes/feedback.routes.js';
+import generationRoutes from './routes/generation.routes.js';
 import { ErrorResponse } from './types/error.types.js';
 import { securityHeaders, apiRateLimit } from './middleware/security.middleware.js';
 
@@ -95,6 +96,7 @@ app.use('/api/v1/models', modelsRoutes);
 app.use('/api/v1/inference', inferenceRouter);
 app.use('/api/v1/sessions', sessionRouter);
 app.use('/api/v1/feedback', feedbackRoutes);
+app.use('/api/v1/generate', generationRoutes);
 
 // --- Global Error Handler ---
 // Catches unhandled errors and returns a sanitized response.
