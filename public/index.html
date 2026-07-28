@@ -451,7 +451,7 @@
       padding: 2rem 1.5rem;
       display: flex;
       flex-direction: column;
-      gap: 1.5rem;
+      gap: 1rem;
       max-width: 768px;
       margin: 0 auto;
       width: 100%;
@@ -600,7 +600,7 @@
     }
 
     .code-block-wrapper {
-      margin: 0.75rem 0;
+      margin: 0.5rem 0;
       border-radius: 10px;
       overflow: hidden;
       border: 1px solid var(--border);
@@ -664,7 +664,7 @@
     .assistant-text-content h2,
     .assistant-text-content h3 {
       font-weight: 600;
-      margin: 0.75rem 0 0.25rem;
+      margin: 0.5rem 0 0.25rem;
     }
     .assistant-text-content h1 { font-size: 1.35rem; border-bottom: 1px solid var(--border); padding-bottom: 0.25rem; }
     .assistant-text-content h2 { font-size: 1.15rem; }
@@ -745,7 +745,7 @@
     .assistant-text-content table {
       border-collapse: collapse;
       width: 100%;
-      margin: 0.75rem 0;
+      margin: 0.5rem 0;
       font-size: 0.85rem;
     }
     .assistant-text-content th {
@@ -773,7 +773,7 @@
 
     .assistant-content h1, .assistant-content h2, .assistant-content h3,
     .assistant-content h4, .assistant-content h5, .assistant-content h6 {
-      margin: 0.75rem 0 0.25rem;
+      margin: 0.5rem 0 0.25rem;
       font-weight: 700;
       scroll-margin-top: 80px;
     }
@@ -798,7 +798,7 @@
     }
 
     .assistant-content blockquote {
-      margin: 0.75rem 0;
+      margin: 0.5rem 0;
       padding: 0.75rem 1rem;
       border-left: 4px solid var(--accent);
       background: var(--bg-tertiary);
@@ -809,7 +809,7 @@
 
     .table-wrapper {
       overflow-x: auto;
-      margin: 0.75rem 0;
+      margin: 0.5rem 0;
       border: 1px solid var(--border);
       border-radius: 8px;
     }
@@ -856,7 +856,7 @@
     }
 
     .assistant-content .katex { font-size: 1.1em; }
-    .assistant-content .katex-display { margin: 0.75rem 0; }
+    .assistant-content .katex-display { margin: 0.5rem 0; }
 
     .message.error {
       align-self: center;
@@ -2880,7 +2880,7 @@ function formatMarkdown(text) {
       const level = trimmedLine.match(/^(#{1,6})(?:\s|$)/)[1].length;
       const content = trimmedLine.replace(/^#{1,6}(?:\s+|$)/, '');
       const anchor = content.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-      html += `<h${level} id="${anchor}" style="margin: 0.75rem 0 0.25rem; font-weight:600;scroll-margin-top:80px;font-size:${1.4 - level * 0.1}rem;">${inlineFormat(content)}</h${level}>`;
+      html += `<h${level} id="${anchor}" style="margin: 0.5rem 0 0.25rem; font-weight:600;scroll-margin-top:80px;font-size:${1.4 - level * 0.1}rem;">${inlineFormat(content)}</h${level}>`;
       continue;
     }
 
@@ -2947,7 +2947,7 @@ function formatMarkdown(text) {
     
     // Section heading: all-caps, [bracketed], or follow-up title
     if (/^(\d+\.\s*)?[A-Z][A-Z\s]{2,}$/.test(line.trim()) || /^\[.+\]$/.test(line.trim()) || /^Follow.up/i.test(line.trim()) || /^[A-Z][a-zA-Z]+[\s\w-]{10,}(?<!\.)$/.test(line.trim())) {
-      html += `<div style="margin: 0.75rem 0 0.25rem;font-weight:800;font-size:1.15rem;color:var(--text-primary);text-transform:uppercase;letter-spacing:0.04em;border-bottom:2px solid var(--accent);padding-bottom:0.3rem">${inlineFormat(line.trim())}</div>`;
+      html += `<div style="margin: 0.5rem 0 0.25rem;font-weight:800;font-size:1.15rem;color:var(--text-primary);text-transform:uppercase;letter-spacing:0.04em;border-bottom:2px solid var(--accent);padding-bottom:0.3rem">${inlineFormat(line.trim())}</div>`;
       continue;
     }
     // Regular paragraph
