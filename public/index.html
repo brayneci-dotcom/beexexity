@@ -2322,7 +2322,14 @@ async function handleSend() {
     let buffer = '';
 
     while (true) {
-      const { done, value } = await reader.read();
+      let readResult;
+      try {
+        readResult = await reader.read();
+      } catch (e) {
+        // reader.cancel() was called (done event received) — clean exit
+        break;
+      }
+      const { done, value } = readResult;
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
@@ -2625,7 +2632,9 @@ async function handleSend() {
               scopedStepStatus.innerHTML = '<span style=\'color:var(--text-tertiary)\'>✅ Done (' + elapsed + 's)</span>';
             }
             setStreaming(false);
-            // Don't return — let the while loop finish reading remaining data
+            // Cancel reader — unblocks while loop immediately instead of waiting
+            // for server res.end() (which can take seconds for DB storage).
+            reader.cancel().catch(() => {});
           } else if (eventType === 'error') {
             if (data.error === 'SESSION_EXPIRED' || data.error === 'SESSION_NOT_FOUND') {
               // Clear chat UI and reset session
