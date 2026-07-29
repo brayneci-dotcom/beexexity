@@ -3835,6 +3835,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     const files = Array.from(e.dataTransfer.files);
     handleFileSelection(files);
   });
+
+  // Clipboard paste: support pasting files/images from clipboard (Finder/Explorer)
+  document.addEventListener('paste', (e) => {
+    if (isStreaming) return;
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    const fileEntries: File[] = [];
+    for (const item of items) {
+      if (item.kind === 'file') {
+        const file = item.getAsFile();
+        if (file) fileEntries.push(file);
+      }
+    }
+
+    if (fileEntries.length > 0) {
+      e.preventDefault(); // block default text paste (filename)
+      handleFileSelection(fileEntries);
+    }
+    // If no files, let default paste behavior handle text
+  });
 });
 
 // --- File Upload Functions ---

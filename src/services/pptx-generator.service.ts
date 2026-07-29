@@ -5,183 +5,145 @@
  *                         prompt → LLM HTML → Gotenberg Chromium → .pdf
  * Flow (json, fallback): prompt → LLM JSON  → python-pptx service → .pptx
  *                         prompt → LLM JSON  → python-pptx → Gotenberg LibreOffice → .pdf
+ *
+ * Theme system: 10 CSS Variable-based themes. LLM outputs only <section> elements
+ * with theme + layout classes. Node.js injects <head> with full CSS before Gotenberg.
  */
+import * as cheerio from 'cheerio';
 import { ConverseCommand } from '@aws-sdk/client-bedrock-runtime';
 import { bedrockClient } from './inference.service.js';
 import { config } from '../config/index.js';
 import { htmlToPptxViaGotenberg, htmlToPdfViaGotenberg } from './gotenberg.service.js';
+import { PPTX_THEMES_CSS, VALID_THEMES, VALID_LAYOUTS } from './pptx-themes.js';
 import type { ContentJson, GeneratePptxResponse, Bullet } from '../types/pptx.types.js';
 
 // ═══════════════════════════════════════════════
 //  System Prompts
 // ═══════════════════════════════════════════════
 
-const CSS_DESIGN_SYSTEM = `/* === Design System === */
-:root {
-  --primary: #1A365D; --accent: #ED8936; --bg: #F7FAFC; --text: #2D3748;
-  --muted: #A0AEC0; --white: #FFFFFF; --blue: #2B6CB0; --green: #38A169;
-  --red: #E53E3E; --card-bg: #FFFFFF; --shadow: 0 2px 20px rgba(0,0,0,.06);
-}
-* { margin:0; padding:0; box-sizing:border-box; }
-body { font-family: 'Helvetica Neue', Arial, sans-serif; }
-.slide { width:1280px; height:720px; padding:60px 80px; background:var(--bg);
-         position:relative; overflow:hidden; page-break-after:always; }
-.slide-cover {
-  background: linear-gradient(135deg, var(--primary) 0%, #2B6CB0 100%);
-  color:var(--white); display:flex; flex-direction:column; justify-content:center;
-}
-.slide-cover h1 { font-size:52px; font-weight:300; margin-bottom:16px; max-width:75%; letter-spacing:-0.5px; }
-.slide-cover .subtitle { font-size:24px; opacity:0.85; font-weight:300; margin-bottom:40px; }
-.slide-cover .meta { font-size:15px; opacity:0.6; }
-.slide-cover .accent-bar { position:absolute; right:0; top:50%; transform:translateY(-50%);
-  width:6px; height:160px; background:var(--accent); border-radius:3px 0 0 3px; }
-.slide-cover::after { content:''; position:absolute; bottom:40px; right:60px;
-  width:80px; height:80px; border:2px solid rgba(255,255,255,.15); transform:rotate(45deg); }
-
-.slide-divider {
-  background:var(--primary); color:var(--white); display:flex;
-  flex-direction:column; justify-content:center; padding-left:120px;
-}
-.slide-divider .number { font-size:96px; font-weight:700; color:var(--accent); opacity:0.9; }
-.slide-divider h2 { font-size:44px; font-weight:300; margin-top:8px; letter-spacing:-0.5px; }
-.slide-divider .subtitle { font-size:20px; opacity:0.7; margin-top:16px; font-weight:300; }
-.slide-divider .left-bar { position:absolute; left:0; top:0; width:8px; height:100%;
-  background:var(--accent); }
-
-.slide-content { display:flex; flex-direction:column; }
-.slide-content h2 { font-size:36px; font-weight:300; color:var(--primary);
-  margin-bottom:8px; letter-spacing:-0.3px; }
-.slide-content .title-underline { width:50px; height:4px; background:var(--accent);
-  border-radius:2px; margin-bottom:32px; }
-.slide-content .body { flex:1; }
-.slide-content ul { list-style:none; }
-.slide-content li { font-size:20px; color:var(--text); padding:12px 0; border-bottom:1px solid #E2E8F0;
-  display:flex; align-items:flex-start; gap:12px; line-height:1.5; }
-.slide-content li::before { content:'▸'; color:var(--accent); font-size:16px; flex-shrink:0; margin-top:4px; }
-.slide-content .footer-line { position:absolute; bottom:40px; left:80px; right:80px;
-  height:1px; background:#E2E8F0; }
-
-.slide-stats { display:flex; flex-direction:column; }
-.slide-stats h2 { font-size:36px; font-weight:300; color:var(--primary); margin-bottom:40px; }
-.slide-stats .cards { display:flex; gap:24px; flex:1; }
-.slide-stats .card { flex:1; background:var(--card-bg); border-radius:12px; padding:32px;
-  box-shadow:var(--shadow); text-align:center; display:flex; flex-direction:column;
-  justify-content:center; border-top:4px solid var(--accent); }
-.slide-stats .card .value { font-size:48px; font-weight:700; color:var(--primary); }
-.slide-stats .card .label { font-size:16px; color:var(--muted); margin-top:8px; }
-
-.slide-timeline h2 { font-size:36px; font-weight:300; color:var(--primary); margin-bottom:40px; }
-.slide-timeline .track { position:relative; padding-left:40px; }
-.slide-timeline .track::before { content:''; position:absolute; left:15px; top:8px; bottom:8px;
-  width:2px; background:var(--blue); opacity:0.3; }
-.slide-timeline .point { position:relative; padding:0 0 28px 28px; }
-.slide-timeline .point::before { content:''; position:absolute; left:-29px; top:6px;
-  width:12px; height:12px; background:var(--accent); border-radius:50%;
-  box-shadow:0 0 0 4px rgba(237,137,54,.2); }
-.slide-timeline .point .date { font-size:14px; color:var(--accent); font-weight:600; }
-.slide-timeline .point .text { font-size:18px; color:var(--text); margin-top:4px; }
-
-.slide-quote { display:flex; align-items:center; justify-content:center; padding:80px 120px; }
-.slide-quote blockquote { font-size:36px; font-weight:300; font-style:italic; color:var(--primary);
-  line-height:1.4; border-left:5px solid var(--accent); padding-left:40px; }
-.slide-quote .attribution { font-size:18px; color:var(--muted); margin-top:20px;
-  font-style:normal; font-weight:500; }
-
-.slide-closing {
-  background:linear-gradient(135deg, var(--primary) 0%, #1A365D 100%);
-  color:var(--white); display:flex; flex-direction:column;
-  justify-content:center; align-items:center; text-align:center;
-}
-.slide-closing h2 { font-size:48px; font-weight:300; margin-bottom:16px; }
-.slide-closing .subtitle { font-size:22px; opacity:0.8; font-weight:300; margin-bottom:32px; }
-.slide-closing .contact { font-size:16px; opacity:0.6; }
-.slide-closing .deco { position:absolute; }
-.slide-closing .deco-tr { top:30px; right:30px; width:60px; height:60px;
-  border:2px solid rgba(255,255,255,.2); transform:rotate(45deg); }
-.slide-closing .deco-bl { bottom:30px; left:30px; width:50px; height:50px;
-  background:var(--accent); opacity:0.3; transform:rotate(45deg); }
-`;
-
-const HTML_SYSTEM_PROMPT = `You are a presentation designer. Create beautiful, professional slide decks using HTML + CSS.
+const HTML_SYSTEM_PROMPT = `You are an elite Presentation Art Director (ex-Apple/Stripe). Create visually stunning, highly dynamic slide decks. NEVER repeat the same layout on consecutive slides. Match the visual theme to the content's tone.
 
 ## Output Format
-Return ONLY valid HTML. No markdown fences, no explanations. Start directly with <section>.
+Return ONLY <section> elements. NO <html>, <head>, <body>, or markdown fences. Start directly with <section class="slide ..."> and end with </section>.
 
-${CSS_DESIGN_SYSTEM}
+## Theme Selection
+Analyze the document's tone and industry. Select exactly ONE theme class. Apply it to EVERY <section>:
 
-## Slide Types & Templates
+| Theme | Use For |
+|---|---|
+| theme-executive | Annual reports, Board of Directors, C-Level, formal policies |
+| theme-neon | Tech products, IT architecture, cybersecurity, SaaS pitch |
+| theme-minimal | Product design, strategy keynote, portfolio, clean proposals |
+| theme-pop | Marketing campaigns, creative pitches, events, social media |
+| theme-ledger | Financial reports, credit analysis, audit, banking, investment |
+| theme-teal | Healthcare, medical research, clinical protocols, pharma |
+| theme-earth | ESG reports, sustainability, CSR, environmental projects |
+| theme-pitch | Startup investor pitch, innovation, hackathon, high-energy |
+| theme-statute | Legal documents, compliance, regulatory, government, contracts |
+| theme-academic | Training materials, onboarding, education, internal memos |
 
-**Cover** — always first slide:
-<section class="slide slide-cover">
+Example: <section class="slide theme-neon layout-bento-3">
+
+## Layout Types — VARY EVERY SLIDE
+NEVER use the same layout class on two consecutive slides. Pick the layout that fits the content:
+
+**layout-hero** — Opening cover, section intros, or closing slide. Big title + subtitle. Add .center for closing/thank-you slides. Use a decorative .accent-bar.
+
+**layout-split** — Comparing 2 options, before/after, pros vs cons. Two equal columns.
+
+**layout-bento-3** — 3 key metrics, features, or pillars. Three equal cards in a row. Use .card > .stat-value + .stat-label pattern.
+
+**layout-bento-4** — 4 stats, values, or features. 2×2 card grid. Each card with icon, value, and label.
+
+**layout-timeline** — Chronological events, roadmap, process steps. Vertical timeline with date + description points.
+
+**layout-quote** — Testimonial, key insight, or memorable statement. Large italic blockquote with attribution.
+
+**layout-content** — Standard bullet points. ⚠️ MAXIMUM ONCE per deck. Prefer visual layouts above.
+
+## Component Classes (use inside any layout)
+- .card — content container. Add .accent-top for top-border accent. Add .center for centered text.
+- .stat-value + .stat-label — large KPI number + caption
+- .badge — small inline tag/label
+- .icon-lg — large emoji (e.g., <div class="icon-lg">🚀</div>)
+- .accent-bar — decorative vertical bar (hero slides)
+- .title-line — small accent line under headings
+- .muted — secondary/dim text
+- .mt-2, .mt-4, .mt-6, .mt-8 — vertical spacing
+
+## Emoji Icons (use for visual cues)
+📊 Data/Stats 💰 Finance 🔒 Security ⚡ Speed/Innovation 📈 Growth 🎯 Target/Goal
+✅ Success/Complete 🏆 Achievement 💡 Idea/Insight 📋 Process 📅 Timeline 🔍 Analysis
+🏢 Corporate 🚀 Launch 🤝 Partnership ⚖ Legal ⚕ Healthcare 🌱 Sustainability
+
+## Few-Shot Examples
+
+Cover slide:
+<section class="slide theme-executive layout-hero">
+  <div class="hero-content">
+    <h1>Annual Report 2026</h1>
+    <p class="subtitle">Financial Performance & Strategic Outlook</p>
+    <p class="meta">July 2026 • Board of Directors</p>
+  </div>
   <div class="accent-bar"></div>
-  <h1>Presentation Title</h1>
-  <div class="subtitle">Subtitle or tagline</div>
-  <div class="meta">Date • Presenter Name</div>
 </section>
 
-**Divider** — between major sections (use for transition):
-<section class="slide slide-divider">
-  <div class="left-bar"></div>
-  <div class="number">01</div>
-  <h2>Section Title</h2>
-  <div class="subtitle">Brief section description</div>
-</section>
-
-**Content** — main content with bullets:
-<section class="slide slide-content">
-  <h2>Slide Title</h2>
-  <div class="title-underline"></div>
-  <div class="body"><ul>
-    <li>Key point one — keep concise</li>
-    <li>Key point two</li>
-    <li>Key point three</li>
-  </ul></div>
-  <div class="footer-line"></div>
-</section>
-
-**Stats Cards** — for metrics/KPIs (2-4 numbers):
-<section class="slide slide-stats">
-  <h2>Key Metrics</h2>
-  <div class="cards">
-    <div class="card"><div class="value">$12.4M</div><div class="label">Revenue Q3</div></div>
-    <div class="card"><div class="value">23%</div><div class="label">YoY Growth</div></div>
-    <div class="card"><div class="value">62%</div><div class="label">Gross Margin</div></div>
+Stats/metrics slide:
+<section class="slide theme-executive layout-bento-3">
+  <h2>Key Performance Metrics</h2>
+  <div class="title-line"></div>
+  <div class="bento-grid">
+    <div class="card center accent-top">
+      <div class="icon-lg">💰</div>
+      <div class="stat-value">$12.4M</div>
+      <div class="stat-label">Revenue Q3 2026</div>
+      <div class="stat-delta up">↑ 23% YoY</div>
+    </div>
+    <div class="card center accent-top">
+      <div class="icon-lg">📈</div>
+      <div class="stat-value">62%</div>
+      <div class="stat-label">Gross Margin</div>
+      <div class="stat-delta up">↑ 5pp</div>
+    </div>
+    <div class="card center accent-top">
+      <div class="icon-lg">🎯</div>
+      <div class="stat-value">98.7%</div>
+      <div class="stat-label">SLA Compliance</div>
+      <div class="stat-delta up">↑ 0.3pp</div>
+    </div>
   </div>
 </section>
 
-**Timeline** — for chronological events/milestones:
-<section class="slide slide-timeline">
-  <h2>Project Timeline</h2>
+Timeline slide:
+<section class="slide theme-executive layout-timeline">
+  <h2>Strategic Roadmap 2026</h2>
+  <div class="title-line"></div>
   <div class="track">
-    <div class="point"><div class="date">Q1 2026</div><div class="text">Initial launch</div></div>
-    <div class="point"><div class="date">Q2 2026</div><div class="text">Market expansion</div></div>
-    <div class="point"><div class="date">Q3 2026</div><div class="text">Series A funding</div></div>
+    <div class="point"><div class="date">Q1 2026</div><div class="text">Market entry — Indonesia & Singapore</div></div>
+    <div class="point"><div class="date">Q2 2026</div><div class="text">Product v2 launch with AI features</div></div>
+    <div class="point"><div class="date">Q3 2026</div><div class="text">Series A funding round ($15M target)</div></div>
+    <div class="point"><div class="date">Q4 2026</div><div class="text">Regional expansion to 5 new markets</div></div>
   </div>
 </section>
 
-**Quote** — for testimonials or key statements:
-<section class="slide slide-quote">
-  <blockquote>Innovation distinguishes between a leader and a follower.</blockquote>
-  <div class="attribution">— Steve Jobs, Apple</div>
-</section>
-
-**Closing** — always last slide:
-<section class="slide slide-closing">
-  <div class="deco deco-tr"></div><div class="deco deco-bl"></div>
-  <h2>Thank You</h2>
-  <div class="subtitle">Questions & Discussion</div>
-  <div class="contact">email@company.com • linkedin.com/company</div>
+Closing slide:
+<section class="slide theme-executive layout-hero center">
+  <div class="hero-content">
+    <h1>Thank You</h1>
+    <p class="subtitle">Questions & Discussion</p>
+    <p class="meta mt-8">contact@company.com • linkedin.com/company</p>
+  </div>
+  <div class="accent-bar"></div>
 </section>
 
 ## Design Rules
-- Start with cover, end with closing
-- Use divider between major topics (every 2-4 slides)
-- Vary slide types — don't use 4 content slides in a row
-- Stats cards for numeric data, timeline for chronology, quote for testimonials
-- Bullets: 3-5 per slide, concise (not full paragraphs)
-- Total slides: 6-20 depending on topic complexity
-- Use inline style="" ONLY for unique styling. Use classes for everything else.
-- Ensure HTML is well-formed: close all tags, proper nesting.`;
+1. ALWAYS start with layout-hero (cover) and end with layout-hero.center (closing)
+2. NEVER use the same layout on two consecutive slides — vary relentlessly
+3. MAXIMUM ONE layout-content (bullet list) per entire deck
+4. 5-15 slides total depending on topic depth
+5. Cards: use 2-4 per bento slide, keep labels short
+6. Every <section> MUST have both theme AND layout classes: class="slide THEME LAYOUT"
+7. Well-formed HTML: close all tags, no inline styles, use the CSS classes provided`;
 
 const JSON_SYSTEM_PROMPT = `You are a presentation content architect. Output ONLY valid JSON — no markdown, no explanations.
 
@@ -250,6 +212,120 @@ function parseLLMText(raw: string): string {
 }
 
 // ═══════════════════════════════════════════════
+//  HTML Wrapping & Sanitasi
+// ═══════════════════════════════════════════════
+
+/** Wrap LLM output (section elements) into full HTML document with theme CSS */
+function wrapHtml(bodyContent: string): string {
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1280, height=720">
+<style>
+${PPTX_THEMES_CSS}
+</style>
+</head>
+<body>
+${bodyContent}
+</body>
+</html>`;
+}
+
+/** Extract body content from LLM output — handles both raw <section> and full HTML */
+function extractBodyContent(raw: string): string {
+  let html = raw.trim();
+
+  // Try to extract from full HTML if LLM ignored instructions
+  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  if (bodyMatch) return bodyMatch[1].trim();
+
+  // Strip <html>/<head> if present but no body tag
+  html = html.replace(/<html[^>]*>|<\/html>|<head[^>]*>[\s\S]*?<\/head>/gi, '');
+  html = html.replace(/<!DOCTYPE[^>]*>/i, '');
+
+  return html.trim();
+}
+
+// ═══════════════════════════════════════════════
+//  HTML Validation (theme + layout diversity)
+// ═══════════════════════════════════════════════
+
+interface SlideInfo {
+  theme: string | null;
+  layout: string | null;
+  classes: string[];
+}
+
+interface ValidationResult {
+  valid: boolean;
+  errors: string[];
+}
+
+export function validateSlides(html: string): ValidationResult {
+  const errors: string[] = [];
+  const $ = cheerio.load(html, { xml: { xmlMode: false } });
+
+  const slides: SlideInfo[] = [];
+  $('[class*="slide"]').each((_, el) => {
+    const classAttr = $(el).attr('class') || '';
+    const classes = classAttr.split(/\s+/).filter(Boolean);
+    const theme = classes.find(c => VALID_THEMES.has(c)) || null;
+    const layout = classes.find(c => VALID_LAYOUTS.has(c)) || null;
+    slides.push({ theme, layout, classes });
+  });
+
+  if (slides.length === 0) {
+    return { valid: false, errors: ['No slide sections found. Each slide must have class="slide theme-X layout-Y".'] };
+  }
+
+  if (slides.length < 4) {
+    errors.push(`Only ${slides.length} slide(s) found. Minimum 4 slides required (cover + 2 body + closing).`);
+  }
+
+  // ── Theme consistency ──
+  const themes = [...new Set(slides.map(s => s.theme).filter(Boolean))];
+  if (themes.length === 0) {
+    errors.push('No valid theme class found. Every <section> must have a theme class (e.g. theme-executive, theme-neon). Valid themes: ' + [...VALID_THEMES].join(', '));
+  } else if (themes.length > 1) {
+    errors.push(`Inconsistent themes: ${themes.join(', ')}. A single presentation must use only ONE theme.`);
+  }
+
+  // ── Every slide must have a layout ──
+  const missingLayouts = slides.filter(s => !s.layout);
+  if (missingLayouts.length > 0) {
+    errors.push(`${missingLayouts.length} slide(s) missing layout class. Every slide must have a layout (e.g. layout-hero, layout-bento-3). Valid layouts: ${[...VALID_LAYOUTS].join(', ')}`);
+  }
+
+  // ── Layout diversity: no consecutive same layout ──
+  for (let i = 1; i < slides.length; i++) {
+    if (slides[i].layout && slides[i - 1].layout && slides[i].layout === slides[i - 1].layout) {
+      errors.push(`Consecutive duplicate layout: slide ${i + 1} and ${i} both use "${slides[i].layout}". NEVER repeat the same layout on consecutive slides.`);
+      break; // one violation is enough
+    }
+  }
+
+  // ── Content layout max 1 per deck ──
+  const contentCount = slides.filter(s => s.layout === 'layout-content').length;
+  if (contentCount > 1) {
+    errors.push(`layout-content used ${contentCount} times. Maximum ONCE per deck. Use visual layouts (bento, split, timeline) instead.`);
+  }
+
+  // ── First slide should be hero (cover) ──
+  if (slides[0].layout && slides[0].layout !== 'layout-hero') {
+    errors.push(`First slide uses "${slides[0].layout}" — should be layout-hero (cover slide).`);
+  }
+
+  // ── Last slide should be hero (closing) ──
+  const last = slides[slides.length - 1];
+  if (last.layout && last.layout !== 'layout-hero') {
+    errors.push(`Last slide uses "${last.layout}" — should be layout-hero (closing/thank-you slide).`);
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
+// ═══════════════════════════════════════════════
 //  HTML Generation (default path)
 // ═══════════════════════════════════════════════
 
@@ -266,7 +342,7 @@ export async function generateHtmlSlides(
   for (let attempt = 0; attempt < 3; attempt++) {
     let retryHint = '';
     if (attempt > 0 && lastError) {
-      retryHint = `ERROR: ${lastError.message}. Fix and return ONLY valid HTML (no markdown wrapping, no explanations). Start with <section class="slide...">.`;
+      retryHint = `VALIDATION FAILED: ${lastError.message}\n\nFix ALL issues above. Return ONLY <section class="slide THEME LAYOUT"> elements. No markdown fences, no <html>/<head>/<body> tags.`;
     }
 
     const messages = attempt === 0
@@ -287,20 +363,30 @@ export async function generateHtmlSlides(
       const response = await bedrockClient.send(command, { abortSignal: controller.signal });
       rawResponse = response.output?.message?.content?.[0]?.text ?? '';
 
-      const html = parseLLMText(rawResponse);
+      const rawHtml = parseLLMText(rawResponse);
+      const bodyContent = extractBodyContent(rawHtml);
 
       // Validate: must contain <section class="slide
-      if (!/<section[^>]*class=["'][^"']*slide[^"']*["']/i.test(html)) {
-        throw new Error('No slide sections found. Output must contain <section class="slide ..."> elements.');
+      if (!/<section[^>]*class=["'][^"']*slide[^"']*["']/i.test(bodyContent)) {
+        throw new Error('No slide sections found. Each slide must be: <section class="slide theme-X layout-Y">');
       }
 
-      // Validate: must have at least cover and closing (or at least 2 slides)
-      const slideCount = (html.match(/<section[^>]*class=["'][^"']*slide/g) || []).length;
+      // Validate: slide count
+      const slideCount = (bodyContent.match(/<section[^>]*class=["'][^"']*slide/g) || []).length;
       if (slideCount < 2) {
-        throw new Error(`Only ${slideCount} slide(s) found. Minimum 2 slides required (cover + content).`);
+        throw new Error(`Only ${slideCount} slide(s) found. Minimum 4 slides required.`);
       }
 
-      return { html, modelUsed: model };
+      // Validate: theme consistency + layout diversity
+      const validation = validateSlides(bodyContent);
+      if (!validation.valid) {
+        throw new Error(validation.errors.join(' | '));
+      }
+
+      // Wrap with full HTML document + inject theme CSS
+      const fullHtml = wrapHtml(bodyContent);
+
+      return { html: fullHtml, modelUsed: model };
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
       if (attempt === 2) throw lastError;

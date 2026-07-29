@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1280">
+<title>PPTX 10 Themes — Visual Preview</title>
+<style>
+/* === Reset for preview === */
+html { background: #1a1a2e; }
+body { margin: 0; padding: 40px 20px; }
+
+/* === Theme label badge === */
+.theme-label { text-align: center; margin: 60px 0 16px 0; }
+.theme-label:first-child { margin-top: 0; }
+.theme-label span { font-family: system-ui, sans-serif; font-size: 14px; font-weight: 600;
+  color: #a0aec0; letter-spacing: 0.5px; text-transform: uppercase; }
+
+/* === Slide container === */
+.slide-wrapper { display: flex; justify-content: center; margin-bottom: 16px; }
+.slide { margin: 0; box-shadow: 0 8px 40px rgba(0,0,0,.5); flex-shrink: 0; }
+
+/* === Inject theme CSS === */
+/* === PPTX Theme System — 10 Tema via CSS Variables === */
+
+/* ── Base ── */
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif}
+.slide{width:1280px;height:720px;padding:60px 80px;position:relative;overflow:hidden;page-break-after:always;display:flex;flex-direction:column}
+
+/* ── Typography ── */
+.slide h1{font-size:52px;font-weight:300;letter-spacing:-0.5px;color:var(--heading);line-height:1.15}
+.slide h2{font-size:36px;font-weight:300;letter-spacing:-0.3px;color:var(--heading);margin-bottom:32px}
+.slide h3{font-size:22px;font-weight:500;color:var(--heading);margin-bottom:8px}
+.slide p,.slide li{font-size:20px;line-height:1.5;color:var(--text)}
+.slide .subtitle{font-size:24px;opacity:.85;font-weight:300;color:var(--text)}
+.slide .meta{font-size:15px;opacity:.6;color:var(--muted)}
+.slide .muted{color:var(--muted);font-size:16px}
+
+/* ── Accent Elements ── */
+.slide .accent-bar{width:6px;height:120px;background:var(--accent);border-radius:3px}
+.slide .accent-dot{width:10px;height:10px;background:var(--accent);border-radius:50%;display:inline-block}
+.slide .title-line{width:50px;height:4px;background:var(--accent);border-radius:2px;margin-bottom:28px}
+
+/* ── Card Component ── */
+.slide .card{background:var(--card-bg);border:1px solid var(--border);border-radius:12px;padding:28px 24px;display:flex;flex-direction:column;justify-content:center}
+.slide .card.center{text-align:center;align-items:center}
+.slide .card.accent-top{border-top:4px solid var(--accent)}
+.slide .stat-value{font-size:44px;font-weight:700;color:var(--stat,var(--accent));line-height:1.1}
+.slide .stat-label{font-size:15px;color:var(--muted);margin-top:6px}
+.slide .stat-delta{font-size:14px;font-weight:600;margin-top:4px}
+.slide .stat-delta.up{color:var(--green,#22C55E)}
+.slide .stat-delta.down{color:var(--red,#EF4444)}
+
+/* ── Badge / Tag ── */
+.slide .badge{display:inline-block;padding:4px 12px;border-radius:20px;font-size:13px;font-weight:600;background:var(--accent);color:var(--badge-text,var(--bg))}
+
+/* ── Icon (Unicode/Emoji fallback — no CDN needed) ── */
+.slide .icon-lg{font-size:48px;line-height:1;margin-bottom:16px}
+
+/* ═══════════════════════════════════════
+   LAYOUT CLASSES
+   ═══════════════════════════════════════ */
+
+/* ── Hero (Cover / Section Intro / Closing) ── */
+.slide.layout-hero{justify-content:center;text-align:left;padding:80px 100px}
+.slide.layout-hero.center{text-align:center;align-items:center}
+.slide.layout-hero h1{max-width:75%}
+.slide.layout-hero.center h1{max-width:90%}
+.slide.layout-hero .hero-bg{position:absolute;inset:0;z-index:0;opacity:.08}
+.slide.layout-hero .hero-content{position:relative;z-index:1}
+.slide.layout-hero .accent-bar{position:absolute;right:60px;top:50%;transform:translateY(-50%)}
+.slide.layout-hero.center .accent-bar{position:static;margin:24px auto 0;width:80px;height:4px;transform:none}
+
+/* ── Split (2-column comparison) ── */
+.slide.layout-split{flex-direction:row;gap:40px;padding:60px 80px}
+.slide.layout-split h2{position:absolute;top:60px;left:80px;margin-bottom:0}
+.slide.layout-split .split-left,.slide.layout-split .split-right{flex:1;display:flex;flex-direction:column;justify-content:center;margin-top:60px}
+.slide.layout-split .split-left{border-right:1px solid var(--border);padding-right:40px}
+.slide.layout-split .split-right{padding-left:20px}
+
+/* ── Bento Grid (3 / 4 cards) ── */
+.slide.layout-bento-3{padding:60px 80px}
+.slide.layout-bento-3 .bento-grid{display:flex;gap:20px;flex:1;align-items:stretch}
+.slide.layout-bento-3 .bento-grid .card{flex:1}
+
+.slide.layout-bento-4{padding:60px 80px}
+.slide.layout-bento-4 .bento-grid{display:flex;flex-wrap:wrap;gap:16px;flex:1;align-content:stretch}
+.slide.layout-bento-4 .bento-grid .card{flex:1 1 calc(50% - 8px);min-height:0}
+
+/* ── Timeline ── */
+.slide.layout-timeline{padding:60px 100px}
+.slide.layout-timeline .track{position:relative;padding-left:36px;flex:1}
+.slide.layout-timeline .track::before{content:'';position:absolute;left:13px;top:8px;bottom:8px;width:2px;background:var(--border);border-radius:1px}
+.slide.layout-timeline .point{position:relative;padding:0 0 24px 28px}
+.slide.layout-timeline .point:last-child{padding-bottom:0}
+.slide.layout-timeline .point::before{content:'';position:absolute;left:-27px;top:6px;width:12px;height:12px;background:var(--accent);border-radius:50%;box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 20%,transparent)}
+.slide.layout-timeline .point .date{font-size:14px;color:var(--accent);font-weight:600;margin-bottom:4px}
+.slide.layout-timeline .point .text{font-size:18px;color:var(--text)}
+
+/* ── Quote ── */
+.slide.layout-quote{justify-content:center;align-items:flex-start;padding:80px 140px}
+.slide.layout-quote blockquote{font-size:34px;font-weight:300;font-style:italic;color:var(--heading);line-height:1.4;border-left:5px solid var(--accent);padding-left:36px}
+.slide.layout-quote .attribution{font-size:18px;color:var(--muted);margin-top:20px;font-style:normal;font-weight:500;padding-left:41px}
+
+/* ── Content (Standard bullets — USE SPARINGLY) ── */
+.slide.layout-content h2{margin-bottom:8px}
+.slide.layout-content ul{list-style:none;flex:1}
+.slide.layout-content li{font-size:19px;padding:11px 0;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:10px;line-height:1.5}
+.slide.layout-content li::before{content:'▸';color:var(--accent);font-size:15px;flex-shrink:0;margin-top:4px}
+
+/* ═══════════════════════════════════════
+   THEME 1: Executive Navy
+   ═══════════════════════════════════════ */
+.slide.theme-executive{--bg:#0A192F;--primary:#0A192F;--accent:#D4AF37;--text:#E8ECF1;--heading:#FFFFFF;--card-bg:rgba(255,255,255,.05);--muted:#8892B0;--border:rgba(212,175,55,.25);--stat:#D4AF37;--green:#4ADE80;--red:#F87171;--badge-text:#0A192F;background:var(--bg);color:var(--text)}
+.slide.theme-executive .card{border:1px solid var(--border)}
+.slide.theme-executive::after{content:'';position:absolute;top:0;right:0;width:300px;height:300px;background:radial-gradient(circle,rgba(212,175,55,.06) 0%,transparent 70%);pointer-events:none}
+
+/* ═══════════════════════════════════════
+   THEME 2: Neon Dark (Tech / SaaS / Cyber)
+   ═══════════════════════════════════════ */
+.slide.theme-neon{--bg:#0F172A;--primary:#0F172A;--accent:#38BDF8;--text:#F1F5F9;--heading:#FFFFFF;--card-bg:rgba(255,255,255,.04);--muted:#94A3B8;--border:rgba(56,189,248,.25);--stat:#38BDF8;--green:#4ADE80;--red:#F87171;--badge-text:#0F172A;background:linear-gradient(135deg,#0F172A 0%,#1E293B 100%);color:var(--text)}
+.slide.theme-neon .card{backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--border);box-shadow:0 0 20px rgba(56,189,248,.08)}
+.slide.theme-neon::after{content:'';position:absolute;bottom:0;left:0;width:400px;height:200px;background:radial-gradient(ellipse at bottom left,rgba(56,189,248,.08) 0%,transparent 70%);pointer-events:none}
+
+/* ═══════════════════════════════════════
+   THEME 3: Minimalist (Clean / Apple-Style)
+   ═══════════════════════════════════════ */
+.slide.theme-minimal{--bg:#FAFAFA;--primary:#FAFAFA;--accent:#E11D48;--text:#18181B;--heading:#09090B;--card-bg:#FFFFFF;--muted:#6B7280;--border:#E4E4E7;--stat:#E11D48;--green:#16A34A;--red:#DC2626;--badge-text:#FFFFFF;background:var(--bg);color:var(--text)}
+.slide.theme-minimal .card{box-shadow:0 1px 3px rgba(0,0,0,.04);border:1px solid var(--border)}
+.slide.theme-minimal .accent-bar{box-shadow:0 0 0 3px rgba(225,29,72,.15)}
+
+/* ═══════════════════════════════════════
+   THEME 4: Vibrant Pop (Marketing / Creative)
+   ═══════════════════════════════════════ */
+.slide.theme-pop{--bg:#FFFFFF;--primary:#7C3AED;--accent:#F43F5E;--text:#1F2937;--heading:#111827;--card-bg:rgba(255,255,255,.85);--muted:#9CA3AF;--border:rgba(244,63,94,.3);--stat:#7C3AED;--green:#10B981;--red:#EF4444;--badge-text:#FFFFFF;background:linear-gradient(135deg,#F9FAFB 0%,#F3F4F6 40%,#FDF2F8 100%);color:var(--text)}
+.slide.theme-pop::before{content:'';position:absolute;top:-80px;right:-80px;width:280px;height:280px;background:radial-gradient(circle,rgba(124,58,237,.12) 0%,transparent 70%);border-radius:50%;pointer-events:none}
+.slide.theme-pop .card{backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+
+/* ═══════════════════════════════════════
+   THEME 5: Emerald Ledger (Finance / Banking)
+   ═══════════════════════════════════════ */
+.slide.theme-ledger{--bg:#F8FAFC;--primary:#065F46;--accent:#10B981;--text:#1E293B;--heading:#0F172A;--card-bg:#FFFFFF;--muted:#64748B;--border:#CBD5E1;--stat:#065F46;--green:#059669;--red:#DC2626;--badge-text:#FFFFFF;background:var(--bg);color:var(--text)}
+.slide.theme-ledger .card{box-shadow:0 4px 16px rgba(0,0,0,.04);border:1px solid var(--border);border-top:4px solid var(--accent)}
+.slide.theme-ledger .title-line{background:linear-gradient(90deg,var(--accent),#34D399)}
+
+/* ═══════════════════════════════════════
+   THEME 6: Clinical Teal (Healthcare / Medical)
+   ═══════════════════════════════════════ */
+.slide.theme-teal{--bg:#F0FDFA;--primary:#0F766E;--accent:#14B8A6;--text:#134E4A;--heading:#042F2E;--card-bg:#FFFFFF;--muted:#5EEAD4;--border:#CCFBF1;--stat:#0D9488;--green:#10B981;--red:#F43F5E;--badge-text:#FFFFFF;background:var(--bg);color:var(--text)}
+.slide.theme-teal .card{border:1px solid var(--border);border-radius:16px;box-shadow:0 2px 12px rgba(15,118,110,.06)}
+.slide.theme-teal .title-line{border-radius:4px}
+
+/* ═══════════════════════════════════════
+   THEME 7: Eco Earth (Sustainability / ESG)
+   ═══════════════════════════════════════ */
+.slide.theme-earth{--bg:#F5F5F4;--primary:#4D7C0F;--accent:#84CC16;--text:#1C1917;--heading:#292524;--card-bg:#FAFAF9;--muted:#78716C;--border:#D6D3D1;--stat:#4D7C0F;--green:#65A30D;--red:#DC2626;--badge-text:#1C1917;background:linear-gradient(180deg,#F5F5F4 0%,#F1F5F9 100%);color:var(--text)}
+.slide.theme-earth .card{border-radius:20px;border:1px solid var(--border);box-shadow:0 3px 20px rgba(77,124,15,.04)}
+.slide.theme-earth .accent-bar{border-radius:20px}
+
+/* ═══════════════════════════════════════
+   THEME 8: Startup Pitch (High Energy)
+   ═══════════════════════════════════════ */
+.slide.theme-pitch{--bg:#FAFAFA;--primary:#EA580C;--accent:#F97316;--text:#1E293B;--heading:#0F172A;--card-bg:#FFFFFF;--muted:#94A3B8;--border:#FED7AA;--stat:#EA580C;--green:#22C55E;--red:#EF4444;--badge-text:#FFFFFF;background:var(--bg);color:var(--text)}
+.slide.theme-pitch .card{box-shadow:0 2px 24px rgba(234,88,12,.06);border:1px solid var(--border)}
+.slide.theme-pitch::after{content:'';position:absolute;top:0;right:0;width:200px;height:200px;background:radial-gradient(circle at top right,rgba(249,115,22,.1) 0%,transparent 70%);pointer-events:none}
+.slide.theme-pitch .stat-value{font-weight:800}
+
+/* ═══════════════════════════════════════
+   THEME 9: Statute Burgundy (Legal / Compliance)
+   ═══════════════════════════════════════ */
+.slide.theme-statute{--bg:#FFFFFF;--primary:#7F1D1D;--accent:#DC2626;--text:#171717;--heading:#0A0A0A;--card-bg:#FAFAFA;--muted:#737373;--border:#E5E5E5;--stat:#991B1B;--green:#16A34A;--red:#DC2626;--badge-text:#FFFFFF;background:var(--bg);color:var(--text)}
+.slide.theme-statute::before{content:'';position:absolute;top:0;left:0;width:100%;height:3px;background:linear-gradient(90deg,var(--primary),var(--accent),transparent);pointer-events:none}
+.slide.theme-statute .card{border:1px solid var(--border);border-left:4px solid var(--primary)}
+.slide.theme-statute h1,.slide.theme-statute h2{font-weight:400;letter-spacing:-0.2px}
+
+/* ═══════════════════════════════════════
+   THEME 10: Academic Bright (Education / Training)
+   ═══════════════════════════════════════ */
+.slide.theme-academic{--bg:#FFFBEB;--primary:#1D4ED8;--accent:#F59E0B;--text:#1E3A8A;--heading:#1E40AF;--card-bg:#FFFFFF;--muted:#6B7280;--border:#FDE68A;--stat:#1D4ED8;--green:#10B981;--red:#EF4444;--badge-text:#FFFFFF;background:var(--bg);color:var(--text)}
+.slide.theme-academic .card{border-radius:16px;border:2px solid var(--border);box-shadow:0 4px 0 rgba(245,158,11,.15)}
+.slide.theme-academic .title-line{height:5px;border-radius:4px;background:linear-gradient(90deg,var(--accent),var(--primary))}
+.slide.theme-academic h2{font-weight:400}
+
+/* ── Utility ── */
+.slide .mt-2{margin-top:8px}
+.slide .mt-4{margin-top:16px}
+.slide .mt-6{margin-top:24px}
+.slide .mt-8{margin-top:32px}
+.slide .gap-2{gap:8px}
+.slide .gap-4{gap:16px}
+.slide .flex-row{display:flex;flex-direction:row;align-items:center}
+
+</style>
+</head>
+<body>
+
+<!-- ═══ theme-executive ═══ -->
+</div>
+<div class="theme-label"><span>theme-executive · layout-hero"></span></div>
+<div class="slide-wrapper"><section class="slide theme-executive layout-hero">
+  <div class="hero-content"><h1>Annual Report 2026</h1><p class="subtitle">Financial Performance & Strategic Outlook</p><p class="meta">July 2026 · Board of Directors</p></div>
+  <div class="accent-bar"></div></section>
+</div>
+<div class="theme-label"><span>theme-executive · layout-bento-3"></span></div>
+<div class="slide-wrapper"><section class="slide theme-executive layout-bento-3">
+  <h2>Key Metrics</h2><div class="title-line"></div>
+  <div class="bento-grid">
+    <div class="card center accent-top"><div class="icon-lg">💰</div><div class="stat-value">$12.4M</div><div class="stat-label">Revenue Q3</div><div class="stat-delta up">↑ 23% YoY</div></div>
+    <div class="card center accent-top"><div class="icon-lg">📈</div><div class="stat-value">62%</div><div class="stat-label">Gross Margin</div><div class="stat-delta up">↑ 5pp</div></div>
+    <div class="card center accent-top"><div class="icon-lg">🎯</div><div class="stat-value">98.7%</div><div class="stat-label">SLA Compliance</div><div class="stat-delta up">↑ 0.3pp</div></div>
+  </div></section>
+</div>
+<div class="theme-label"><span>theme-executive · layout-hero</span></div>
+<div class="slide-wrapper"><section class="slide theme-executive layout-hero center">
+  <div class="hero-content"><h1>Thank You</h1><p class="subtitle">Questions & Discussion</p><p class="meta mt-8">contact@company.com</p></div>
+  <div class="accent-bar"></div></section>
+
+<!-- ═══ theme-neon ═══ -->
+</div>
+<div class="theme-label"><span>theme-neon · layout-hero"></span></div>
+<div class="slide-wrapper"><section class="slide theme-neon layout-hero">
+  <div class="hero-content"><h1>Zero Trust Architecture</h1><p class="subtitle">Cloud Security Framework v2.0</p><p class="meta">2026 · CISO Office</p></div>
+  <div class="accent-bar"></div></section>
+</div>
+<div class="theme-label"><span>theme-neon · layout-bento-3"></span></div>
+<div class="slide-wrapper"><section class="slide theme-neon layout-bento-3">
+  <h2>Security Posture</h2><div class="title-line"></div>
+  <div class="bento-grid">
+    <div class="card center"><div class="icon-lg">🔒</div><div class="stat-value">99.99%</div><div class="stat-label">Uptime SLA</div></div>
+    <div class="card center"><div class="icon-lg">⚡</div><div class="stat-value">&lt;5ms</div><div class="stat-label">Latency P99</div></div>
+    <div class="card center"><div class="icon-lg">🛡</div><div class="stat-value">0</div><div class="stat-label">Critical CVEs</div></div>
+  </div></section>
+</div>
+<div class="theme-label"><span>theme-neon · layout-hero</span></div>
+<div class="slide-wrapper"><section class="slide theme-neon layout-hero center">
+  <div class="hero-content"><h1>Secure by Design</h1><p class="subtitle">security@company.com</p></div>
+  <div class="accent-bar"></div></section>
+
+<!-- ═══ theme-minimal ═══ -->
+</div>
+<div class="theme-label"><span>theme-minimal · layout-hero"></span></div>
+<div class="slide-wrapper"><section class="slide theme-minimal layout-hero">
+  <div class="hero-content"><h1>Product Design v3</h1><p class="subtitle">Redefining the user experience</p><p class="meta">Design Review · July 2026</p></div>
+  <div class="accent-bar"></div></section>
+</div>
+<div class="theme-label"><span>theme-minimal · layout-split"></span></div>
+<div class="slide-wrapper"><section class="slide theme-minimal layout-split">
+  <h2>Before vs After</h2>
+  <div class="split-left"><div class="card center"><div class="icon-lg">😰</div><h3>Complex</h3><p class="muted mt-2">7 steps · 3 min avg</p></div></div>
+  <div class="split-right"><div class="card center"><div class="icon-lg">✨</div><h3>Simple</h3><p class="muted mt-2">2 steps · 15 sec avg</p></div></div></section>
+</div>
+<div class="theme-label"><span>theme-minimal · layout-hero</span></div>
+<div class="slide-wrapper"><section class="slide theme-minimal layout-hero center">
+  <div class="hero-content"><h1>Simplicity</h1><p class="subtitle">design@company.com</p></div>
+  <div class="accent-bar"></div></section>
+
+<!-- ═══ theme-pop ═══ -->
+</div>
+<div class="theme-label"><span>theme-pop · layout-hero"></span></div>
+<div class="slide-wrapper"><section class="slide theme-pop layout-hero">
+  <div class="hero-content"><h1>Vibrant Pop — Marketing</h1><p class="subtitle">Sample Presentation Deck</p><p class="meta">July 2026</p></div>
+  <div class="accent-bar"></div></section>
+</div>
+<div class="theme-label"><span>theme-pop · layout-bento-3"></span></div>
+<div class="slide-wrapper"><section class="slide theme-pop layout-bento-3">
+  <h2>Key Highlights</h2><div class="title-line"></div>
+  <div class="bento-grid">
+    <div class="card center accent-top"><div class="icon-lg">📊</div><div class="stat-value">42%</div><div class="stat-label">Metric Alpha</div></div>
+    <div class="card center accent-top"><div class="icon-lg">🎯</div><div class="stat-value">1.8x</div><div class="stat-label">Metric Beta</div></div>
+    <div class="card center accent-top"><div class="icon-lg">✅</div><div class="stat-value">95%</div><div class="stat-label">Metric Gamma</div></div>
+  </div></section>
+</div>
+<div class="theme-label"><span>theme-pop · layout-hero</span></div>
+<div class="slide-wrapper"><section class="slide theme-pop layout-hero center">
+  <div class="hero-content"><h1>Thank You</h1><p class="subtitle">Questions?</p></div>
+  <div class="accent-bar"></div></section>
+
+<!-- ═══ theme-ledger ═══ -->
+</div>
+<div class="theme-label"><span>theme-ledger · layout-hero"></span></div>
+<div class="slide-wrapper"><section class="slide theme-ledger layout-hero">
+  <div class="hero-content"><h1>Emerald Ledger — Finance</h1><p class="subtitle">Sample Presentation Deck</p><p class="meta">July 2026</p></div>
+  <div class="accent-bar"></div></section>
+</div>
+<div class="theme-label"><span>theme-ledger · layout-bento-3"></span></div>
+<div class="slide-wrapper"><section class="slide theme-ledger layout-bento-3">
+  <h2>Key Highlights</h2><div class="title-line"></div>
+  <div class="bento-grid">
+    <div class="card center accent-top"><div class="icon-lg">📊</div><div class="stat-value">42%</div><div class="stat-label">Metric Alpha</div></div>
+    <div class="card center accent-top"><div class="icon-lg">🎯</div><div class="stat-value">1.8x</div><div class="stat-label">Metric Beta</div></div>
+    <div class="card center accent-top"><div class="icon-lg">✅</div><div class="stat-value">95%</div><div class="stat-label">Metric Gamma</div></div>
+  </div></section>
+</div>
+<div class="theme-label"><span>theme-ledger · layout-hero</span></div>
+<div class="slide-wrapper"><section class="slide theme-ledger layout-hero center">
+  <div class="hero-content"><h1>Thank You</h1><p class="subtitle">Questions?</p></div>
+  <div class="accent-bar"></div></section>
+
+<!-- ═══ theme-teal ═══ -->
+</div>
+<div class="theme-label"><span>theme-teal · layout-hero"></span></div>
+<div class="slide-wrapper"><section class="slide theme-teal layout-hero">
+  <div class="hero-content"><h1>Clinical Teal — Healthcare</h1><p class="subtitle">Sample Presentation Deck</p><p class="meta">July 2026</p></div>
+  <div class="accent-bar"></div></section>
+</div>
+<div class="theme-label"><span>theme-teal · layout-bento-3"></span></div>
+<div class="slide-wrapper"><section class="slide theme-teal layout-bento-3">
+  <h2>Key Highlights</h2><div class="title-line"></div>
+  <div class="bento-grid">
+    <div class="card center accent-top"><div class="icon-lg">📊</div><div class="stat-value">42%</div><div class="stat-label">Metric Alpha</div></div>
+    <div class="card center accent-top"><div class="icon-lg">🎯</div><div class="stat-value">1.8x</div><div class="stat-label">Metric Beta</div></div>
+    <div class="card center accent-top"><div class="icon-lg">✅</div><div class="stat-value">95%</div><div class="stat-label">Metric Gamma</div></div>
+  </div></section>
+</div>
+<div class="theme-label"><span>theme-teal · layout-hero</span></div>
+<div class="slide-wrapper"><section class="slide theme-teal layout-hero center">
+  <div class="hero-content"><h1>Thank You</h1><p class="subtitle">Questions?</p></div>
+  <div class="accent-bar"></div></section>
+
+<!-- ═══ theme-earth ═══ -->
+</div>
+<div class="theme-label"><span>theme-earth · layout-hero"></span></div>
+<div class="slide-wrapper"><section class="slide theme-earth layout-hero">
+  <div class="hero-content"><h1>Eco Earth — Sustainability</h1><p class="subtitle">Sample Presentation Deck</p><p class="meta">July 2026</p></div>
+  <div class="accent-bar"></div></section>
+</div>
+<div class="theme-label"><span>theme-earth · layout-bento-3"></span></div>
+<div class="slide-wrapper"><section class="slide theme-earth layout-bento-3">
+  <h2>Key Highlights</h2><div class="title-line"></div>
+  <div class="bento-grid">
+    <div class="card center accent-top"><div class="icon-lg">📊</div><div class="stat-value">42%</div><div class="stat-label">Metric Alpha</div></div>
+    <div class="card center accent-top"><div class="icon-lg">🎯</div><div class="stat-value">1.8x</div><div class="stat-label">Metric Beta</div></div>
+    <div class="card center accent-top"><div class="icon-lg">✅</div><div class="stat-value">95%</div><div class="stat-label">Metric Gamma</div></div>
+  </div></section>
+</div>
+<div class="theme-label"><span>theme-earth · layout-hero</span></div>
+<div class="slide-wrapper"><section class="slide theme-earth layout-hero center">
+  <div class="hero-content"><h1>Thank You</h1><p class="subtitle">Questions?</p></div>
+  <div class="accent-bar"></div></section>
+
+<!-- ═══ theme-pitch ═══ -->
+</div>
+<div class="theme-label"><span>theme-pitch · layout-hero"></span></div>
+<div class="slide-wrapper"><section class="slide theme-pitch layout-hero">
+  <div class="hero-content"><h1>Startup Pitch — Innovation</h1><p class="subtitle">Sample Presentation Deck</p><p class="meta">July 2026</p></div>
+  <div class="accent-bar"></div></section>
+</div>
+<div class="theme-label"><span>theme-pitch · layout-bento-3"></span></div>
+<div class="slide-wrapper"><section class="slide theme-pitch layout-bento-3">
+  <h2>Key Highlights</h2><div class="title-line"></div>
+  <div class="bento-grid">
+    <div class="card center accent-top"><div class="icon-lg">📊</div><div class="stat-value">42%</div><div class="stat-label">Metric Alpha</div></div>
+    <div class="card center accent-top"><div class="icon-lg">🎯</div><div class="stat-value">1.8x</div><div class="stat-label">Metric Beta</div></div>
+    <div class="card center accent-top"><div class="icon-lg">✅</div><div class="stat-value">95%</div><div class="stat-label">Metric Gamma</div></div>
+  </div></section>
+</div>
+<div class="theme-label"><span>theme-pitch · layout-hero</span></div>
+<div class="slide-wrapper"><section class="slide theme-pitch layout-hero center">
+  <div class="hero-content"><h1>Thank You</h1><p class="subtitle">Questions?</p></div>
+  <div class="accent-bar"></div></section>
+
+<!-- ═══ theme-statute ═══ -->
+</div>
+<div class="theme-label"><span>theme-statute · layout-hero"></span></div>
+<div class="slide-wrapper"><section class="slide theme-statute layout-hero">
+  <div class="hero-content"><h1>Statute Burgundy — Legal</h1><p class="subtitle">Sample Presentation Deck</p><p class="meta">July 2026</p></div>
+  <div class="accent-bar"></div></section>
+</div>
+<div class="theme-label"><span>theme-statute · layout-bento-3"></span></div>
+<div class="slide-wrapper"><section class="slide theme-statute layout-bento-3">
+  <h2>Key Highlights</h2><div class="title-line"></div>
+  <div class="bento-grid">
+    <div class="card center accent-top"><div class="icon-lg">📊</div><div class="stat-value">42%</div><div class="stat-label">Metric Alpha</div></div>
+    <div class="card center accent-top"><div class="icon-lg">🎯</div><div class="stat-value">1.8x</div><div class="stat-label">Metric Beta</div></div>
+    <div class="card center accent-top"><div class="icon-lg">✅</div><div class="stat-value">95%</div><div class="stat-label">Metric Gamma</div></div>
+  </div></section>
+</div>
+<div class="theme-label"><span>theme-statute · layout-hero</span></div>
+<div class="slide-wrapper"><section class="slide theme-statute layout-hero center">
+  <div class="hero-content"><h1>Thank You</h1><p class="subtitle">Questions?</p></div>
+  <div class="accent-bar"></div></section>
+
+<!-- ═══ theme-academic ═══ -->
+</div>
+<div class="theme-label"><span>theme-academic · layout-hero"></span></div>
+<div class="slide-wrapper"><section class="slide theme-academic layout-hero">
+  <div class="hero-content"><h1>Academic Bright — Education</h1><p class="subtitle">Sample Presentation Deck</p><p class="meta">July 2026</p></div>
+  <div class="accent-bar"></div></section>
+</div>
+<div class="theme-label"><span>theme-academic · layout-bento-3"></span></div>
+<div class="slide-wrapper"><section class="slide theme-academic layout-bento-3">
+  <h2>Key Highlights</h2><div class="title-line"></div>
+  <div class="bento-grid">
+    <div class="card center accent-top"><div class="icon-lg">📊</div><div class="stat-value">42%</div><div class="stat-label">Metric Alpha</div></div>
+    <div class="card center accent-top"><div class="icon-lg">🎯</div><div class="stat-value">1.8x</div><div class="stat-label">Metric Beta</div></div>
+    <div class="card center accent-top"><div class="icon-lg">✅</div><div class="stat-value">95%</div><div class="stat-label">Metric Gamma</div></div>
+  </div></section>
+</div>
+<div class="theme-label"><span>theme-academic · layout-hero</span></div>
+<div class="slide-wrapper"><section class="slide theme-academic layout-hero center">
+  <div class="hero-content"><h1>Thank You</h1><p class="subtitle">Questions?</p></div>
+  <div class="accent-bar"></div></section>
+
+</div>
+</body>
+</html>

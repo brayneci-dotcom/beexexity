@@ -18,8 +18,8 @@
 | Office conversion | Gotenberg (sidecar Cloud Run service) | .doc, .ppt → PDF → text |
 | Auth | JWT (`jsonwebtoken`) + bcrypt + Google OAuth (`google-auth-library`) + X-API-Key | HS256, local + Google sign-in + M2M batch + passthrough mode |
 | File uploads | `multer` | Memory storage, 10MB/file, max 5 files |
-| PPTX generation | `python-pptx` (FastAPI, Python 3.12) | Separate Cloud Run microservice, scale-to-zero |
-| PDF generation | Gotenberg (PPTX→PDF via LibreOffice) | Existing sidecar, reused |
+| PPTX generation | HTML-first via Gotenberg Chromium + JSON fallback via `python-pptx` | 10 CSS Variable-based themes, layout validation |
+| PDF generation | Gotenberg (HTML→PDF Chromium, PPTX→PDF LibreOffice) | Existing sidecar, reused |
 | Testing | Vitest | `@/` alias → `./src/*` |
 | Linting | ESLint 9 + `typescript-eslint` | Flat config |
 | Build | `tsc` | Output: `dist/` |
@@ -97,8 +97,9 @@ src/
 │   ├── cost-reporting.service.ts       # Per-user cost aggregation
 │   ├── config.service.ts               # App config (passthrough_mode) with DB + in-memory cache
 │   ├── few-shot-library.ts             # Per-skill golden examples for format adherence (+ meeting_summary)
-│   ├── gotenberg.service.ts            # Legacy Office (.doc, .ppt) → PDF → text + PPTX→PDF conversion
-│   ├── pptx-generator.service.ts        # PPTX/PDF generation: LLM→JSON→python-pptx, retry+validation
+│   ├── gotenberg.service.ts            # Legacy Office → PDF, HTML→PDF (Chromium), HTML→PPTX (screenshot+JSZip), PPTX→PDF (LibreOffice)
+│   ├── pptx-generator.service.ts        # PPTX/PDF generation: HTML-first (CSS Variable theming, 10 themes, layout & theme validation) + JSON fallback, retry
+│   ├── pptx-themes.ts                  # 10 CSS Variable-based themes + 7 layout classes
 │   └── file-signature-validator.ts     # Magic byte heuristic gate
 ├── frontend/
 │   ├── cost-display.ts          # IDR rate fetch, session cost tracking
@@ -111,7 +112,7 @@ src/
 │   ├── pii.types.ts
 │   ├── upload.types.ts          # DocumentFile, ImageFile, ExtractionResult, ContentBuildInput, ContentBlock
 │   ├── audit.types.ts           # + billedUserId, billedGroup, apiKeyUsed
-│   ├── pptx.types.ts           # Content JSON schema (6 slide types: cover, content, divider, comparison, chart, closing)
+│   ├── pptx.types.ts           # Content JSON schema for JSON fallback path (6 slide types), HTML path uses CSS layouts
 │   ├── pricing.types.ts
 │   ├── reporting.types.ts
 │   └── error.types.ts
@@ -124,7 +125,7 @@ data/                            # Runtime data (not committed to git)
 
 pptx-service/                     # Python PPTX microservice (separate Cloud Run deployment)
 ├── main.py                       # FastAPI app: /health, /generate
-├── generator.py                  # Code-based design engine: 6 slide types, navy+gold theme
+├── generator.py                  # Code-based design engine: 6 slide types (JSON fallback path)
 ├── schemas.py                    # Pydantic validation (mirrors TypeScript types)
 ├── requirements.txt              # fastapi, uvicorn, python-pptx
 └── Dockerfile                    # Python 3.12-slim
@@ -295,28 +296,67 @@ Same as JSON flow, with additions:
 
 ### 3.5 PPTX/PDF Generation (File Download)
 
+Two modes: **HTML path** (default, 10 CSS Variable-based themes + 7 layout classes) and **JSON path** (fallback, editable via python-pptx). Auto-detects Gotenberg availability.
+
+#### HTML Path (default, `?format=html`)
+
 ```
 Client → POST /api/v1/generate/pptx (or /pdf)
-  Auth: JWT Bearer (authMiddleware + forcePasswordResetMiddleware)
-  Body (JSON): { prompt, modelId?, template? }
-  Body (Multipart): prompt (field) + context (field, optional) + files (attachment)
+  Auth: JWT Bearer
+  Body (JSON): { prompt, modelId?, context? }
+  Body (Multipart): prompt + files + context
 
   1. Validate prompt — non-empty, < 16K chars
-  2. If multipart: extract text from uploaded files via extractDocumentText()
-     → append to prompt as "--- DOKUMEN TERLAMPIR ---"
-  3. If context provided: append to prompt as "--- KONTEKS PERCAKAPAN SEBELUMNYA ---"
-  4. Bedrock Converse (non-streaming, qwen3-235b default):
-     - system: JSON schema + slide type guide + design rules + full example
-     - messages: user prompt
-     - maxTokens: 4096, temperature: 0.2 (retry: 0.1)
-  5. Parse LLM output — strip ``` fences, fix trailing commas, JSON.parse
-  6. Validate Content JSON — 6 slide types, field-level checks, max 30 slides
-  7. Retry up to 3 attempts with specific error feedback on validation failure
-  8. POST python-pptx service /generate:
-     - { template, meta, slides } → .pptx Buffer
-     - Internal Cloud Run, IAM auth via GCP metadata token
-  9. Return .pptx as download (Content-Type + Content-Disposition)
-  10. (PDF only) Pipe .pptx → Gotenberg /forms/libreoffice/convert → .pdf download
+  2. Extract document text + conversation context → combined prompt
+  3. Bedrock Converse (non-streaming, qwen3-235b):
+     - System: Presentation Art Director persona + theme selection rules + layout matrix + few-shot examples
+     - 10 CSS Variable-based themes (executive, neon, minimal, pop, ledger, teal, earth, pitch, statute, academic)
+     - 7 layout classes (hero, split, bento-3, bento-4, timeline, quote, content)
+     - LLM outputs only <section class="slide theme-X layout-Y"> elements — no <html>/<head>/<body>
+     - maxTokens: 8192, temperature: 0.4 (retry: 0.2)
+  4. Validation (via cheerio):
+     - Theme consistency: all slides must use exactly one theme
+     - Layout diversity: no consecutive same layout, max 1 layout-content per deck
+     - Structure: min 4 slides, first=hero (cover), last=hero (closing)
+  5. wrapHtml(): Node.js injects <html><head> with full 10-theme CSS + viewport (1280×720)
+  6. Retry up to 3 attempts with specific validation error feedback
+  7. PPTX: Gotenberg Chromium screenshots each slide (PNG, 1280×720, 5 concurrent)
+     → JSZip compose .pptx (full-slide images, zero npm deps)
+  8. PDF: Gotenberg Chromium /forms/chromium/convert/html → .pdf (native CSS, perfect fidelity)
+  9. Return file download
+```
+
+**Theme auto-selection:** LLM analyzes document context and picks one theme:
+- `theme-executive` — Annual reports, Board decks, C-Level
+- `theme-neon` — Tech products, cybersecurity, SaaS
+- `theme-minimal` — Keynote, product design, strategy
+- `theme-pop` — Marketing, creative, events
+- `theme-ledger` — Finance, banking, audit
+- `theme-teal` — Healthcare, medical, science
+- `theme-earth` — ESG, sustainability, CSR
+- `theme-pitch` — Startup pitch, innovation
+- `theme-statute` — Legal, compliance, government
+- `theme-academic` — Training, education, onboarding
+
+**Local dev preview:** When `GOTENBERG_URL` is not configured, the endpoint returns wrapped HTML directly (instead of PPTX). Open the `.html` file in a browser to preview themed slides. Use `?format=json` to use the JSON fallback path.
+
+#### JSON Path (fallback, `?format=json`)
+
+```
+Same as HTML path, except:
+  4. Bedrock Converse: JSON schema (6 slide types) instead of HTML
+  6. Validate Content JSON — field-level checks, auto-fix null types
+  8. PPTX: POST python-pptx service /generate → .pptx Buffer
+  10. PDF: PPTX → Gotenberg /forms/libreoffice/convert → .pdf (lossy)
+```
+
+#### Auto-fallback Logic
+
+```
+If GOTENBERG_URL is configured → HTML path (10 themed CSS slides)
+If GOTENBERG_URL is NOT configured → HTML preview (returns .html file)
+Force JSON: ?format=json query param
+Force HTML: ?format=html query param (fails if no Gotenberg)
 ```
 
 ### 3.6 Frontend Generation Commands
@@ -338,6 +378,11 @@ Context handling:
   - Previous turns injected as "--- KONTEKS PERCAKAPAN SEBELUMNYA ---"
   - /pptx and /pdf commands are excluded from context collection
   - Max 4 turns collected, capped at 6000 chars on backend
+
+File input methods:
+  - Drag & drop files onto chat input area
+  - Click 📎 button → file picker
+  - Clipboard paste (Cmd+V) — copy file from Finder/Explorer, paste into chat
 ```
 
 ---
@@ -710,7 +755,15 @@ if needsOCR:
 ## 11. Gotenberg — Legacy Office Conversion
 
 ### Purpose
-Convert binary Office formats (.doc, .ppt) that pure Node.js cannot parse. Also used for PPTX→PDF conversion in the file generation pipeline. Deployed as a separate Cloud Run service.
+Convert binary Office formats (.doc, .ppt) that pure Node.js cannot parse. Also powers the HTML-first PPTX/PDF generation pipeline via Chromium endpoints. Deployed as a separate Cloud Run service.
+
+### Endpoints Used
+
+| Endpoint | Used For |
+|---|---|
+| `/forms/libreoffice/convert` | Legacy .doc/.ppt → PDF → text extraction. JSON-path PPTX → PDF. |
+| `/forms/chromium/convert/html` | HTML slides → PDF (native CSS rendering, perfect fidelity) |
+| `/forms/chromium/screenshot/html` | HTML slides → PNG screenshots (1280x720) → JSZip PPTX |
 
 ### Flow
 ```
@@ -721,11 +774,12 @@ Convert binary Office formats (.doc, .ppt) that pure Node.js cannot parse. Also 
   → extractPdfText() extracts text from PDF
   → Text returned as ExtractionResult
 
-.pptx buffer (from python-pptx service)
-  → convertPptxToPdf() — new function
-  → POST buffer to Gotenberg /forms/libreoffice/convert
-  → Gotenberg returns PDF buffer
-  → PDF returned as download
+HTML slides (HTML path, default)
+  → htmlToPptxViaGotenberg(): parse <section> → 5 concurrent Chromium screenshots → JSZip .pptx
+  → htmlToPdfViaGotenberg(): Chromium /forms/chromium/convert/html → .pdf (native CSS)
+
+JSON slides (JSON fallback)
+  → convertPptxToPdf(): python-pptx .pptx → LibreOffice → .pdf (lossy)
 ```
 
 ### Deployment
@@ -1058,8 +1112,11 @@ Content-Type: application/json
 - **Cache-control on HTML**: HTML files served with `Cache-Control: no-cache, no-store, must-revalidate`.
 - **EventEmitter limit**: `EventEmitter.defaultMaxListeners = 50` in `server.ts`.
 - **Google OAuth JIT provisioning**: `loginWithGoogle()` verifies Google ID token server-side, then JIT-provisions via 3-step process.
-- **PPTX generation — content/design separation**: LLM generates structured Content JSON (slide types + text). python-pptx applies code-based design (navy+gold "corporate" theme, 6 slide layouts, geometric accents, Calibri typography). Zero design awareness in LLM prompt — cleaner separation, more reliable output.
-- **PPTX retry with targeted error feedback**: If LLM generates invalid JSON (missing `left`/`right` on comparison, wrong bullet count), retry prompt includes exact fix instructions based on error type. 3 attempts with decreasing temperature.
+- **HTML-first slide generation with dynamic theming**: LLM acts as Presentation Art Director — selects one of 10 CSS Variable-based themes based on document context, outputs only `<section>` elements. Node.js injects `<head>` with full theme CSS before Gotenberg Chromium rendering. 7 layout classes (hero, split, bento-3, bento-4, timeline, quote, content) with deterministic validation (theme consistency, layout diversity, structure). JSON path preserved as fallback for editability.
+- **Local dev slide preview**: When Gotenberg is unavailable, the generation endpoint returns wrapped HTML directly — open in browser to preview themed slides without PPTX conversion.
+- **Clipboard paste for files**: Paste handler on chat input detects files from clipboard (Finder/Explorer copy) — pastes as file attachments via existing `handleFileSelection()` flow. Text paste unaffected.
+- **Render beautification**: Custom markdown parser with callout/admonition boxes (emoji-prefixed: 💡⚠️🚨), task list checkboxes (`- [ ]` → ☐, `- [x]` → ☑), typography tuning (SF Pro Display/Inter, 1.6 line-height, 80ch max-width), reduced list borders, suppressed `<br>` spacing.
+- **Auto-fallback generation**: PPTX/PDF endpoints auto-detect Gotenberg availability — use HTML/CSS path when deployed, fall back to JSON/python-pptx locally. Query param `?format=html|json` overrides auto-detection.
 - **Conversation context in file generation**: Frontend collects last 4 user-assistant turns from chat DOM, backend injects them as "KONTEKS PERCAKAPAN SEBELUMNYA" — enables multi-turn drafting before final file generation.
 - **Auto-download + clickable link**: Generated files auto-download AND show a clickable download link in chat. Blob URL kept alive until next generation. File size displayed in MB.
 - **python-pptx service scale-to-zero**: Deployed as separate Cloud Run service with min-instances=0, internal-only ingress, IAM auth. Cold start ~2s acceptable for generation latency.

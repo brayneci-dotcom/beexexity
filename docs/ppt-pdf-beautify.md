@@ -1,90 +1,121 @@
-Berdasarkan dokumen `tech-reference.md` yang Anda lampirkan, saya dapat mengidentifikasi **akar masalah** dari gaya slide yang monoton tersebut. 
+Berdasarkan `readme.md` (tech-reference) terbaru, arsitektur Anda sudah melakukan loncatan besar dengan mengadopsi **HTML-first path** menggunakan Gotenberg Chromium. Ini adalah fondasi yang sempurna karena Chromium mampu merender CSS modern (Grid, Flexbox, Glassmorphism, Web Fonts) yang mustahil dilakukan oleh `python-pptx`.
 
-Pada **Bagian 18 (Important Patterns)**, disebutkan:
-> *"PPTX generation — content/design separation: LLM generates structured Content JSON... python-pptx applies code-based design (navy+gold 'corporate' theme, 6 slide layouts... **Zero design awareness in LLM prompt** — cleaner separation, more reliable output."*
+Namun, masalah "monoton" terjadi karena **LLM masih diperlakukan sebagai "pengisi teks" ke dalam 7 template statis**, dan **tema "navy+gold" di-hardcode**. 
 
-Pendekatan "Zero design awareness" memang bagus untuk stabilitas JSON di awal (MVP), tetapi ini adalah penyebab utama mengapa slide terlihat kaku. LLM hanya memberikan teks, dan `python-pptx` secara membabi-buta memasukkan teks tersebut ke dalam 6 layout statis tanpa mempedulikan apakah konten tersebut cocok untuk timeline, perbandingan, atau kutipan.
+Untuk membuat slide terasa dinamis, premium, dan bervariasi, kita harus mengubah paradigma dari *Template-Filling* menjadi **Component-Based Design & Dynamic Theming**.
 
-Berikut adalah usulan perbaikan komprehensif untuk membuat UI slide lebih dinamis, variatif, dan modern, beserta referensi repositorinya.
-
----
-
-### **1. Usulan Perbaikan Arsitektur & Desain**
-
-#### **A. Upgrade Skema JSON: Berikan LLM "Design Intent" (Niat Desain)**
-Jangan biarkan LLM hanya output teks. Ubah skema `Content JSON` agar LLM juga menentukan *bagaimana* slide itu harus divisualisasikan.
-*   **Tambahkan `layout_variant`**: Alih-alih hanya `content`, izinkan LLM memilih: `timeline`, `comparison_cards`, `quote_highlight`, `image_left_text_right`, `stats_grid`, `process_flow`.
-*   **Tambahkan `visual_assets`**: LLM output keyword untuk gambar (misal: `keyword: "corporate team meeting"`) atau nama ikon (misal: `icon: "rocket"`).
-*   **Tambahkan `color_accent`**: Biarkan LLM menyarankan warna aksen berdasarkan tone konten (misal: `accent: "emerald"` untuk sustainability, `accent: "crimson"` untuk risk).
-
-#### **B. Revamp `generator.py` (Python Design Engine)**
-Microservice `python-pptx` Anda saat ini terlalu dibatasi. Lakukan ekspansi:
-*   **Perbanyak Layout Registry**: Dari 6 layout menjadi minimal 20-30 layout. Buat kelas terpisah untuk setiap kategori (misal: `TimelineLayout`, `ComparisonLayout`).
-*   **Integrasi Aset Dinamis (Sesuai Data Residency)**: 
-    *   *Opsi Eksternal*: Integrasi Unsplash API untuk mengambil gambar berdasarkan `keyword` dari LLM.
-    *   *Opsi Enterprise (Sesuai TRD)*: Karena Anda strict di `ap-southeast-3`, buatlah **S3 Asset Library** di bucket Jakarta yang berisi ratusan gambar dan ikon vektor (SVG) yang dikategorikan. Python script akan mengambil aset dari S3 ini berdasarkan keyword LLM.
-*   **Gunakan Fitur Lanjut `python-pptx`**: 
-    *   *Image Masking*: Potong gambar menjadi bentuk lingkaran atau hexagon.
-    *   *Gradients & Shadows*: Gunakan *gradient fills* pada shape daripada warna solid (navy/gold) agar terlihat lebih modern (glassmorphism/soft UI).
-    *   *Dynamic Charts*: Jika LLM mendeteksi data angka, generate native PowerPoint Chart, bukan hanya teks.
-
-#### **C. Paradigm Shift: HTML/CSS to Slides (Sangat Direkomendasikan)**
-`python-pptx` sangat buruk dalam membuat layout yang kompleks dan dinamis (seperti CSS Grid/Flexbox). Karena Anda **sudah memiliki Gotenberg** (yang bisa convert HTML ke PDF dengan sempurna), Anda bisa menggunakan trik arsitektur ini:
-1.  LLM menghasilkan **HTML + Tailwind CSS** untuk setiap slide (ini jauh lebih mudah dan variatif bagi LLM daripada membayangkan koordinat X/Y di PPTX).
-2.  Render HTML tersebut menjadi **Image (PNG/JPG)** beresolusi tinggi (1920x1080) menggunakan Puppeteer/Playwright di microservice Python/Node.
-3.  Masukkan gambar tersebut sebagai **Full-Slide Background** di `python-pptx`.
-4.  *Hasil*: UI slide akan seindah website modern (bisa pakai animasi, glassmorphism, grid kompleks), dan tetap bisa diedit sebagai PPTX (meski background-nya image, teks bisa ditimpa di layer atas jika diperlukan, atau biarkan full image untuk PDF).
+Berikut adalah usulan perbaikan komprehensif yang dibagi menjadi 3 pilar:
 
 ---
 
-### **2. Referensi Repositori GitHub**
+### **Pilar 1: HTML Generation to Slide (Memperluas "Kanvas" Desain)**
+Karena Gotenberg menggunakan Chromium, Anda bisa menggunakan teknik web modern. Jangan batasi LLM dengan 7 class statis.
 
-Berikut adalah repo open-source yang bisa Anda bedah (terutama bagian *prompt engineering* dan *layout mapping*) untuk memperbaiki `beexexity`:
+**1. Implementasi CSS Utility-First & CSS Variables (Theming Dinamis)**
+*   **Masalah:** "navy+gold" di-hardcode. Semua slide terlihat seperti laporan keuangan tahun 2010.
+*   **Solusi:** Buat sistem tema menggunakan CSS Variables (`--primary`, `--accent`, `--bg-gradient`). 
+*   **Aksi:** Definisikan 4-5 tema di CSS (misal: `theme-corporate` (navy/gold), `theme-tech` (dark mode/neon), `theme-creative` (pastel/gradients), `theme-minimal` (white/black/accent)).
+*   **Eksekusi:** LLM akan menambahkan class tema di root slide: `<section class="slide theme-tech layout-split">`.
 
-#### **1. `presenton/presenton`**
-*   **URL**: `https://github.com/presenton/presenton`
-*   **Kenapa direferensikan**: Ini adalah standar open-source terbaik saat ini untuk AI Presentation. 
-*   **Yang bisa dicuri**: 
-    *   Lihat bagian **JSON Schema** mereka. Mereka memaksa LLM output `layout_type` (misal: `split_screen`, `timeline`, `quote`).
-    *   Pelajari bagaimana mereka memetakan tipe konten ke template desain yang berbeda.
+**2. Integrasi Icon Font & Web Fonts (Via CDN di `<head>`)**
+*   **Masalah:** Slide hanya berisi teks dan bentuk geometris kaku.
+*   **Solusi:** Inject CDN untuk **Bootstrap Icons** atau **FontAwesome**, serta **Google Fonts** (seperti *Plus Jakarta Sans* atau *Inter*) langsung di dalam `<head>` HTML yang di-generate LLM.
+*   **Eksekusi:** LLM bisa langsung menulis `<i class="bi bi-rocket-fill text-accent"></i>` di dalam HTML. Chromium akan merendernya dengan sempurna.
 
-#### **2. `barun-saha/slide-deck-ai`**
-*   **URL**: `https://github.com/barun-saha/slide-deck-ai`
-*   **Kenapa direferensikan**: Fokus pada *Prompt Engineering* untuk menghasilkan slide yang tidak monoton.
-*   **Yang bisa dicuri**: 
-    *   Sistem *prompt* mereka yang memaksa LLM untuk menentukan `image_description` untuk setiap slide.
-    *   Cara mereka menangani *content-to-layout mapping* (misal: jika ada 3 poin, gunakan layout 3 kolom; jika ada perbandingan, gunakan layout split).
+**3. Layout Matrix (Pengganti 7 Template Kaku)**
+Hapus template kaku. Ganti dengan **Layout Classes** yang bisa diisi komponen apa saja:
+*   `.layout-hero` (Full background image/gradient + big title)
+*   `.layout-split-left` / `.layout-split-right` (Kiri gambar/ikon, kanan teks)
+*   `.layout-bento-3` / `.layout-bento-4` (Grid kotak-kotak modern ala Apple/Stripe)
+*   `.layout-timeline-horizontal` / `.layout-timeline-vertical`
+*   `.layout-quote-mega` (Typography besar dengan background blur/glassmorphism)
 
-#### **3. `slidevjs/slidev` atau `marp-team/marp` (Untuk Pendekatan HTML/CSS)**
-*   **URL**: `https://github.com/slidevjs/slidev` & `https://github.com/marp-team/marp`
-*   **Kenapa direferensikan**: Jika Anda mengambil **Pendekatan C (HTML to Slides)**, ini adalah rajanya.
-*   **Yang bisa dicuri**: 
-    *   Jangan pakai framework mereka secara langsung, tapi **curi tema CSS/Tailwind mereka**. Anda bisa membuat *library* template HTML/CSS yang cantik di microservice Anda, lalu di-render oleh Gotenberg/Puppeteer.
-
-#### **4. `kmirror-dev/ai-pptx` atau `AIPPT` (Referensi Arsitektur Python)**
-*   **URL**: Cari di GitHub dengan keyword `AI PPT generator python-pptx`.
-*   **Yang bisa dicuri**: Cara mereka menggunakan `python-pptx` untuk memanipulasi *Master Slides* dan *Slide Layouts* secara dinamis, alih-alih menggambar shape dari nol (x, y, width, height) yang sering berantakan.
+**4. Dynamic Visual Assets (Unsplash / SVG Patterns)**
+*   Instruksikan LLM untuk menyisipkan gambar dari `source.unsplash.com` atau SVG pattern abstrak sebagai background.
+*   Contoh: `<div class="bg-cover" style="background-image: url('https://source.unsplash.com/1280x720/?corporate,technology')">`
 
 ---
 
-### **3. Action Plan untuk `beexexity`**
+### **Pilar 2: Prompt Engineering (Menjadikan LLM sebagai "Art Director")**
+Prompt saat ini terlalu fokus pada struktur teks. Prompt harus diubah untuk memaksa LLM memikirkan **komposisi visual**.
 
-Mengingat arsitektur Anda saat ini, berikut adalah langkah implementasi yang paling efisien:
+**1. Role & Persona Upgrade**
+*   *Old:* "You are an expert presentation designer..."
+*   *New:* "You are an elite Presentation Art Director (ex-Apple/Stripe). Your goal is to create visually stunning, highly dynamic slides. NEVER use the same layout twice in a row. Match the visual theme to the content's tone."
 
-**Fase 1: Quick Win (Update Skema & Python Engine)**
-1.  **Update `pptx.types.ts`**: Tambahkan field `layoutVariant`, `imageKeyword`, dan `accentColor` di schema JSON.
-2.  **Update `generator.py`**: Tambahkan 10 layout baru (Timeline, 3-Column Cards, Big Quote, Image Masking).
-3.  **S3 Asset Integration**: Buat script di `generator.py` yang mengunduh gambar dari S3 bucket `ap-southeast-3` berdasarkan `imageKeyword` yang dikirim LLM, lalu memasukkannya ke slide.
+**2. Layout Selection Matrix (Aturan Ketat Variasi)**
+Berikan matriks keputusan di dalam prompt agar LLM tidak malas:
+```text
+[LAYOUT RULES]
+- If comparing 2 concepts -> USE `.layout-split`
+- If showing 3-4 metrics/features -> USE `.layout-bento`
+- If explaining a process -> USE `.layout-timeline`
+- If introducing a topic -> USE `.layout-hero` with a relevant Unsplash background.
+- NEVER use `.layout-content` (standard bullets) more than once in the entire deck. Force visual variety.
+```
 
-**Fase 2: The Gotenberg Hack (Untuk UI Level Dewa)**
-Jika Fase 1 masih belum cukup "cantik" untuk standar UI modern:
-1.  Buat microservice baru (atau tambahkan route di `python-pptx` service) yang menerima HTML.
-2.  LLM output HTML dengan Tailwind CSS (via CDN atau inline).
-3.  Gunakan **Playwright/Puppeteer** di dalam container Python/Node untuk mengambil *screenshot* HTML tersebut pada resolusi 1920x1080.
-4.  Gunakan `python-pptx` hanya untuk menempelkan gambar screenshot tersebut ke slide kosong (Full bleed).
-5.  Untuk PDF, langsung pipe HTML tersebut ke **Gotenberg** (`/forms/chromium/convert/html`). Hasilnya akan jauh lebih sempurna daripada LibreOffice conversion.
+**3. Theme Auto-Selection**
+Instruksikan LLM untuk memilih tema berdasarkan konteks dokumen:
+```text
+[THEME SELECTION]
+Analyze the document tone and select ONE theme class for the whole deck:
+- Financial/Legal/Formal -> `theme-corporate`
+- Tech/Software/Startup -> `theme-tech` (Dark mode)
+- Marketing/Creative -> `theme-creative` (Gradients)
+- Default -> `theme-minimal`
+Apply this theme to the first slide, and it will cascade.
+```
 
-**Fase 3: Evaluasi & Testing**
-*   Gunakan **Bedrock Model Evaluation** (sesuai TRD Prioritas 5) untuk menguji apakah model (Qwen3 vs Claude) lebih baik dalam menghasilkan `layoutVariant` yang tepat untuk jenis konten tertentu.
+**4. Few-Shot Prompting dengan HTML Visual (Sangat Penting)**
+Jangan hanya berikan contoh JSON atau HTML teks. Berikan contoh HTML yang *sudah jadi* dengan styling lengkap di dalam prompt (sebagai few-shot).
+*Contoh di prompt:*
+```html
+<!-- EXAMPLE OF BENTO LAYOUT (DO NOT COPY EXACTLY, USE AS INSPIRATION) -->
+<section class="slide theme-tech layout-bento-3">
+  <div class="bento-card glassmorphism">
+    <i class="bi bi-shield-lock icon-xl text-neon-blue"></i>
+    <h3 class="mt-4">Zero Trust Security</h3>
+    <p class="text-muted">End-to-end encryption...</p>
+  </div>
+  <!-- 2 other cards -->
+</section>
+```
 
-Dengan memindahkan sebagian "kesadaran desain" kembali ke LLM (melalui skema JSON yang lebih kaya) dan memanfaatkan kekuatan Gotenberg/HTML, `beexexity` akan menghasilkan slide yang tidak lagi monoton, melainkan dinamis dan setara dengan presentasi buatan desainer profesional.
+---
+
+### **Pilar 3: Output Generation & Validation (Quality Gate)**
+Karena LLM sekarang memiliki kebebasan lebih, validasi harus diperketat agar tidak menghasilkan HTML yang "pecah" di Chromium.
+
+**1. HTML Pre-processing & Sanitasi (Node.js)**
+Sebelum dikirim ke Gotenberg, lakukan sanitasi di `pptx-generator.service.ts`:
+*   Pastikan `<head>` selalu di-inject dengan CDN Tailwind/Bootstrap Icons/Google Fonts (jika LLM lupa atau untuk menghemat token output LLM, lebih baik Node.js yang inject `<head>` secara otomatis, LLM hanya output `<body>`).
+*   **Sangat Disarankan:** Biarkan LLM hanya mengoutput `<body>` (isi slide), lalu Node.js membungkusnya dengan `<html><head>...CDNs & Base CSS...</head><body>...</body></html>`. Ini menghemat ribuan token output LLM dan menjamin CSS selalu konsisten.
+
+**2. Validasi Layout Diversity**
+Tambahkan validasi deterministik di Node.js setelah LLM output HTML:
+*   Parse HTML menggunakan `cheerio`.
+*   Hitung penggunaan class layout (`.layout-split`, `.layout-bento`, dll).
+*   Jika ada layout yang digunakan > 2 kali dalam satu deck, **trigger retry** dengan pesan spesifik: *"Validation failed: You used '.layout-content' 4 times. You must vary your layouts. Regenerate slides 3, 4, and 5 using '.layout-bento' or '.layout-split'."*
+
+**3. Gotenberg Rendering Tweaks**
+*   Pastikan viewport di-set dengan benar di HTML: `<meta name="viewport" content="width=1280, height=720">`.
+*   Gunakan Gotenberg endpoint `/forms/chromium/screenshot/html` dengan parameter `emulatedMediaType=screen` dan set custom window size jika memungkinkan, untuk memastikan CSS media queries tidak merusak layout.
+
+---
+
+### **Referensi GitHub untuk Inspirasi Desain (HTML/CSS to Slides)**
+
+Untuk melihat bagaimana HTML/CSS dieksekusi dengan indah untuk presentasi, bedah repo berikut:
+
+1.  **`slidevjs/slidev`** (`https://github.com/slidevjs/slidev`)
+    *   *Fokus:* Ini adalah rajanya HTML-to-Slides.
+    *   *Yang dicuri:* Lihat folder `packages/create/template/` atau tema-tema komunitasnya. Pelajari bagaimana mereka menggunakan **UnoCSS / Tailwind** dan **Vue components** untuk membuat layout yang sangat dinamis (Bento grid, layout split). Anda bisa meniru struktur CSS class mereka.
+2.  **`marp-team/marp`** (`https://github.com/marp-team/marp`)
+    *   *Fokus:* Markdown/HTML to PDF/PPTX.
+    *   *Yang dicuri:* Pelajari file `themes/` mereka. Perhatikan bagaimana mereka menggunakan `@theme` dan CSS variables untuk membuat tema yang bisa di-switch dengan satu class.
+3.  **`presenton/presenton`** (`https://github.com/presenton/presenton`)
+    *   *Fokus:* AI Presentation Generator.
+    *   *Yang dicuri:* Lihat bagaimana mereka memetakan *intent* ke *layout*. Mereka memiliki sistem di mana LLM tidak hanya output teks, tapi memilih "Template ID" yang sudah di-design sebelumnya. (Meskipun Anda menggunakan HTML-first, logika pemilihan layout mereka sangat layak diadopsi ke dalam Prompt).
+4.  **`antfu/iciba` atau repo yang menggunakan `shadcn/ui`**
+    *   *Fokus:* Modern UI components.
+    *   *Yang dicuri:* Konsep **Glassmorphism**, **Subtle Shadows**, dan **Typography Scale**. Gunakan CSS dari `shadcn/ui` (yang berbasis Tailwind) sebagai base design system Anda di dalam `<head>` HTML. Ini akan membuat slide terlihat seperti aplikasi SaaS modern, bukan PPT kaku.

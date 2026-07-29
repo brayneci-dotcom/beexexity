@@ -53,9 +53,9 @@ async function handleGenerate(req: Request, res: Response, next: NextFunction, t
     if (requestedFormat === 'json') {
       format = 'json';
     } else if (!config.gotenberg.url) {
-      // Gotenberg not configured → fallback to JSON (editable PPTX via python-pptx)
-      format = 'json';
-      console.log('[generation] GOTENBERG_URL not configured — using JSON/PPTX fallback mode');
+      // No Gotenberg → use HTML path, return raw HTML as preview (not PPTX)
+      format = 'html';
+      console.log('[generation] GOTENBERG_URL not configured — returning HTML preview');
     }
 
     if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
@@ -75,6 +75,18 @@ async function handleGenerate(req: Request, res: Response, next: NextFunction, t
       combinedPrompt = `${combinedPrompt}\n\n--- KONTEKS PERCAKAPAN SEBELUMNYA ---\n\n${ctx}`;
     }
 
+    // When Gotenberg is missing, return HTML preview directly (local dev / testing)
+    if (format === 'html' && !config.gotenberg.url) {
+      const { generateHtmlSlides } = await import('../services/pptx-generator.service.js');
+      const safeTitle = combinedPrompt.replace(/[^a-z0-9\-_ ]/gi, '').replace(/\s+/g, '-').slice(0, 40) || 'presentation';
+      const { html, modelUsed } = await generateHtmlSlides(combinedPrompt, modelId);
+      console.log(`[generation] HTML preview (no Gotenberg): ${modelUsed}, ${(Buffer.byteLength(html) / 1024).toFixed(0)}KB`);
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(safeTitle)}-preview.html"`);
+      res.send(html);
+      return;
+    }
+
     const result = type === 'pptx'
       ? await generatePptx(combinedPrompt, modelId, undefined, format)
       : await generatePdf(combinedPrompt, modelId, format);
@@ -92,9 +104,9 @@ async function handleGenerate(req: Request, res: Response, next: NextFunction, t
     const label = type === 'pptx' ? 'PPTX' : 'PDF';
     console.error(`[${label} Generation Error]`, message);
 
-    if (message.includes('not configured') || message.includes('GOTENBERG_URL')) {
+    if (message.includes('not configured') || message.includes('GOTENBERG_URL') || message.includes('PPTX_SERVICE_URL')) {
       res.status(503).json({ error: 'SERVICE_UNAVAILABLE', message: 'Generation service not configured' });
-    } else if (message.includes('No <section>') || message.includes('No slide sections')) {
+    } else if (message.includes('No <section>') || message.includes('No slide sections') || message.includes('No valid theme') || message.includes('Inconsistent themes') || message.includes('Consecutive duplicate') || message.includes('layout-content used') || message.includes('should be layout-hero') || message.includes('missing layout class') || message.includes('Minimum') || message.includes('slide(s) found')) {
       res.status(422).json({ error: 'CONTENT_GENERATION_FAILED', message: 'Failed to generate valid slides. Try a more specific prompt.' });
     } else if (message.includes('Gotenberg')) {
       console.error(`[${label} Generation] Gotenberg error details:`, message);
