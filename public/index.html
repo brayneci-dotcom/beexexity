@@ -3842,7 +3842,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const items = e.clipboardData?.items;
     if (!items) return;
 
-    const fileEntries: File[] = [];
+    const fileEntries = [];
     for (const item of items) {
       if (item.kind === 'file') {
         const file = item.getAsFile();
