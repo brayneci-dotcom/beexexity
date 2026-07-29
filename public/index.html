@@ -576,6 +576,7 @@
       font-weight: 600;
     }
 
+    .assistant-content br { content: ''; display: block; margin-top: -0.25em; }
     .assistant-content code {
       background: var(--bg-tertiary);
       padding: 0.2rem 0.4rem;
@@ -682,9 +683,6 @@
       padding-top: 0.4rem;
       padding-bottom: 0.4rem;
       font-weight: 400;
-    }
-    .assistant-text-content ul li + li {
-      border-top: 1px solid var(--border);
     }
     .assistant-text-content ul li::before {
       content: "—";
@@ -842,6 +840,66 @@
 
     .assistant-content tbody tr:nth-child(even) td {
       background: var(--bg-tertiary);
+    }
+
+    /* ── Callout / Admonition Boxes ── */
+    .callout {
+      margin: 0.6rem 0;
+      padding: 0.7rem 1rem;
+      border-radius: 8px;
+      border-left: 4px solid;
+      font-size: 0.92rem;
+      line-height: 1.55;
+    }
+    .callout-tip     { background: rgba(56,161,105,0.06);  border-color: #38A169; }
+    .callout-warning { background: rgba(237,137,54,0.06);  border-color: #ED8936; }
+    .callout-danger  { background: rgba(229,62,62,0.06);   border-color: #E53E3E; }
+    .callout-info    { background: rgba(43,108,176,0.06);  border-color: #2B6CB0; }
+    .callout-neutral { background: rgba(160,174,192,0.06); border-color: #A0AEC0; }
+
+    /* ── Task List / Checkbox ── */
+    .task-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+      margin: 0.2rem 0;
+      list-style: none;
+    }
+    .task-checkbox {
+      flex-shrink: 0;
+      width: 1.1rem;
+      height: 1.1rem;
+      margin-top: 0.15rem;
+      border-radius: 3px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+    .task-checkbox.unchecked { border: 2px solid var(--border); color: transparent; }
+    .task-checkbox.checked   { background: var(--accent); border: 2px solid var(--accent); color: #fff; }
+
+    /* ── Typography Refinements ── */
+    .assistant-content {
+      font-family: 'SF Pro Display', 'Inter', system-ui, -apple-system, sans-serif;
+      line-height: 1.6;
+      color: var(--text-primary);
+    }
+    .assistant-content h2 {
+      color: var(--primary, #1A365D);
+      border-bottom: 2px solid var(--accent);
+      padding-bottom: 0.3rem;
+      margin-top: 1rem;
+    }
+    .assistant-content h3 {
+      font-weight: 600;
+      color: var(--text-primary);
+      border-bottom: none;
+      margin-top: 0.75rem;
+    }
+    .assistant-content p {
+      max-width: 80ch;
     }
 
     .assistant-content .math-display {
@@ -3095,7 +3153,7 @@ function formatMarkdown(text) {
 
     // Horizontal rule
     if (/^(---|\*\*\*|___)\s*$/.test(line.trim())) {
-      html += '<hr style="border: none; border-top: 1px solid var(--border); margin: 0.5rem 0;">';
+      html += '<div style="height:0.5rem"></div>';
       continue;
     }
     
@@ -3155,7 +3213,7 @@ function formatMarkdown(text) {
         || /^(---|\*\*\*|___)\s*$/.test(nextLine.trim())          // HR
         || /^([^\x00-\x7F])\s*(.+)$/u.test(nextLine);             // emoji heading
       if (!isNextBreak) {
-        html += '<br>';
+        html += '<div style="height:0.15rem"></div>';
       }
       continue;
     }
@@ -3165,6 +3223,30 @@ function formatMarkdown(text) {
       html += `<div style="margin: 0.5rem 0 0.25rem;font-weight:800;font-size:1.15rem;color:var(--text-primary);text-transform:uppercase;letter-spacing:0.04em;border-bottom:2px solid var(--accent);padding-bottom:0.3rem">${inlineFormat(line.trim())}</div>`;
       continue;
     }
+    // Callout/Admonition boxes — lines starting with emoji prefix
+    const calloutMatch = line.match(/^(\s*)(💡|⚠️|❗|🔴|🟡|🟢|📌|❌|✅|🔥|💎|🎯|ℹ️|🚨|🛑)\s+(.+)$/u);
+    if (calloutMatch) {
+      const content = calloutMatch[3];
+      const emoji = calloutMatch[2];
+      let type = 'neutral';
+      if (/💡|🎯|💎/.test(emoji)) type = 'tip';
+      else if (/⚠️|🟡|📌/.test(emoji)) type = 'warning';
+      else if (/❗|🔴|🚨|🛑|❌/.test(emoji)) type = 'danger';
+      else if (/ℹ️|🟢/.test(emoji)) type = 'info';
+      else if (/✅/.test(emoji)) type = 'tip';
+      else if (/🔥/.test(emoji)) type = 'warning';
+      html += `<div class="callout callout-${type}"><strong>${emoji}</strong> ${inlineFormat(content)}</div>`;
+      continue;
+    }
+
+    // Task list: - [ ] or - [x] at line start
+    const taskMatch = line.match(/^(\s*)[\-\*]\s+\[(\s|x|X)\]\s+(.+)$/);
+    if (taskMatch) {
+      const checked = taskMatch[2].toLowerCase() === 'x';
+      html += `<div class="task-item"><span class="task-checkbox ${checked ? 'checked' : 'unchecked'}">${checked ? '✓' : ''}</span><span>${inlineFormat(taskMatch[3])}</span></div>`;
+      continue;
+    }
+
     // Regular paragraph
     html += `<p style="margin: 0.25rem 0;">${inlineFormat(line)}</p>`;
   }
