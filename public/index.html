@@ -2079,6 +2079,7 @@ async function showChatScreen() {
     const res = await fetch(`${API_BASE}/models`, {
       headers: { 'Authorization': `Bearer ${token}` },
     });
+    if (res.status === 401) { forceLogout('Session expired. Please login again.'); return; }
     const data = await res.json();
     const select = document.getElementById('model-select');
     select.innerHTML = '';
@@ -2138,6 +2139,7 @@ async function loadSessionHistory() {
     });
 
     if (!res.ok) {
+      if (res.status === 401) { forceLogout('Session expired. Please login again.'); return; }
       // If 404 or 410, clear session state and start fresh
       if (res.status === 404 || res.status === 410) {
         currentSessionId = null;
@@ -2346,6 +2348,7 @@ async function handleSend() {
     }
 
     if (!res.ok) {
+      if (res.status === 401) { forceLogout('Session expired. Please login again.'); return; }
       const err = await res.json();
       // Handle invalid/expired session errors by clearing state
       if (res.status === 404 || res.status === 410 || err.error === 'SESSION_EXPIRED' || err.error === 'SESSION_NOT_FOUND') {
@@ -3629,6 +3632,11 @@ function handleKeyDown(e) {
   }
 }
 
+function forceLogout(message) {
+  handleLogout();
+  if (message) showToast(message);
+}
+
 function handleLogout() {
   token = null;
   resetToken = null;
@@ -3839,20 +3847,29 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Clipboard paste: support pasting files/images from clipboard (Finder/Explorer)
   document.addEventListener('paste', (e) => {
     if (isStreaming) return;
-    const items = e.clipboardData?.items;
-    if (!items) return;
 
-    const fileEntries = [];
-    for (const item of items) {
-      if (item.kind === 'file') {
-        const file = item.getAsFile();
-        if (file) fileEntries.push(file);
-      }
+    // Prefer .files (wider browser support for file paste)
+    const files = e.clipboardData?.files;
+    if (files && files.length > 0) {
+      e.preventDefault();
+      handleFileSelection(Array.from(files));
+      return;
     }
 
-    if (fileEntries.length > 0) {
-      e.preventDefault(); // block default text paste (filename)
-      handleFileSelection(fileEntries);
+    // Fallback: .items (some browsers expose files only via items)
+    const items = e.clipboardData?.items;
+    if (items) {
+      const fileEntries = [];
+      for (const item of items) {
+        if (item.kind === 'file') {
+          const file = item.getAsFile();
+          if (file) fileEntries.push(file);
+        }
+      }
+      if (fileEntries.length > 0) {
+        e.preventDefault();
+        handleFileSelection(fileEntries);
+      }
     }
     // If no files, let default paste behavior handle text
   });
@@ -3869,7 +3886,22 @@ function handleFileSelection(files) {
   clearFileError();
 
   for (const file of files) {
-    if (!ALLOWED_MIME_TYPES.includes(file.type)) {
+    // Infer MIME type from extension for clipboard files (type may be empty "")
+    let effectiveType = file.type;
+    if (!effectiveType) {
+      const ext = (file.name || '').split('.').pop()?.toLowerCase();
+      const extMap = {
+        'pdf': 'application/pdf', 'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'xls': 'application/vnd.ms-excel', 'png': 'image/png', 'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg', 'webp': 'image/webp', 'html': 'text/html', 'md': 'text/markdown',
+        'json': 'application/json', 'csv': 'text/csv', 'txt': 'text/plain', 'xml': 'application/xml',
+        'htm': 'text/html',
+      };
+      effectiveType = extMap[ext] || '';
+    }
+    if (!ALLOWED_MIME_TYPES.includes(effectiveType)) {
       showFileError(`"${file.name}" has an unsupported file type. Allowed: PDF, DOCX, PPTX, XLSX, PNG, JPG, WEBP, HTML, MD, JSON, CSV, TXT, XML.`);
       return;
     }
