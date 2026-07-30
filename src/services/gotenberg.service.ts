@@ -133,7 +133,7 @@ export async function htmlToPdfViaGotenberg(html: string): Promise<Buffer> {
   const timeout = setTimeout(() => controller.abort(), config.gotenberg.timeoutMs);
 
   try {
-    const response = await fetch(`${gotenbergUrl}/convert/html`, {
+    const response = await fetch(`${gotenbergUrl}/forms/chromium/convert/html`, {
       method: 'POST',
       body: form,
       signal: controller.signal,
@@ -245,7 +245,7 @@ export async function htmlToPptxViaGotenberg(html: string): Promise<Buffer> {
     const timeout = setTimeout(() => controller.abort(), 20_000);
 
     try {
-      const response = await fetch(`${gotenbergUrl}/screenshot/html`, {
+      const response = await fetch(`${gotenbergUrl}/forms/chromium/screenshot/html`, {
         method: 'POST',
         body: form,
         signal: controller.signal,
