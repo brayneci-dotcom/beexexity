@@ -50,7 +50,7 @@ steps:
       - '80'
       - '--allow-unauthenticated'
       - '--set-env-vars'
-      - 'NODE_ENV=production,AWS_REGION=ap-southeast-3,DB_HOST=${_DB_HOST},DB_PORT=5432,DB_NAME=bedrock_gateway,DB_USER=${_DB_USER},DB_SSL=true,PPTX_SERVICE_URL=${_PPTX_SERVICE_URL}'
+      - 'NODE_ENV=production,AWS_REGION=ap-southeast-3,DB_HOST=${_DB_HOST},DB_PORT=5432,DB_NAME=bedrock_gateway,DB_USER=${_DB_USER},DB_SSL=true,GOTENBERG_URL=${_GOTENBERG_URL}'
       - '--set-secrets'
       - 'DB_PASSWORD=db-password:latest,JWT_SECRET=jwt-secret:latest,AWS_ACCESS_KEY_ID=aws-access-key-id:latest,AWS_SECRET_ACCESS_KEY=aws-secret-access-key:latest,GOOGLE_CLIENT_ID=google-client-id:latest'
 
@@ -61,7 +61,7 @@ substitutions:
   _TAG: latest
   _DB_HOST: ''     # set in Cloud Build trigger → Variables
   _DB_USER: ''     # set in Cloud Build trigger → Variables
-  _PPTX_SERVICE_URL: ''  # set after first ppx-service deploy → Variables
+  _GOTENBERG_URL: ''      # set after Gotenberg deploy → Variables
 
 images:
   - '${_ARTIFACT_REGISTRY}/${PROJECT_ID}/${_SERVICE_NAME}/${_SERVICE_NAME}:${_TAG}'

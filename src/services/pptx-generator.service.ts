@@ -12,7 +12,6 @@
 import * as cheerio from 'cheerio';
 import { ConverseCommand } from '@aws-sdk/client-bedrock-runtime';
 import { bedrockClient } from './inference.service.js';
-import { config } from '../config/index.js';
 import { htmlToPptxViaGotenberg, htmlToPdfViaGotenberg } from './gotenberg.service.js';
 import { PPTX_THEMES_CSS, VALID_THEMES, VALID_LAYOUTS } from './pptx-themes.js';
 import type { ContentJson, GeneratePptxResponse, Bullet } from '../types/pptx.types.js';
@@ -462,53 +461,23 @@ export async function generateContentJson(
 export async function generatePptx(
   prompt: string,
   modelId?: string,
-  template?: string,
-  format: 'html' | 'json' = 'html',
 ): Promise<GeneratePptxResponse> {
   const safeTitle = prompt.replace(/[^a-z0-9\-_ ]/gi, '').replace(/\s+/g, '-').slice(0, 40) || 'presentation';
   const timestamp = new Date().toISOString().slice(0, 10);
 
-  if (format === 'html') {
-    const { html } = await generateHtmlSlides(prompt, modelId);
-    const buffer = await htmlToPptxViaGotenberg(html);
-    return { buffer, filename: `${safeTitle}-${timestamp}.pptx` };
-  }
-
-  // JSON fallback — uses python-pptx service
-  const { content } = await generateContentJson(prompt, modelId);
-  const serviceUrl = config.pptx?.serviceUrl;
-  if (!serviceUrl) throw new Error('PPTX_SERVICE_URL not configured');
-
-  const response = await fetch(`${serviceUrl}/generate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ template: template || 'corporate', meta: content.meta, slides: content.slides }),
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!response.ok) {
-    const errText = await response.text().catch(() => 'Unknown error');
-    throw new Error(`PPTX service returned ${response.status}: ${errText}`);
-  }
-  return { buffer: Buffer.from(await response.arrayBuffer()), filename: `${safeTitle}-${timestamp}.pptx` };
+  const { html } = await generateHtmlSlides(prompt, modelId);
+  const buffer = await htmlToPptxViaGotenberg(html);
+  return { buffer, filename: `${safeTitle}-${timestamp}.pptx` };
 }
 
 export async function generatePdf(
   prompt: string,
   modelId?: string,
-  format: 'html' | 'json' = 'html',
 ): Promise<GeneratePptxResponse> {
   const safeTitle = prompt.replace(/[^a-z0-9\-_ ]/gi, '').replace(/\s+/g, '-').slice(0, 40) || 'presentation';
   const timestamp = new Date().toISOString().slice(0, 10);
 
-  if (format === 'html') {
-    const { html } = await generateHtmlSlides(prompt, modelId);
-    const buffer = await htmlToPdfViaGotenberg(html);
-    return { buffer, filename: `${safeTitle}-${timestamp}.pdf` };
-  }
-
-  // JSON fallback: generate PPTX then convert via Gotenberg LibreOffice
-  const pptxResult = await generatePptx(prompt, modelId, undefined, 'json');
-  const { convertPptxToPdf } = await import('./gotenberg.service.js');
-  const pdfBuffer = await convertPptxToPdf(pptxResult.buffer, pptxResult.filename);
-  return { buffer: pdfBuffer, filename: pptxResult.filename.replace(/\.pptx$/, '.pdf') };
+  const { html } = await generateHtmlSlides(prompt, modelId);
+  const buffer = await htmlToPdfViaGotenberg(html);
+  return { buffer, filename: `${safeTitle}-${timestamp}.pdf` };
 }

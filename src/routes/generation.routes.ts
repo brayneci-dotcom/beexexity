@@ -47,14 +47,9 @@ async function handleGenerate(req: Request, res: Response, next: NextFunction, t
     const prompt: string = req.body?.prompt || '';
     const modelId: string | undefined = req.body?.modelId || undefined;
     const context: string | undefined = req.body?.context || undefined;
-    // Auto-fallback: HTML mode needs Gotenberg, JSON mode needs python-pptx service
-    const requestedFormat = req.query?.format as string | undefined;
-    let format: 'html' | 'json' = 'html';
-    if (requestedFormat === 'json') {
-      format = 'json';
-    } else if (!config.gotenberg.url) {
-      // No Gotenberg → use HTML path, return raw HTML as preview (not PPTX)
-      format = 'html';
+    // HTML-first: Gotenberg Chromium renders 10-theme CSS slides → PPTX/PDF
+    // When Gotenberg is not configured (local dev), return HTML preview
+    if (!config.gotenberg.url) {
       console.log('[generation] GOTENBERG_URL not configured — returning HTML preview');
     }
 
@@ -75,8 +70,8 @@ async function handleGenerate(req: Request, res: Response, next: NextFunction, t
       combinedPrompt = `${combinedPrompt}\n\n--- KONTEKS PERCAKAPAN SEBELUMNYA ---\n\n${ctx}`;
     }
 
-    // When Gotenberg is missing, return HTML preview directly (local dev / testing)
-    if (format === 'html' && !config.gotenberg.url) {
+    // When Gotenberg is not available, return HTML preview (local dev only)
+    if (!config.gotenberg.url) {
       const { generateHtmlSlides } = await import('../services/pptx-generator.service.js');
       const safeTitle = combinedPrompt.replace(/[^a-z0-9\-_ ]/gi, '').replace(/\s+/g, '-').slice(0, 40) || 'presentation';
       const { html, modelUsed } = await generateHtmlSlides(combinedPrompt, modelId);
@@ -88,8 +83,8 @@ async function handleGenerate(req: Request, res: Response, next: NextFunction, t
     }
 
     const result = type === 'pptx'
-      ? await generatePptx(combinedPrompt, modelId, undefined, format)
-      : await generatePdf(combinedPrompt, modelId, format);
+      ? await generatePptx(combinedPrompt, modelId)
+      : await generatePdf(combinedPrompt, modelId);
 
     const contentType = type === 'pptx'
       ? 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
@@ -104,8 +99,8 @@ async function handleGenerate(req: Request, res: Response, next: NextFunction, t
     const label = type === 'pptx' ? 'PPTX' : 'PDF';
     console.error(`[${label} Generation Error]`, message);
 
-    if (message.includes('not configured') || message.includes('GOTENBERG_URL') || message.includes('PPTX_SERVICE_URL')) {
-      res.status(503).json({ error: 'SERVICE_UNAVAILABLE', message: 'Generation service not configured' });
+    if (message.includes('not configured') || message.includes('GOTENBERG_URL')) {
+      res.status(503).json({ error: 'SERVICE_UNAVAILABLE', message: 'Generation service not configured. Deploy Gotenberg sidecar for HTML→PPTX conversion.' });
     } else if (message.includes('No <section>') || message.includes('No slide sections') || message.includes('No valid theme') || message.includes('Inconsistent themes') || message.includes('Consecutive duplicate') || message.includes('layout-content used') || message.includes('should be layout-hero') || message.includes('missing layout class') || message.includes('Minimum') || message.includes('slide(s) found')) {
       res.status(422).json({ error: 'CONTENT_GENERATION_FAILED', message: 'Failed to generate valid slides. Try a more specific prompt.' });
     } else if (message.includes('Gotenberg')) {
